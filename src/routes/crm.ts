@@ -1576,6 +1576,21 @@ function renderLeadMergeTemplate(template: string, lead: Lead): string {
 
 const VOICEMAIL_CONFIG_ERROR = "voicemail not configured (upload default audio in Settings > Voicemail AI or set VOICEMAIL_AUDIO_URL; TELNYX_VOICE_APP_ID/TELNYX_CONNECTION_ID, TELNYX_API_KEY, and a Telnyx from number are required)";
 
+function voicemailConfigMissing(audioUrl?: string): string[] {
+  const settings = publicVoicemailAudioSettings();
+  const missing: string[] = [];
+  if (!audioUrl && !settings.url) missing.push("default voicemail audio or ElevenLabs-generated audio");
+  if (!settings.telnyxVoiceAppSet) missing.push("TELNYX_VOICE_APP_ID/TELNYX_CONNECTION_ID");
+  if (!settings.telnyxApiKeySet) missing.push("TELNYX_API_KEY");
+  if (!settings.telnyxFromNumberSet) missing.push("TELNYX_FROM_NUMBER/TELNYX_NUMBERS");
+  return missing;
+}
+
+function voicemailConfigError(audioUrl?: string): string {
+  const missing = voicemailConfigMissing(audioUrl);
+  return missing.length ? `voicemail not configured: missing ${missing.join(", ")}` : VOICEMAIL_CONFIG_ERROR;
+}
+
 function leadPhoneKey(phone: string | null | undefined): string {
   const digits = String(phone || "").replace(/\D/g, "");
   return digits.length >= 10 ? digits.slice(-10) : "";
@@ -1627,7 +1642,7 @@ async function startLeadVoicemailDrop(
   audioUrl?: string,
 ): Promise<LeadVoicemailStartResult> {
   if (!lead.phone) return { skipped: true, reason: "no phone" };
-  if (!voicemailConfigured(audioUrl)) return { skipped: true, reason: "voicemail not configured" };
+  if (!voicemailConfigured(audioUrl)) return { skipped: true, reason: voicemailConfigError(audioUrl) };
   if (await isOnDnc(lead.phone)) return { skipped: true, reason: "on-DNC" };
 
   const timezone = resolveLeadTimezone(lead) || config.crm.defaultTimezone || "";
@@ -1664,7 +1679,8 @@ async function startLeadVoicemailDrop(
 
 function requireVoicemailConfigured(res: Response): boolean {
   if (voicemailConfigured()) return true;
-  res.status(400).json({ error: VOICEMAIL_CONFIG_ERROR });
+  const missing = voicemailConfigMissing();
+  res.status(400).json({ error: voicemailConfigError(), missing });
   return false;
 }
 

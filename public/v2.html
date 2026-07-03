@@ -2301,8 +2301,20 @@
           '<section class="card pad"><h2 style="margin-top:0">Outbound texting</h2><p class="muted">Auto tries BlueBubbles iMessage first, then Telnyx SMS on timeout, failure, or unreachable Mac.</p><div class="toolbar"><button class="btn ' + (mode.mode === "auto" ? "primary" : "") + '" data-action="mode" data-mode="auto">Auto</button><button class="btn ' + (mode.mode === "imessage" ? "primary" : "") + '" data-action="mode" data-mode="imessage">iMessage only</button><button class="btn ' + (mode.mode === "sms" ? "primary" : "") + '" data-action="mode" data-mode="sms">SMS only</button></div><div id="modeMsg" class="statusLine"></div></section>' +
           vendorPanel("title", vendors.title || {}) + vendorPanel("flood", vendors.flood || {}) +
           '<section class="card pad"><h2 style="margin-top:0">ElevenLabs voicemail</h2><div class="fieldGrid"><label>Enabled<select id="elEnabled"><option value="1">Enabled</option><option value="0">Disabled</option></select></label><label>Voice ID<input id="elVoice" value="' + esc(eleven.voiceId || "") + '"></label><label>API key<input id="elKey" type="password" placeholder="' + esc(eleven.apiKeySet ? "Saved: " + (eleven.apiKeyPreview || "set") : "ElevenLabs API key") + '"></label><label>Model<input id="elModel" value="' + esc(eleven.modelId || "eleven_multilingual_v2") + '"></label></div><label style="margin-top:10px">Default voicemail script<textarea id="elText">' + esc(eleven.defaultVoicemailText || "") + '</textarea></label><button class="btn primary" data-action="save-eleven" style="margin-top:10px">Save ElevenLabs</button><div id="elMsg" class="statusLine">' + esc(eleven.configured ? "Configured" : "Not configured") + '</div></section>' +
-          '<section class="card pad"><h2 style="margin-top:0">Voicemail audio</h2><p class="muted">Current source: ' + esc(audio.settings ? audio.settings.source : audio.source || "none") + '</p><input id="vmAudio" type="file" accept="audio/*"><button class="btn primary" data-action="upload-vm-audio" style="margin-top:10px">Upload default audio</button><div id="vmAudioMsg" class="statusLine">' + esc((audio.settings && audio.settings.configured) || audio.configured ? "Voicemail drops configured" : "Upload audio or set VOICEMAIL_AUDIO_URL") + '</div></section>';
+          voicemailAudioPanel(audio);
         $("elEnabled").value = eleven.enabled ? "1" : "0";
+      }
+      function settingsCheck(label, ok) {
+        return '<div class="item"><b>' + esc(label) + '</b><span class="badge ' + (ok ? "green" : "red") + '">' + (ok ? "Ready" : "Missing") + '</span></div>';
+      }
+      function voicemailAudioPanel(audio) {
+        var s = audio.settings || audio || {};
+        return '<section class="card pad"><h2 style="margin-top:0">Voicemail audio</h2><p class="muted">Current source: ' + esc(s.source || "none") + '</p><div class="list" style="margin:10px 0">' +
+          settingsCheck("Default audio / VOICEMAIL_AUDIO_URL", Boolean(s.url)) +
+          settingsCheck("TELNYX_VOICE_APP_ID", Boolean(s.telnyxVoiceAppSet)) +
+          settingsCheck("TELNYX_API_KEY", Boolean(s.telnyxApiKeySet)) +
+          settingsCheck("Telnyx sending number", Boolean(s.telnyxFromNumberSet)) +
+          '</div><input id="vmAudio" type="file" accept="audio/*"><button class="btn primary" data-action="upload-vm-audio" style="margin-top:10px">Upload default audio</button><div id="vmAudioMsg" class="statusLine">' + esc(s.configured ? "Voicemail drops configured" : "Fix missing items above") + '</div></section>';
       }
       function vendorPanel(kind, data) {
         var title = kind === "title" ? "Title vendor" : "Flood vendor";
@@ -2412,7 +2424,7 @@
         if (action === "email") { path = "/api/leads/" + lead.id + "/email"; body = { subject: $("ldEmailSubject").value, body: $("ldEmailBody").value }; }
         if (action === "note") { path = "/api/leads/" + lead.id + "/notes"; body = { body: $("ldNote").value }; }
         if (action === "call") path = "/api/leads/" + lead.id + "/call";
-        if (action === "vm") { path = "/api/leads/" + lead.id + "/voicemail-drop"; body = { voicemailText: "", sendText: true, text: "Hi {{first_name}}, I just left you a quick voicemail. Reply HELOC and I will send next steps." }; }
+        if (action === "vm") { path = "/api/leads/" + lead.id + "/voicemail-drop"; body = { voicemailText: "Hi {{first_name}}, this is Mykoal with Adaxa Home. I am following up on your home equity options. I will send you a quick text too.", sendText: true, text: "Hi {{first_name}}, I just left you a quick voicemail. Reply HELOC and I will send next steps." }; }
         if (action === "runflow") path = "/api/leads/" + lead.id + "/run-automation";
         if (action === "start") { path = "/api/leads/" + lead.id + "/application/start"; body = { seedChecklist: false, requestedFrom: "v2" }; }
         if (action === "title") path = "/api/leads/" + lead.id + "/orders/title";
