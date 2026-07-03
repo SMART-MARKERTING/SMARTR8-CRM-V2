@@ -1,0 +1,20 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "smartr8-v2-router",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-03",
+  "account_id": "8df1a8fc9cdb76aaf2211a9cf93c2a50",
+  "routes": [
+    {
+      "pattern": "crm.smartr8.com/v2*",
+      "zone_name": "smartr8.com"
+    }
+  ],
+  "vars": {
+    "V2_ORIGIN": "https://loangenius-v2.onrender.com",
+    "FALLBACK_ORIGIN": "https://smartr8-texting-1wx7.onrender.com"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
