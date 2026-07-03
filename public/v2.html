@@ -4,33 +4,33 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>Smartr8 CRM v2</title>
+  <title>LoanGenius</title>
   <link rel="icon" href="/logo.svg" />
   <script defer src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
   <style>
     :root {
-      --bg: #0b111d;
-      --panel: #151c2a;
-      --line: #273347;
-      --text: #e8edf7;
-      --muted: #92a0b6;
-      --soft: #1d283a;
-      --nav: #0d1422;
-      --navText: #a9b5c9;
-      --field: #0f1726;
-      --fieldLine: #26344b;
-      --button: #101827;
-      --hover: #1d2638;
-      --item: #111827;
-      --empty: #0f1726;
-      --tableLine: #222d40;
-      --blue: #6d5dfc;
-      --teal: #18b6a6;
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --line: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --soft: #f1f5f9;
+      --nav: #0f172a;
+      --navText: #cbd5e1;
+      --field: #ffffff;
+      --fieldLine: #cbd5e1;
+      --button: #ffffff;
+      --hover: #f1f5f9;
+      --item: #ffffff;
+      --empty: #f8fafc;
+      --tableLine: #edf2f7;
+      --blue: #2563eb;
+      --teal: #0f766e;
       --green: #22c55e;
       --amber: #f59e0b;
       --red: #ef4444;
       --purple: #9b5cf6;
-      --shadow: 0 20px 50px rgba(0, 0, 0, .26);
+      --shadow: 0 18px 42px rgba(15, 23, 42, .12);
       --radius: 8px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -41,8 +41,8 @@
       --text: #121926;
       --muted: #65758b;
       --soft: #eef3f8;
-      --nav: #ffffff;
-      --navText: #243247;
+      --nav: #0f172a;
+      --navText: #cbd5e1;
       --field: #ffffff;
       --fieldLine: #cfd8e5;
       --button: #ffffff;
@@ -90,7 +90,7 @@
       place-items: center;
       font-weight: 900;
     }
-    .loginCard h1, .pageTitle h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .loginCard h1, .pageTitle h1, .topPageTitle { margin: 0; font-size: 24px; letter-spacing: 0; }
     .loginCard p, .muted { color: var(--muted); }
     label { display: grid; gap: 6px; font-size: 13px; font-weight: 750; color: var(--muted); }
     input, textarea, select {
@@ -120,10 +120,10 @@
     .btn.ghost { border-color: transparent; background: transparent; }
     .btn.small { padding: 6px 9px; min-height: 30px; font-size: 12px; }
     .btn.call { border-color: var(--green); background: var(--green); color: #fff; }
-    .app { min-height: 100vh; display: grid; grid-template-columns: 264px minmax(0, 1fr); }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 240px minmax(0, 1fr); background: var(--bg); }
     .side {
       background: var(--nav);
-      border-right: 1px solid var(--line);
+      border-right: 1px solid rgba(148,163,184,.18);
       padding: 18px 14px;
       position: sticky;
       top: 0;
@@ -132,6 +132,8 @@
     }
     .side .brandRow { margin-bottom: 22px; }
     .side small { color: var(--muted); font-weight: 800; text-transform: uppercase; }
+    .side strong, .side .sub { color: #f8fafc; }
+    .side .sub { opacity: .72; }
     .navGroup { margin: 18px 0 8px; }
     .navBtn {
       width: 100%;
@@ -147,16 +149,16 @@
       text-align: left;
       font-weight: 800;
     }
-    .navBtn:hover { background: var(--hover); }
-    .navBtn.active { background: color-mix(in srgb, var(--amber) 18%, var(--hover)); border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); color: var(--text); }
+    .navBtn:hover { background: rgba(148,163,184,.12); color: #ffffff; }
+    .navBtn.active { background: rgba(59,130,246,.18); border-color: rgba(96,165,250,.48); color: #ffffff; }
     .navIco {
       width: 26px;
       height: 26px;
       border-radius: 7px;
       display: grid;
       place-items: center;
-      background: var(--soft);
-      color: var(--muted);
+      background: rgba(148,163,184,.14);
+      color: #cbd5e1;
       font-size: 12px;
       font-weight: 900;
     }
@@ -168,14 +170,17 @@
       gap: 14px;
       justify-content: space-between;
       padding: 0 22px;
-      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      background: #ffffff;
       border-bottom: 1px solid var(--line);
       position: sticky;
       top: 0;
       z-index: 12;
       backdrop-filter: blur(10px);
     }
+    .topTitleWrap { min-width: 180px; }
     .globalSearch { max-width: 560px; flex: 1; }
+    .topActions { display: flex; align-items: center; gap: 10px; }
+    .iconBtn { width: 38px; min-width: 38px; padding: 0; display: grid; place-items: center; }
     .userPill { display: flex; align-items: center; gap: 9px; font-weight: 850; white-space: nowrap; }
     .avatar {
       width: 34px;
@@ -188,7 +193,7 @@
       font-weight: 950;
       flex: 0 0 auto;
     }
-    .content { padding: 24px; max-width: 1540px; margin: 0 auto; }
+    .content { padding: 24px; max-width: 1540px; margin: 0 auto; background: var(--bg); }
     .content.pipelineWide { max-width: none; margin: 0; }
     .pageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
     .pageTitle p { margin: 6px 0 0; color: var(--muted); }
@@ -233,6 +238,31 @@
     .badge.red { background: #ffe9e9; color: #a42525; }
     .badge.purple { background: #f1e9ff; color: #6e2ead; }
     .badge.teal { background: #dff8f7; color: #05676e; }
+    .statusTabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    .statusTab {
+      border: 1px solid var(--fieldLine);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      padding: 7px 10px;
+      font-weight: 850;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .statusTab.active { border-color: rgba(37,99,235,.55); color: var(--blue); background: #eff6ff; }
+    .rowBtn { cursor: pointer; }
+    .rowBtn:hover td { background: #f8fafc; }
+    .taskRow {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .taskRow.done .taskTitle { text-decoration: line-through; color: var(--muted); }
+    .taskMeta { color: var(--muted); font-size: 12px; margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .spinner { width: 28px; height: 28px; border: 3px solid #dbeafe; border-top-color: var(--blue); border-radius: 999px; animation: spin .75s linear infinite; margin: 24px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .warnBox { border: 1px solid #f0c96b; background: #fff8e5; color: #875400; padding: 12px; border-radius: var(--radius); line-height: 1.45; }
     .dialPad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .dialKey { min-height: 52px; font-size: 18px; font-weight: 950; }
@@ -272,8 +302,9 @@
     .pipeline { display: flex; gap: 12px; align-items: stretch; min-width: max-content; padding-bottom: 4px; }
     .stageCol { flex: 0 0 285px; min-width: 285px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; }
     .stageCol.dragOver { outline: 2px solid var(--amber); outline-offset: 2px; }
-    [data-pipeline-card] { cursor: grab; }
+    [data-pipeline-card] { cursor: grab; transition: transform .14s ease, box-shadow .14s ease; }
     [data-pipeline-card]:active { cursor: grabbing; }
+    [data-pipeline-card].dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 16px 34px rgba(15,23,42,.18); }
     .stageCol h3 { margin: 0 0 10px; font-size: 14px; display: flex; justify-content: space-between; }
     .stageCol .list { overflow-y: auto; padding-right: 2px; }
     .pipelineScroller {
@@ -377,10 +408,10 @@
   <section id="gate" class="gate">
     <div class="loginCard">
       <div class="brandRow">
-        <div class="brandMark">S8</div>
+        <div class="brandMark">LG</div>
         <div>
-          <h1>Smartr8 CRM v2</h1>
-          <p style="margin:4px 0 0">Live workspace, isolated from the current console.</p>
+          <h1>LoanGenius</h1>
+          <p style="margin:4px 0 0">Secure mortgage CRM workspace.</p>
         </div>
       </div>
       <div class="grid">
@@ -395,9 +426,9 @@
   <section id="app" class="app hidden">
     <aside class="side">
       <div class="brandRow">
-        <div class="brandMark">S8</div>
+        <div class="brandMark">LG</div>
         <div>
-          <strong>Smartr8 CRM</strong>
+          <strong>LoanGenius</strong>
           <div class="sub">Adaxa Home workspace</div>
         </div>
       </div>
@@ -405,18 +436,27 @@
         <small>Workspace</small>
         <button class="navBtn active" data-nav="dashboard"><span class="navIco">DB</span>Dashboard</button>
         <button class="navBtn" data-nav="leads"><span class="navIco">LD</span>Leads</button>
-        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
         <button class="navBtn" data-nav="pipeline"><span class="navIco">PL</span>Pipeline</button>
+        <button class="navBtn" data-nav="portal"><span class="navIco">AP</span>Portal / Apps</button>
         <button class="navBtn" data-nav="messages"><span class="navIco">MS</span>Conversations</button>
         <button class="navBtn" data-nav="dialer"><span class="navIco">PH</span>Dialer</button>
-        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
-        <button class="navBtn" data-nav="portal"><span class="navIco">AP</span>Portal / Apps</button>
-        <button class="navBtn" data-nav="documents"><span class="navIco">DC</span>Documents</button>
+        <button class="navBtn" data-nav="campaigns"><span class="navIco">TC</span>Text Campaigns</button>
+        <button class="navBtn" data-nav="tasks"><span class="navIco">TS</span>Tasks</button>
+        <button class="navBtn" data-nav="calendar"><span class="navIco">CA</span>Calendar</button>
       </div>
       <div class="navGroup">
-        <small>Operations</small>
+        <small>More</small>
+        <button class="navBtn" data-nav="documents"><span class="navIco">DC</span>Documents</button>
         <button class="navBtn" data-nav="automations"><span class="navIco">AU</span>Automations</button>
+        <button class="navBtn" data-nav="reports"><span class="navIco">RP</span>Reports</button>
+        <button class="navBtn" data-nav="contacts"><span class="navIco">CO</span>Contacts</button>
+        <button class="navBtn" data-nav="pastclients"><span class="navIco">PC</span>Past Clients</button>
+        <button class="navBtn" data-nav="deleted"><span class="navIco">DL</span>Deleted</button>
+        <button class="navBtn" data-nav="email"><span class="navIco">EM</span>Email</button>
+        <button class="navBtn" data-nav="admin"><span class="navIco">AD</span>Admin / Sub-Accounts</button>
         <button class="navBtn" data-nav="settings"><span class="navIco">ST</span>Settings</button>
+        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
+        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
         <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
       </div>
       <div class="navGroup">
@@ -427,12 +467,15 @@
     <main class="main">
       <header class="topbar">
         <button class="btn ghost mobileMenu" data-action="mobile-menu">Menu</button>
+        <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
         <input id="topSearch" class="globalSearch" type="search" placeholder="Search leads, conversations, phone numbers..." />
-        <div class="userPill">
+        <div class="topActions">
+          <button class="btn iconBtn" title="Notifications" aria-label="Notifications">!</button>
           <span id="msgModeBadge" class="badge blue">auto</span>
           <button id="themeToggle" class="btn small" data-action="toggle-theme">Dark</button>
+          <span class="badge green">Signed In</span>
           <span class="avatar" id="userInitials">A</span>
-          <span id="userName">Admin</span>
+          <span id="userName" class="userPill">Admin</span>
         </div>
       </header>
       <div id="content" class="content"></div>
@@ -463,7 +506,7 @@
         selectedIds: new Set(),
         leadPool: [],
         leadPoolSelectedIds: new Set(),
-        theme: "dark",
+        theme: "light",
         stages: ["Lead-In", "Replied", "Not Replying", "Quote Sent", "App Completed", "Suspended", "Processing", "Funded", "Lost"],
         conversations: [],
         activeThread: null,
@@ -473,6 +516,7 @@
         automations: [],
         editingAutomation: null,
         automationDraftSteps: [],
+        leadStageFilter: "",
         dialerClient: null,
         crmLineReady: false,
         activeCall: null,
@@ -482,7 +526,7 @@
       };
 
       try { state.token = localStorage.getItem("sp_token") || ""; } catch (e) {}
-      try { state.theme = localStorage.getItem("sp_theme") || "dark"; } catch (e) {}
+      try { state.theme = localStorage.getItem("sp_theme") || "light"; } catch (e) {}
       applyTheme(state.theme);
 
       function applyTheme(theme) {
@@ -527,6 +571,24 @@
         if (/reply/i.test(stage || "")) return "purple";
         return "blue";
       }
+      function statusBadge(stage) {
+        return '<span class="badge ' + stageClass(stage) + '">' + esc(stage || "Lead-In") + '</span>';
+      }
+      function todoTitle(todo) {
+        return todo && (todo.title || todo.text) || "";
+      }
+      function formatDateTime(ms) {
+        if (!ms) return "";
+        var d = new Date(Number(ms));
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      }
+      function formatTime(ms) {
+        if (!ms) return "";
+        var d = new Date(Number(ms));
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      }
       function appBasePath() {
         return location.pathname === "/v2" || location.pathname.indexOf("/v2/") === 0 ? "/v2" : "";
       }
@@ -569,7 +631,30 @@
         el.className = "statusLine " + (tone || "");
         el.textContent = msg || "";
       }
+      var pageLabels = {
+        dashboard: "Dashboard",
+        leads: "Leads",
+        leadpool: "Lead Pool",
+        pipeline: "Pipeline",
+        portal: "Portal / Apps",
+        messages: "Conversations",
+        dialer: "Dialer",
+        powerdialer: "Power Dialer",
+        campaigns: "Text Campaigns",
+        tasks: "Tasks",
+        calendar: "Calendar",
+        documents: "Documents",
+        automations: "Automations",
+        reports: "Reports",
+        contacts: "Contacts",
+        pastclients: "Past Clients",
+        deleted: "Deleted",
+        email: "Email",
+        admin: "Admin / Sub-Accounts",
+        settings: "Settings"
+      };
       function pageShell(title, sub, actions, body) {
+        if ($("topPageTitle")) $("topPageTitle").textContent = title;
         $("content").innerHTML =
           '<div class="pageHead"><div class="pageTitle"><h1>' + esc(title) + '</h1><p>' + esc(sub || "") + '</p></div><div class="toolbar">' + (actions || "") + '</div></div>' +
           body;
@@ -581,6 +666,7 @@
         document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
           b.classList.toggle("active", b.dataset.nav === page);
         });
+        if ($("topPageTitle")) $("topPageTitle").textContent = pageLabels[page] || page;
       }
 
       async function submitLogin() {
@@ -654,10 +740,22 @@
         if (page === "messages") return loadMessages();
         if (page === "dialer") return loadDialer();
         if (page === "powerdialer") return loadPowerDialer();
+        if (page === "campaigns") return placeholderPage("Text Campaigns", "TC");
+        if (page === "tasks") return loadTasksPage();
+        if (page === "calendar") return loadCalendar();
         if (page === "portal") return renderPortal();
         if (page === "documents") return renderDocuments();
         if (page === "automations") return loadAutomations();
+        if (["reports","contacts","pastclients","deleted","email","admin"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
         if (page === "settings") return loadSettings();
+        return placeholderPage(pageLabels[page] || page, "LG");
+      }
+
+      function placeholderPage(title, icon) {
+        pageShell(title, "", "",
+          '<section class="card pad" style="min-height:420px;display:grid;place-items:center;text-align:center">' +
+            '<div><div class="brandMark" style="margin:0 auto 14px">' + esc(icon || "LG") + '</div><h2 style="margin:0 0 8px">' + esc(title) + '</h2><p class="muted" style="margin:0">This section is coming soon.</p></div>' +
+          '</section>');
       }
 
       async function loadDashboard() {
@@ -687,36 +785,60 @@
       }
 
       async function loadLeadsView() {
-        pageShell("Leads", "Base44-style CRM layout wired to the existing Smartr8 lead, text, email, call, and app APIs.",
-          '<button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New lead</button>',
-          '<div class="splitShell"><section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search name, phone, email, address..." style="width:260px"><select id="stageFilter" style="width:170px"><option value="">All stages</option></select><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadListWrap" class="tableWrap"></div></section><aside id="leadDrawer" class="drawer card pad"><div class="empty">Select a lead to open the full workspace.</div></aside></div>');
-        state.stages.forEach(function (s) { $("stageFilter").insertAdjacentHTML("beforeend", '<option value="' + esc(s) + '">' + esc(s) + '</option>'); });
+        state.leadStageFilter = state.leadStageFilter || "";
+        pageShell("Leads", "Manage borrowers, pipeline status, task follow-up, and loan workflow notes.",
+          '<button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
+          '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
-        $("stageFilter").addEventListener("change", loadLeads);
         await loadLeads();
       }
       async function loadLeads() {
         var q = $("leadSearch") ? $("leadSearch").value.trim() : "";
-        var stage = $("stageFilter") ? $("stageFilter").value : "";
+        var stage = state.leadStageFilter || "";
         var qs = "?limit=250" + (q ? "&q=" + encodeURIComponent(q) : "") + (stage ? "&stage=" + encodeURIComponent(stage) : "");
+        if ($("leadListWrap")) $("leadListWrap").innerHTML = '<div class="spinner"></div>';
         var data = await json("/api/leads" + qs);
         state.leads = data.leads || [];
+        await renderLeadStatusTabs(q);
         if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true);
+      }
+      async function renderLeadStatusTabs(q) {
+        var counts = {};
+        try {
+          var all = await json("/api/leads?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : ""));
+          (all.leads || []).forEach(function (l) {
+            var s = l.pipeline_stage || "Lead-In";
+            counts[s] = (counts[s] || 0) + 1;
+            counts.All = (counts.All || 0) + 1;
+          });
+        } catch (e) {
+          state.leads.forEach(function (l) {
+            var s = l.pipeline_stage || "Lead-In";
+            counts[s] = (counts[s] || 0) + 1;
+            counts.All = (counts.All || 0) + 1;
+          });
+        }
+        if (!$("leadStatusTabs")) return;
+        $("leadStatusTabs").innerHTML = ['<button class="statusTab' + (!state.leadStageFilter ? ' active' : '') + '" data-action="lead-status-tab" data-stage="">All <span class="badge blue">' + Number(counts.All || 0) + '</span></button>'].concat(state.stages.map(function (s) {
+          return '<button class="statusTab' + (state.leadStageFilter === s ? ' active' : '') + '" data-action="lead-status-tab" data-stage="' + esc(s) + '">' + esc(s) + ' <span class="badge">' + Number(counts[s] || 0) + '</span></button>';
+        })).join("");
       }
       function leadsTable(leads, selectable) {
         if (!leads || !leads.length) return '<div class="empty">No leads found.</div>';
         return '<table class="table"><thead><tr>' +
           (selectable ? '<th><input type="checkbox" data-action="select-all"></th>' : '') +
-          '<th>Contact</th><th>Stage</th><th>Category</th><th>Consent</th><th>Last activity</th><th></th></tr></thead><tbody>' +
+          '<th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Owner</th><th>Source</th><th>Last contact</th><th></th></tr></thead><tbody>' +
           leads.map(function (l) {
             var name = nameOf(l), selected = state.selectedIds.has(l.id);
             var addr = leadAddressLine(l);
-            return '<tr>' +
+            return '<tr class="rowBtn" data-action="open-lead" data-id="' + esc(l.id) + '">' +
               (selectable ? '<td><input type="checkbox" data-action="toggle-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td>' : '') +
-              '<td><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><div class="leadName">' + esc(name) + '</div><div class="sub">' + esc([l.phone, l.email].filter(Boolean).join(" | ")) + '</div>' + (addr ? '<div class="sub">' + esc(addr) + '</div>' : '') + '</div></div></td>' +
-              '<td><select data-action="lead-stage-quick" data-id="' + esc(l.id) + '">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === (l.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></td>' +
-              '<td>' + esc(l.category || l.source || "manual") + '</td>' +
-              '<td>' + (l.sms_consent ? '<span class="badge green">SMS ok</span>' : '<span class="badge amber">No consent</span>') + '</td>' +
+              '<td><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><div class="leadName">' + esc(name) + '</div>' + (addr ? '<div class="sub">' + esc(addr) + '</div>' : '') + '</div></div></td>' +
+              '<td>' + esc(l.phone || "-") + '</td>' +
+              '<td>' + esc(l.email || "-") + '</td>' +
+              '<td>' + statusBadge(l.pipeline_stage || "Lead-In") + '</td>' +
+              '<td>' + esc(l.owner || l.owner_name || "Admin") + '</td>' +
+              '<td>' + esc(l.source || "manual") + '</td>' +
               '<td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>' +
               '<td><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button></td>' +
             '</tr>';
@@ -732,36 +854,49 @@
         var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
         var name = nameOf(lead);
         var addr = leadAddressParts(lead);
-        $("leadDrawer").innerHTML =
-          '<div class="toolbar" style="justify-content:space-between"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc(lead.phone || "") + '</div></div></div><button class="btn small" data-action="close-detail">Close</button></div>' +
-          '<div class="toolbar" style="margin:14px 0"><span class="badge ' + stageClass(lead.pipeline_stage) + '">' + esc(lead.pipeline_stage) + '</span>' + (data.dnc ? '<span class="badge red">DNC</span>' : '<span class="badge green">Contactable</span>') + (lead.sms_consent ? '<span class="badge green">SMS consent</span>' : '<span class="badge amber">Consent needed</span>') + '</div>' +
+        openModal("Lead Detail",
+          '<div class="toolbar" style="justify-content:space-between"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email].filter(Boolean).join(" | ")) + '</div></div></div>' + statusBadge(lead.pipeline_stage || "Lead-In") + '</div>' +
           '<div class="grid fieldGrid">' +
-            field("First", "ldFirst", lead.first_name || "") + field("Last", "ldLast", lead.last_name || "") +
-            field("Phone", "ldPhone", lead.phone || "") + field("Email", "ldEmail", lead.email || "") +
-            field("Property address", "ldAddress", addr.street) + field("City", "ldCity", addr.city) +
-            field("State", "ldState", addr.state) + field("ZIP", "ldZip", addr.zip) +
-            '<label>Pipeline stage<select id="ldStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === lead.pipeline_stage ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
-            '<label>Status<select id="ldStatus">' + ["new","contacted","qualified","nurturing","won","lost"].map(function (s) { return '<option value="' + s + '"' + (s === lead.status ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select></label>' +
-            field("Purpose", "ldPurpose", custom.loan_goal || custom.loan_purpose || "") + field("Home value", "ldHomeValue", custom.home_value || "") +
-            field("Mortgage balance", "ldBalance", custom.mortgage_balance || "") + field("Credit band", "ldCredit", custom.credit || custom.credit_band || "") +
+            field("Full Name", "ldFull", name) +
+            field("Phone", "ldPhone", lead.phone || "") +
+            field("Email", "ldEmail", lead.email || "") +
+            field("Source", "ldSource", lead.source || "") +
+            field("Owner", "ldOwner", lead.owner || "") +
+            '<label>Pipeline Status<select id="ldStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
+            field("Property Address", "ldAddress", addr.street) +
+            field("City", "ldCity", addr.city) +
+            field("State", "ldState", addr.state) +
+            field("ZIP", "ldZip", addr.zip) +
           '</div>' +
-          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="save-lead">Save profile</button><button class="btn" data-action="sms-consent">Mark SMS consent</button><button class="btn danger" data-action="toggle-dnc" data-on="' + (data.dnc ? "0" : "1") + '">' + (data.dnc ? "Remove DNC" : "Add DNC") + '</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
-          '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0">' +
-          '<div class="grid">' +
-            '<label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button>' +
-            '<label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button>' +
-            '<label>Add note<textarea id="ldNote" placeholder="Internal note..."></textarea></label><button class="btn" data-action="add-note">Add note</button>' +
-          '</div>' +
-          '<div class="toolbar" style="margin:14px 0"><button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button></div><div id="leadActionMsg" class="statusLine"></div>' +
-          '<section class="card pad" style="margin-top:12px"><h3 style="margin-top:0">Documents</h3><div class="fieldGrid"><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>Upload<input id="ldDocFile" type="file"></label></div><button class="btn" data-action="upload-doc" style="margin-top:8px">Upload document</button><div id="docMiniList" class="list" style="margin-top:10px"></div></section>' +
-          '<section class="card pad" style="margin-top:12px"><h3 style="margin-top:0">Audit trail</h3><div class="list">' +
-            activities.slice(0, 8).map(function (a) { return '<div class="item"><b>' + esc(a.type) + '</b><div class="sub">' + esc(when(a.created_at)) + ' | ' + esc(a.status || "") + '</div><div>' + esc(a.body || a.subject || "") + '</div></div>'; }).join("") +
-            (notes.length ? notes.slice(0, 3).map(function (n) { return '<div class="item"><b>Note</b><div class="sub">' + esc(when(n.created_at)) + '</div><div>' + esc(n.body) + '</div></div>'; }).join("") : "") +
-          '</div></section>';
+          '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label>' +
+          '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-lead">Save</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
+          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="toolbar"><button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
+        if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         loadLeadDocs(lead.id, "docMiniList");
       }
       function field(label, id, value) {
         return '<label>' + esc(label) + '<input id="' + esc(id) + '" value="' + esc(value) + '"></label>';
+      }
+      function inputVal(id) {
+        var el = $(id);
+        return el ? String(el.value || "").trim() : "";
+      }
+      function splitFullName(full) {
+        var parts = String(full || "").trim().split(/\s+/).filter(Boolean);
+        return { first: parts.shift() || "", last: parts.join(" ") };
+      }
+      function renderTodoList(todos) {
+        todos = (todos || []).filter(function (t) { return !t.deleted_at; });
+        if (!todos.length) return '<div class="empty">No tasks yet.</div>';
+        return todos.map(function (t) {
+          var title = todoTitle(t);
+          return '<div class="item taskRow ' + (t.done ? 'done' : '') + '">' +
+            '<input type="checkbox" data-action="toggle-task" data-id="' + esc(t.id) + '"' + (t.done ? ' checked' : '') + ' style="width:auto;margin-top:3px">' +
+            '<div><div class="taskTitle"><b>' + esc(title) + '</b></div><div class="taskMeta">' + (t.due_date ? '<span>' + esc(formatDateTime(t.due_date)) + '</span>' : '') + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div>' +
+            '<button class="btn small danger" data-action="delete-task" data-id="' + esc(t.id) + '">Delete</button>' +
+          '</div>';
+        }).join("");
       }
       function passwordField(label, id, value) {
         return '<label>' + esc(label) + '<input id="' + esc(id) + '" type="password" inputmode="numeric" autocomplete="off" value="' + esc(value) + '"></label>';
@@ -769,34 +904,36 @@
       async function saveCurrentLead() {
         var lead = state.selectedLead;
         if (!lead) return;
+        var names = splitFullName(inputVal("ldFull"));
         var custom = Object.assign({}, lead.custom || {}, {
-          loan_goal: $("ldPurpose").value.trim(),
-          home_value: $("ldHomeValue").value.trim(),
-          mortgage_balance: $("ldBalance").value.trim(),
-          credit: $("ldCredit").value.trim(),
-          address: $("ldAddress").value.trim(),
-          property_address: $("ldAddress").value.trim(),
-          city: $("ldCity").value.trim(),
-          state: $("ldState").value.trim(),
-          zip: $("ldZip").value.trim()
+          address: inputVal("ldAddress"),
+          property_address: inputVal("ldAddress"),
+          city: inputVal("ldCity"),
+          state: inputVal("ldState"),
+          zip: inputVal("ldZip")
         });
         status("leadSaveMsg", "Saving...");
         var data = await json("/api/leads/" + encodeURIComponent(lead.id), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            first_name: $("ldFirst").value.trim(),
-            last_name: $("ldLast").value.trim(),
-            phone: $("ldPhone").value.trim(),
-            email: $("ldEmail").value.trim(),
-            pipeline_stage: $("ldStage").value,
-            status: $("ldStatus").value,
+            first_name: names.first,
+            last_name: names.last,
+            phone: inputVal("ldPhone"),
+            email: inputVal("ldEmail"),
+            source: inputVal("ldSource"),
+            owner: inputVal("ldOwner"),
+            pipeline_stage: inputVal("ldStage"),
             custom: custom
           })
         });
+        if (inputVal("ldNote")) {
+          await json("/api/leads/" + encodeURIComponent(lead.id) + "/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: inputVal("ldNote") }) });
+        }
         state.selectedLead = data.lead;
         status("leadSaveMsg", "Saved.", "okText");
         await loadLeads();
+        await openLead(lead.id);
       }
 
       async function deleteCurrentLead() {
@@ -808,25 +945,69 @@
         state.selectedLead = null;
         state.selectedIds.delete(lead.id);
         if ($("leadDrawer")) $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
+        closeModal();
         showToast("Lead deleted.");
         if (state.page === "leadpool") await refreshLeadPool();
         else if ($("leadListWrap")) await loadLeads();
       }
 
+      async function addTaskToLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var title = inputVal("todoTitle");
+        if (!title) { status("leadSaveMsg", "Enter a task title.", "warnText"); return; }
+        var dueRaw = inputVal("todoDue");
+        var due = dueRaw ? new Date(dueRaw).getTime() : null;
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: title, due_date: due, cc_email: inputVal("todoCc") })
+        });
+        state.selectedLead.todos = data.todos || [];
+        $("todoList").innerHTML = renderTodoList(state.selectedLead.todos);
+        if ($("todoTitle")) $("todoTitle").value = "";
+        if ($("todoDue")) $("todoDue").value = "";
+        if ($("todoCc")) $("todoCc").value = "";
+      }
+
+      async function toggleTask(todoId, done) {
+        var lead = state.selectedLead;
+        if (!lead || !todoId) return;
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/todos/" + encodeURIComponent(todoId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: done })
+        });
+        state.selectedLead.todos = data.todos || [];
+        if ($("todoList")) $("todoList").innerHTML = renderTodoList(state.selectedLead.todos);
+      }
+
+      async function deleteTask(todoId) {
+        var lead = state.selectedLead;
+        if (!lead || !todoId) return;
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/todos/" + encodeURIComponent(todoId), { method: "DELETE" });
+        state.selectedLead.todos = data.todos || [];
+        if ($("todoList")) $("todoList").innerHTML = renderTodoList(state.selectedLead.todos);
+      }
+
       function openNewLeadModal() {
-        openModal("New lead", '<div class="grid fieldGrid">' + field("First name", "newFirst", "") + field("Last name", "newLast", "") + field("Phone", "newPhone", "") + field("Email", "newEmail", "") + '<label>Loan type<select id="newLoanType"><option value="HELOC">HELOC</option><option value="CASHOUT_REFI">Cash-out refi</option><option value="PURCHASE">Purchase</option><option value="GENERAL">General</option></select></label><label><span>SMS consent</span><select id="newSmsConsent"><option value="1">Yes</option><option value="0">No</option></select></label></div><label>Note<textarea id="newNote" placeholder="Lead details..."></textarea></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="newRunAuto" type="checkbox" checked style="width:auto"> Run new-lead automation</label><div class="toolbar"><button class="btn primary" data-action="create-lead">Create lead</button></div><div id="newLeadMsg" class="statusLine"></div>');
+        openModal("New Lead", '<div class="grid fieldGrid">' + field("Full Name", "newFull", "") + field("Phone", "newPhone", "") + field("Email", "newEmail", "") + field("Source", "newSource", "manual") + field("Owner", "newOwner", "Admin") + '<label>Pipeline Status<select id="newStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === "Lead-In" ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label></div><label>Notes<textarea id="newNote" placeholder="Lead details..."></textarea></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="newRunAuto" type="checkbox" checked style="width:auto"> Run new-lead automation</label><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="create-lead">Save</button></div><div id="newLeadMsg" class="statusLine"></div>');
       }
       async function createLead() {
         status("newLeadMsg", "Creating...");
+        var names = splitFullName(inputVal("newFull"));
         var body = {
-          first_name: $("newFirst").value.trim(),
-          last_name: $("newLast").value.trim(),
-          phone: $("newPhone").value.trim(),
-          email: $("newEmail").value.trim(),
-          loanType: $("newLoanType").value,
-          sms_consent: $("newSmsConsent").value === "1",
+          first_name: names.first,
+          last_name: names.last,
+          phone: inputVal("newPhone"),
+          email: inputVal("newEmail"),
+          source: inputVal("newSource"),
+          owner: inputVal("newOwner"),
+          pipeline_stage: inputVal("newStage") || "Lead-In",
+          loanType: "GENERAL",
+          sms_consent: false,
           runAutomation: $("newRunAuto").checked,
-          custom: { message: $("newNote").value.trim(), loan_goal: $("newLoanType").value }
+          custom: { message: inputVal("newNote") }
         };
         var data = await json("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         closeModal();
@@ -1088,17 +1269,50 @@
       }
 
       async function loadPipeline() {
-        pageShell("Pipeline", "Stage board for active mortgage and lead workflows.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="pipelineShell" class="pipelineShell"><div id="pipe" class="pipeline"></div></div><div class="pipelineScroller"><span class="sub">Slide board</span><input id="pipelineSlider" type="range" min="0" max="0" value="0"></div>');
+        pageShell("Pipeline", "Stage board for active mortgage and lead workflows.", '<button class="btn primary" data-action="new-lead">Add Lead</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="pipelineShell" class="pipelineShell"><div id="pipe" class="pipeline"></div></div><div class="pipelineScroller"><span class="sub">Slide board</span><input id="pipelineSlider" type="range" min="0" max="0" value="0"></div>');
         var data = await json("/api/pipeline");
         state.stages = (data.stages || []).map(function (s) { return s.name || s; });
         var leads = data.leads || [];
         $("pipe").innerHTML = state.stages.map(function (stage) {
           var rows = leads.filter(function (l) { return (l.pipeline_stage || "Lead-In") === stage; });
           return '<section class="stageCol" data-stage-drop="' + esc(stage) + '"><h3><span>' + esc(stage) + '</span><span class="badge">' + rows.length + '</span></h3><div class="list">' +
-            rows.slice(0, 40).map(function (l) { return '<div class="item clickable" draggable="true" data-pipeline-card="1" data-action="open-lead-from-pipeline" data-id="' + esc(l.id) + '" data-stage="' + esc(l.pipeline_stage || "Lead-In") + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div></div>'; }).join("") +
+            (rows.length ? rows.slice(0, 40).map(function (l) {
+              var snippet = l.last_message || (l.custom && (l.custom.notes || l.custom.message)) || "";
+              return '<div class="item clickable pipelineCard" draggable="true" data-pipeline-card="1" data-action="open-lead-from-pipeline" data-id="' + esc(l.id) + '" data-stage="' + esc(l.pipeline_stage || "Lead-In") + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div>' + (snippet ? '<div class="sub">' + esc(String(snippet).slice(0, 92)) + '</div>' : '') + '<div class="sub">' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</div></div>';
+            }).join("") : '<div class="empty">No leads in this stage.</div>') +
             '</div></section>';
         }).join("");
         setupPipelineSlider();
+      }
+
+      async function loadTasksPage() {
+        pageShell("Tasks", "Workspace task list across active leads.", '<button class="btn" data-action="refresh">Refresh</button>', '<section class="card"><div class="cardHead"><h2>All tasks</h2></div><div id="tasksWrap" class="list" style="padding:14px"><div class="spinner"></div></div></section>');
+        var data = await json("/api/todos?done=1");
+        var todos = data.todos || [];
+        $("tasksWrap").innerHTML = todos.length ? todos.map(function (t) {
+          return '<div class="item taskRow ' + (t.done ? 'done' : '') + '"><span>' + (t.done ? '✓' : '○') + '</span><div><b class="taskTitle">' + esc(todoTitle(t)) + '</b><div class="taskMeta"><span>' + esc(t.lead_name || "Lead") + '</span>' + (t.due_date ? '<span>' + esc(formatDateTime(t.due_date)) + '</span>' : '') + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div><button class="btn small" data-action="open-lead" data-id="' + esc(t.lead_id) + '">Open</button></div>';
+        }).join("") : '<div class="empty">No tasks yet.</div>';
+      }
+
+      async function loadCalendar() {
+        pageShell("Calendar", "Scheduled lead tasks grouped by day.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="calendarWrap" class="grid"><div class="spinner"></div></div>');
+        var data = await json("/api/todos?done=1");
+        var todos = (data.todos || []).filter(function (t) { return t.due_date; }).sort(function (a, b) { return Number(a.due_date) - Number(b.due_date); });
+        if (!todos.length) {
+          $("calendarWrap").innerHTML = '<div class="empty">No scheduled events yet...</div>';
+          return;
+        }
+        var groups = {};
+        todos.forEach(function (t) {
+          var d = new Date(Number(t.due_date));
+          var key = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+          (groups[key] = groups[key] || []).push(t);
+        });
+        $("calendarWrap").innerHTML = Object.keys(groups).map(function (day) {
+          return '<section class="card"><div class="cardHead"><h2>' + esc(day) + '</h2></div><div class="list" style="padding:14px">' + groups[day].map(function (t) {
+            return '<div class="item taskRow ' + (t.done ? 'done' : '') + '"><span>' + esc(formatTime(t.due_date)) + '</span><div><b class="taskTitle">' + esc(todoTitle(t)) + '</b><div class="taskMeta"><span>' + esc(t.lead_name || "Lead") + '</span>' + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div><button class="btn small" data-action="open-lead" data-id="' + esc(t.lead_id) + '">Open</button></div>';
+          }).join("") + '</div></section>';
+        }).join("");
       }
       function setupPipelineSlider() {
         var shell = $("pipelineShell");
@@ -1138,8 +1352,13 @@
       document.addEventListener("dragstart", function (e) {
         var card = e.target.closest("[data-pipeline-card]");
         if (!card || !e.dataTransfer) return;
+        card.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", card.dataset.id || "");
+      });
+      document.addEventListener("dragend", function (e) {
+        var card = e.target.closest("[data-pipeline-card]");
+        if (card) card.classList.remove("dragging");
       });
       document.addEventListener("dragover", function (e) {
         var col = e.target.closest("[data-stage-drop]");
@@ -1725,7 +1944,7 @@
       }
 
       function renderDocuments() {
-        pageShell("Documents", "Upload borrower documents into the loan file with type and audit metadata.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload</button><div id="docStatus" class="statusLine"></div><div id="docList" class="list" style="margin-top:12px"></div></section></div>');
+        pageShell("Documents", "Upload borrower documents into the loan file with type and audit metadata.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload</button><div id="docStatus" class="statusLine"></div><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section></div>');
       }
       async function docSearch() {
         var q = $("docSearch").value.trim();
@@ -2201,6 +2420,7 @@
           else if (a === "new-lead") openNewLeadModal();
           else if (a === "create-lead") await createLead();
           else if (a === "refresh-leads") await loadLeads();
+          else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
           else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) $("poolState").value = ""; if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
           else if (a === "download-pool-sample") downloadLeadPoolSample();
@@ -2225,7 +2445,7 @@
           else if (a === "promote-pool") await promotePoolLead(btn.dataset.id);
           else if (a === "delete-pool") await deletePoolLead(btn.dataset.id);
           else if (a === "open-lead") await openLead(btn.dataset.id);
-          else if (a === "open-lead-from-pipeline") { await route("leads"); await openLead(btn.dataset.id); }
+          else if (a === "open-lead-from-pipeline") await openLead(btn.dataset.id);
           else if (a === "close-detail") $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
           else if (a === "toggle-select") { btn.checked ? state.selectedIds.add(btn.dataset.id) : state.selectedIds.delete(btn.dataset.id); }
           else if (a === "select-all") { state.leads.forEach(function (l) { btn.checked ? state.selectedIds.add(l.id) : state.selectedIds.delete(l.id); }); await loadLeads(); }
@@ -2258,6 +2478,9 @@
           else if (a === "refresh-call-log") await loadCallLog();
           else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
           else if (a === "save-lead") await saveCurrentLead();
+          else if (a === "add-task") await addTaskToLead();
+          else if (a === "toggle-task") await toggleTask(btn.dataset.id, btn.checked);
+          else if (a === "delete-task") await deleteTask(btn.dataset.id);
           else if (a === "delete-lead") await deleteCurrentLead();
           else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }

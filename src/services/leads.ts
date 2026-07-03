@@ -44,6 +44,8 @@ export interface Todo {
   text: string;
   done: boolean;
   created_at: number;
+  due_date?: number | null;
+  cc_email?: string | null;
   deleted_at?: number | null;
 }
 
@@ -52,6 +54,7 @@ export interface TodoWithLead extends Todo {
   lead_id: string;
   lead_name: string;
   lead_phone: string | null;
+  lead_email?: string | null;
 }
 
 export interface Note {
@@ -521,7 +524,7 @@ export function listAllTodos(opts: { includeDone?: boolean; ownerUserId?: string
     for (const t of safeParse<Todo[]>(r.todos, [])) {
       if (t.deleted_at) continue;
       if (!opts.includeDone && t.done) continue;
-      out.push({ ...t, lead_id: r.id, lead_name: name, lead_phone: r.phone });
+      out.push({ ...t, lead_id: r.id, lead_name: name, lead_phone: r.phone, lead_email: r.email });
     }
   }
   return out.sort((a, b) => b.created_at - a.created_at);
@@ -537,10 +540,18 @@ function saveTodos(leadId: string, todos: Todo[]): Todo[] {
 }
 
 /** Append a to-do item. Returns the updated list (or null if the lead is gone). */
-export function addTodo(leadId: string, text: string): Todo[] | null {
+export function addTodo(leadId: string, input: string | { text: string; due_date?: number | null; cc_email?: string | null }): Todo[] | null {
   const lead = getLead(leadId);
   if (!lead) return null;
-  const item: Todo = { id: randomUUID(), text: text.trim(), done: false, created_at: Date.now() };
+  const text = typeof input === "string" ? input : input.text;
+  const item: Todo = {
+    id: randomUUID(),
+    text: text.trim(),
+    done: false,
+    created_at: Date.now(),
+    due_date: typeof input === "string" ? null : input.due_date ?? null,
+    cc_email: typeof input === "string" ? null : input.cc_email ?? null,
+  };
   return saveTodos(leadId, [...lead.todos, item]);
 }
 
@@ -578,7 +589,7 @@ export function listDeletedTodos(opts: { ownerUserId?: string } = {}): TodoWithL
     const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || r.email || r.phone || "(no name)";
     for (const t of safeParse<Todo[]>(r.todos, [])) {
       if (!t.deleted_at) continue;
-      out.push({ ...t, lead_id: r.id, lead_name: name, lead_phone: r.phone });
+      out.push({ ...t, lead_id: r.id, lead_name: name, lead_phone: r.phone, lead_email: r.email });
     }
   }
   return out.sort((a, b) => (b.deleted_at ?? 0) - (a.deleted_at ?? 0));

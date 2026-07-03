@@ -2054,16 +2054,26 @@ crmRouter.get("/api/deleted/activities", requirePass, (req, res) => {
   res.json({ activities: listDeletedActivities({ ownerUserId: ownerScope(req), limit }) });
 });
 
-/** Add a to-do item to a lead. Body: { text }. Returns the full updated list. */
+/** Add a to-do item to a lead. Body: { text|title, due_date?, cc_email? }. Returns the full updated list. */
 crmRouter.post("/api/leads/:id/todos", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
-  const text = (req.body as { text?: string } | undefined)?.text;
+  const body = (req.body ?? {}) as { text?: string; title?: string; due_date?: string | number | null; cc_email?: string | null };
+  const text = body.text || body.title;
   if (!text || !text.trim()) {
-    res.status(400).json({ error: "pass { text }" });
+    res.status(400).json({ error: "pass { text } or { title }" });
     return;
   }
-  const todos = addTodo(lead.id, text);
+  const due = body.due_date === null || body.due_date === undefined || body.due_date === ""
+    ? null
+    : Number.isFinite(Number(body.due_date))
+      ? Number(body.due_date)
+      : Date.parse(String(body.due_date));
+  const todos = addTodo(lead.id, {
+    text,
+    due_date: due && Number.isFinite(due) ? due : null,
+    cc_email: typeof body.cc_email === "string" && body.cc_email.trim() ? body.cc_email.trim() : null,
+  });
   if (!todos) {
     res.status(404).json({ error: "lead not found" });
     return;
