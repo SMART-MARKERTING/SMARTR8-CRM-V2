@@ -1,0 +1,709 @@
+import { Router } from "express";
+import { config } from "../config";
+import { log } from "../logger";
+import { toE164 } from "../util/phone";
+import { requirePass } from "../util/auth";
+import { upsertContact, logCall } from "../services/ghl";
+import { addToDnc, listDnc, isOnDnc } from "../services/dnc";
+import { enqueueAutomated, queueStatus } from "../services/callQueue";
+import { getCall, setCall, delCall } from "../services/callState";
+import { startClickToCall } from "../services/clickToCall";
+import {
+  startConference,
+  startConferenceFromCall,
+  addToConference,
+  hangupConference,
+  getConferenceStatus,
+  onConfLegAnswered,
+  onConfLegHangup,
+} from "../services/conference";
+import { findLead, getLead, logActivity, resolveLeadTimezone, Lead } from "../services/leads";
+import { withinCallingHours } from "../services/compliance";
+import { pickFromNumber } from "../services/numbers";
+import { insertCallLog, listCallLog, deleteCallLog, clearCallLog, listDeletedCallLog, restoreCallLog } from "../store/db";
+import {
+  startInboundAppThenCell,
+  onInboundLegAnswered,
+  onInboundLegHangup,
+  getInboundTrace,
+} from "../services/inboundRouter";
+import { getWebrtcSipUri, ensureSipUriCalling, getSipUriCallingPref } from "../services/telnyxWebrtc";
+import { isVoicemailCall, handleVoicemailEvent } from "../services/voicemail";
+import {
+  placeCall,
+  placeCallWithAmd,
+  dialLeg,
+  answer,
+  hangup,
+  bridge,
+  transfer,
+  speak,
+  gatherDigits,
+  voiceDiag,
+} from "../services/telnyxVoice";
+
+export const voiceRouter = Router();
+
+const IVR_PROMPT =
+  "Thank you for calling Adaxa Home Loans. Press 1 to reach Mike, or press 9 to be removed from our call list.";
+
+// app-then-cell mode keeps a TCPA opt-out option before connecting.
+const OPTOUT_PROMPT =
+  "Thank you for calling Adaxa Home Loans. Please hold while we connect you. Or press 9 to be removed from our call list.";
+
+// ── Endpoints ────────────────────────────────────────────────────────────────
+
+// POST — API / curl. Body: { contactId } or { phone }.
+voiceRouter.post("/calls/click-to-call", async (req, res) => {
+  try {
+    const r = await startClickToCall((req.body ?? {}) as { contactId?: string; phone?: string });
+    if ("error" in r) res.status(r.status).json({ error: r.error });
+    else res.json(r);
+  } catch (err) {
+    log.error("click-to-call error", { err: String(err) });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── Conference (3-way) calling — passcode-gated (console only) ───────────────
+// Your cell rings first; on answer we create a Telnyx conference and dial the first
+// participant in. "Add" dials more people into the same live conference. DNC enforced.
+
+voiceRouter.post("/calls/conference/start", requirePass, async (req, res) => {
+  try {
+    const r = await startConference((req.body ?? {}) as { phone?: string; contactId?: string });
+    if ("error" in r) res.status(r.status).json({ error: r.error });
+    else res.json(r);
+  } catch (err) {
+    log.error("conference start error", { err: String(err) });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+/** Merge a third party onto the agent's ACTIVE dialer (WebRTC) call. Body: { ccid, phone }
+ *  where ccid is the active call's Telnyx call_control_id (from the WebRTC SDK). */
+voiceRouter.post("/calls/conference/from-call", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { ccid?: string; phone?: string };
+  try {
+    const r = await startConferenceFromCall({ agentCcid: body.ccid, phone: body.phone });
+    if ("error" in r) res.status(r.status).json({ error: r.error });
+    else res.json(r);
+  } catch (err) {
+    log.error("conference from-call error", { err: String(err) });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+voiceRouter.post("/calls/conference/add", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { name?: string; phone?: string };
+  if (!body.name) {
+    res.status(400).json({ error: "pass the conference name" });
+    return;
+  }
+  try {
+    const r = await addToConference(body.name, body.phone ?? "");
+    if ("error" in r) res.status(r.status).json({ error: r.error });
+    else res.json(r);
+  } catch (err) {
+    log.error("conference add error", { err: String(err) });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+voiceRouter.post("/calls/conference/hangup", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { name?: string };
+  if (!body.name) {
+    res.status(400).json({ error: "pass the conference name" });
+    return;
+  }
+  try {
+    res.json(await hangupConference(body.name));
+  } catch (err) {
+    log.error("conference hangup error", { err: String(err) });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+voiceRouter.get("/calls/conference/:name", requirePass, (req, res) => {
+  res.json(getConferenceStatus(req.params.name));
+});
+
+// GET — clickable from a GHL Custom Link, e.g.
+//   https://<host>/calls/click-to-call?contactId={{contact.id}}
+// Returns a small confirmation page; your cell rings and bridges to the contact.
+voiceRouter.get("/calls/click-to-call", async (req, res) => {
+  const contactId = typeof req.query.contactId === "string" ? req.query.contactId : undefined;
+  const phone = typeof req.query.phone === "string" ? req.query.phone : undefined;
+  const page = (title: string, msg: string) =>
+    `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<body style="font-family:system-ui;text-align:center;padding:2.5rem;max-width:34rem;margin:auto">` +
+    `<h2>${title}</h2><p style="font-size:1.05rem;color:#333">${msg}</p></body>`;
+  try {
+    const r = await startClickToCall({ contactId, phone });
+    if ("ok" in r) {
+      res.send(page("\u{1F4DE} Calling…", `Your cell will ring now — answer to be connected to <b>${r.contact}</b>. You can close this tab.`));
+    } else if ("skipped" in r) {
+      res.send(page("Call not placed", `Skipped: <b>${r.reason}</b> (e.g. this number is on your Do-Not-Call list).`));
+    } else {
+      res.status(r.status).send(page("Couldn't start the call", r.error));
+    }
+  } catch (err) {
+    log.error("click-to-call (GET) error", { err: String(err) });
+    res.status(500).send(page("Error", String(err)));
+  }
+});
+
+// GET /calls/diag — read-only check of the voice setup (no call placed). Open in a browser:
+//   https://<host>/calls/diag
+// Add ?place=1 to actually attempt the outbound call to MY_CELL_NUMBER (rings your
+// cell) — bypasses GHL so it isolates whether Telnyx itself accepts the call.
+voiceRouter.get("/calls/diag", async (req, res) => {
+  if (req.query.place === "1") {
+    if (!config.voice.myCell) {
+      res.status(500).json({ placeAttempt: { ok: false, error: "MY_CELL_NUMBER not set" } });
+      return;
+    }
+    try {
+      const ccid = await placeCall(config.voice.myCell);
+      res.json({ placeAttempt: { ok: true, callControlId: ccid, note: "your cell should be ringing now" } });
+    } catch (err) {
+      res.json({ placeAttempt: { ok: false, error: String(err) } }); // raw Telnyx error incl. code/detail
+    }
+    return;
+  }
+  const env = {
+    TELNYX_API_KEY: Boolean(config.telnyx.apiKey),
+    TELNYX_VOICE_APP_ID_OR_CONNECTION_ID: Boolean(config.voice.applicationId),
+    TELNYX_AMD_MODE: config.voice.amdMode,
+    TELNYX_FROM_NUMBER: Boolean(config.telnyx.fromNumber),
+    MY_CELL_NUMBER: Boolean(config.voice.myCell),
+    TELNYX_SIP_CONNECTION_ID: Boolean(config.webrtc.sipConnectionId),
+    APP_PASSCODE: Boolean(config.app.passcode),
+  };
+  const telnyx =
+    config.telnyx.apiKey && config.voice.applicationId
+      ? await voiceDiag()
+      : { skipped: "set TELNYX_API_KEY and TELNYX_VOICE_APP_ID or TELNYX_CONNECTION_ID first" };
+  // Resolve the softphone SIP URI we dial for inbound app-ring (null => can't ring app).
+  let webrtcSipUri: string | null = null;
+  try {
+    webrtcSipUri = await getWebrtcSipUri();
+  } catch {
+    webrtcSipUri = null;
+  }
+  // Current SIP-URI-calling preference on the connection (must be "unrestricted"/"internal"
+  // for our app-ring leg to reach the registered console).
+  const sipUriCalling = await getSipUriCallingPref();
+  res.json({
+    env,
+    telnyx,
+    inboundMode: config.inbound.mode, // must be "app-then-cell" to ring the app
+    webrtcSipUri, // the sip: we dial to ring the console; null = lookup failed
+    sipUriCalling, // "disabled" => app can't be rung; hit /calls/enable-sip-uri to fix
+    inboundTrace: getInboundTrace(), // step-by-step of the last inbound calls
+    pollerWatching: Boolean(config.voice.applicationId && config.voice.myCell),
+    callNowTag: config.voice.callNowTag,
+    recentVoiceEvents, // call the number, then refresh: empty => Telnyx isn't reaching us
+    recentCallLogs, // per-call GHL log result: loggedToGhl=false => GHL rejected the call log
+  });
+});
+
+// One-click: allow inbound SIP URI calls on the connection so the app-ring leg works.
+// GET so it's clickable; passcode-gated via ?pass=.
+voiceRouter.get("/calls/enable-sip-uri", async (req, res) => {
+  if (!config.app.passcode || req.query.pass !== config.app.passcode) {
+    res.status(401).json({ error: "add ?pass=YOUR_PASSCODE" });
+    return;
+  }
+  const result = await ensureSipUriCalling();
+  res.json(result);
+});
+
+/** Automated outbound: queue contacts for sequenced, gated, throttled dialing. */
+voiceRouter.post("/calls/automated", (req, res) => {
+  const body = (req.body ?? {}) as { contactIds?: string[] };
+  const ids = Array.isArray(body.contactIds) ? body.contactIds.filter((x) => typeof x === "string") : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "pass contactIds: string[]" });
+    return;
+  }
+  const depth = enqueueAutomated(ids);
+  res.json({ ok: true, accepted: ids.length, queueDepth: depth });
+});
+
+voiceRouter.get("/calls/queue", (_req, res) => {
+  res.json(queueStatus());
+});
+
+type PowerConnectTarget = "crm" | "cell";
+interface PowerDialerItem {
+  leadId: string;
+  connectTo: PowerConnectTarget;
+  from?: string;
+}
+
+const powerDialerQueue: PowerDialerItem[] = [];
+let powerDialerActive = 0;
+let powerDialerConcurrency = 1;
+let powerDialerStopped = true;
+let powerDialerLastError: string | null = null;
+
+function leadDisplayName(lead: Lead): string | null {
+  return [lead.first_name, lead.last_name].filter(Boolean).join(" ") || lead.email || lead.phone || null;
+}
+
+async function powerDialerTarget(connectTo: PowerConnectTarget): Promise<string | null> {
+  if (connectTo === "cell") return config.voice.myCell || null;
+  return await getWebrtcSipUri().catch(() => null);
+}
+
+async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
+  const lead = getLead(item.leadId);
+  if (!lead || lead.deleted_at) return false;
+  if (!lead.phone) {
+    logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: no phone", status: "skipped:no-phone" });
+    return false;
+  }
+  if (await isOnDnc(lead.phone)) {
+    logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: DNC", status: "skipped:on-DNC" });
+    return false;
+  }
+  const timezone = resolveLeadTimezone(lead) || config.crm.defaultTimezone || undefined;
+  const hours = withinCallingHours(timezone);
+  if (!hours.allowed) {
+    logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: outside calling window", status: `skipped:${hours.reason || "outside-hours"}` });
+    return false;
+  }
+  const target = await powerDialerTarget(item.connectTo);
+  if (!target) {
+    powerDialerLastError = item.connectTo === "crm" ? "CRM softphone is not registered" : "MY_CELL_NUMBER is not set";
+    logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: no agent target", status: "skipped:no-agent-target" });
+    return false;
+  }
+  const from = item.from || pickFromNumber(lead.phone).from;
+  const ccid = await placeCallWithAmd(lead.phone, from);
+  powerDialerActive++;
+  setCall(ccid, {
+    kind: "automated",
+    direction: "outbound",
+    startedAt: Date.now(),
+    primary: true,
+    leadId: lead.id,
+    contactPhone: lead.phone,
+    peerTarget: target,
+    peerFrom: from,
+    stage: "amd-wait",
+    powerDialer: true,
+  });
+  logActivity(lead.id, {
+    type: "call",
+    direction: "outbound",
+    channel: "voice",
+    body: `Power Dialer started from ${from}`,
+    status: "amd-wait",
+    meta: { callControlId: ccid, connectTo: item.connectTo },
+  });
+  return true;
+}
+
+function pumpPowerDialer(): void {
+  if (powerDialerStopped) return;
+  void (async () => {
+    while (!powerDialerStopped && powerDialerActive < powerDialerConcurrency && powerDialerQueue.length) {
+      const item = powerDialerQueue.shift()!;
+      try {
+        await startPowerDialLead(item);
+      } catch (err) {
+        powerDialerLastError = String(err);
+        log.error("power dialer start error", { leadId: item.leadId, err: String(err) });
+      }
+    }
+  })();
+}
+
+function finishPowerDialerLeg(): void {
+  if (powerDialerActive > 0) powerDialerActive--;
+  pumpPowerDialer();
+}
+
+voiceRouter.post("/calls/power-dialer/start", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { ids?: string[]; connectTo?: string; from?: string; concurrency?: number };
+  const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === "string").slice(0, 250) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "pass selected lead ids" });
+    return;
+  }
+  const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
+  const target = await powerDialerTarget(connectTo);
+  if (!target) {
+    res.status(400).json({ error: connectTo === "crm" ? "CRM softphone is not registered yet" : "MY_CELL_NUMBER is not set" });
+    return;
+  }
+  powerDialerConcurrency = Math.max(1, Math.min(3, Number(body.concurrency) || 1));
+  powerDialerStopped = false;
+  powerDialerLastError = null;
+  for (const id of ids) powerDialerQueue.push({ leadId: id, connectTo, from: body.from || undefined });
+  pumpPowerDialer();
+  res.json({ ok: true, queued: powerDialerQueue.length, active: powerDialerActive, concurrency: powerDialerConcurrency, connectTo });
+});
+
+voiceRouter.post("/calls/power-dialer/stop", requirePass, (_req, res) => {
+  const cleared = powerDialerQueue.length;
+  powerDialerQueue.splice(0, powerDialerQueue.length);
+  powerDialerStopped = true;
+  res.json({ ok: true, cleared, active: powerDialerActive });
+});
+
+voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
+  res.json({
+    ok: true,
+    queued: powerDialerQueue.length,
+    active: powerDialerActive,
+    running: !powerDialerStopped,
+    concurrency: powerDialerConcurrency,
+    lastError: powerDialerLastError,
+  });
+});
+
+/** Call log (Dialer panel): list recent calls, delete one, or clear. Passcode-gated. */
+voiceRouter.get("/api/calls/log", requirePass, (_req, res) => {
+  res.json({ calls: listCallLog(200) });
+});
+voiceRouter.post("/api/calls/log/:id/delete", requirePass, (req, res) => {
+  deleteCallLog(req.params.id);
+  res.json({ ok: true });
+});
+voiceRouter.post("/api/calls/log/clear", requirePass, (req, res) => {
+  const outcome = typeof (req.body ?? {}).outcome === "string" ? (req.body as { outcome: string }).outcome : undefined;
+  clearCallLog(outcome);
+  res.json({ ok: true });
+});
+voiceRouter.get("/api/deleted/calls", requirePass, (_req, res) => {
+  res.json({ calls: listDeletedCallLog(300) });
+});
+voiceRouter.post("/api/calls/log/:id/restore", requirePass, (req, res) => {
+  restoreCallLog(req.params.id);
+  res.json({ ok: true });
+});
+
+/** DNC: add a number (auto-called on opt-out too). */
+voiceRouter.post("/dnc", async (req, res) => {
+  const body = (req.body ?? {}) as { phone?: string; reason?: string };
+  if (!body.phone) {
+    res.status(400).json({ error: "pass phone" });
+    return;
+  }
+  await addToDnc(body.phone, body.reason ?? "manual");
+  res.json({ ok: true, added: toE164(body.phone) });
+});
+
+voiceRouter.get("/dnc", async (_req, res) => {
+  res.json({ numbers: await listDnc() });
+});
+
+// ── Telnyx Voice webhook (inbound calls + all call events) ───────────────────
+
+// Last few voice events (in-memory) so /calls/diag can confirm Telnyx is reaching us.
+interface VoiceEventLog { at: string; type?: string; direction?: string; from?: string; to?: string; ccid?: string }
+const recentVoiceEvents: VoiceEventLog[] = [];
+function recordVoiceEvent(e: VoiceEventLog): void {
+  recentVoiceEvents.unshift(e);
+  if (recentVoiceEvents.length > 15) recentVoiceEvents.pop();
+}
+export function getRecentVoiceEvents(): VoiceEventLog[] {
+  return recentVoiceEvents;
+}
+
+// Last few GHL call-log attempts so /calls/diag proves calls are actually reaching GHL.
+// loggedToGhl=false means the call happened but GHL did NOT record it (see `error`).
+interface CallLogAttempt {
+  at: string;
+  direction?: string;
+  contactId?: string;
+  durationSec?: number;
+  status?: string;
+  loggedToGhl: boolean;
+  error?: string;
+}
+const recentCallLogs: CallLogAttempt[] = [];
+function recordCallLog(e: CallLogAttempt): void {
+  recentCallLogs.unshift(e);
+  if (recentCallLogs.length > 15) recentCallLogs.pop();
+}
+
+voiceRouter.post("/webhooks/telnyx-voice", async (req, res) => {
+  res.status(200).json({ received: true }); // ack fast
+  const ev = (req.body ?? {}).data;
+  const type: string | undefined = ev?.event_type;
+  const p = ev?.payload ?? {};
+  recordVoiceEvent({ at: new Date().toISOString(), type, direction: p.direction, from: p.from, to: p.to, ccid: p.call_control_id });
+  log.info("telnyx voice event", { type, ccid: p.call_control_id, raw: p });
+  try {
+    // Voicemail-drop legs (AMD) own their own event flow — route them first.
+    if (isVoicemailCall(p.call_control_id)) {
+      await handleVoicemailEvent(type, p);
+      return;
+    }
+    if (type === "call.initiated" && p.direction === "incoming") await handleInbound(p);
+    else if (type === "call.answered") await handleAnswered(p.call_control_id);
+    else if (type === "call.machine.detection.ended") await handleMachineDetection(p.call_control_id, p);
+    else if (type === "call.gather.ended") await handleGather(p.call_control_id, p.digits);
+    else if (type === "call.hangup") await handleHangup(p.call_control_id, p);
+  } catch (err) {
+    log.error("voice webhook handler error", { type, err: String(err) });
+  }
+});
+
+async function handleInbound(p: any): Promise<void> {
+  const ccid = p.call_control_id as string;
+  const from = p.from as string;
+  let contactId: string | undefined;
+  try {
+    const c = await upsertContact(from);
+    contactId = c.id;
+  } catch (err) {
+    log.warn("inbound upsert failed", { err: String(err) });
+  }
+  // Thread the inbound call onto the CRM lead's timeline (find by caller number).
+  const crmLead = findLead({ phone: from });
+  if (crmLead) logActivity(crmLead.id, { type: "call", direction: "inbound", channel: "voice", body: `Inbound call from ${from}`, status: "received" });
+  // "app-then-cell" mode answers and rings the app; otherwise the classic IVR.
+  const appMode = config.inbound.mode === "app-then-cell";
+  setCall(ccid, {
+    kind: "inbound",
+    direction: "inbound",
+    startedAt: Date.now(),
+    primary: true,
+    contactId,
+    contactPhone: from,
+    stage: appMode ? "routing" : "answering",
+  });
+  await answer(ccid);
+}
+
+async function handleAnswered(ccid: string): Promise<void> {
+  const ctx = getCall(ccid);
+  if (!ctx) {
+    // Unknown leg — could be an inbound app/cell dial-out leg answering.
+    await onInboundLegAnswered(ccid);
+    return;
+  }
+  ctx.answeredAt = Date.now();
+  if (ctx.powerDialer && ctx.stage === "amd-wait") {
+    // Power Dialer waits for AMD before ringing the agent, so voicemail/machine answers
+    // do not pull the operator into a dead call.
+    return;
+  }
+
+  // Conference legs (3-way): agent-create → make the conference + dial first party;
+  // participant → join the conference. Handled fully here.
+  if (await onConfLegAnswered(ccid)) return;
+
+  // app-then-cell: ring the app IMMEDIATELY (no prompt/delay). TCPA opt-out is an
+  // outbound concern; for inbound we connect fast, like a normal phone.
+  if (ctx.kind === "inbound" && ctx.primary && ctx.stage === "routing") {
+    ctx.stage = "ringing-app";
+    await startInboundAppThenCell(ccid);
+    return;
+  }
+  // app/cell dial-out legs answering → bridge to the caller.
+  if (await onInboundLegAnswered(ccid)) return;
+
+  if (ctx.kind === "inbound" && ctx.stage === "answering") {
+    ctx.stage = "gathering";
+    await gatherDigits(ccid, IVR_PROMPT);
+    return;
+  }
+  if (ctx.role === "dial-peer-on-answer" && ctx.peerTarget && !ctx.peerCcid) {
+    const peer = await placeCall(ctx.peerTarget, ctx.peerFrom || config.telnyx.fromNumber);
+    ctx.peerCcid = peer;
+    setCall(peer, {
+      kind: ctx.kind,
+      direction: ctx.direction,
+      startedAt: ctx.startedAt,
+      primary: false,
+      contactId: ctx.contactId,
+      contactPhone: ctx.contactPhone,
+      role: "bridge-on-answer",
+      peerCcid: ccid,
+    });
+    return;
+  }
+  if (ctx.role === "bridge-on-answer" && ctx.peerCcid) {
+    const peer = getCall(ctx.peerCcid);
+    if (peer) {
+      peer.connectedAt = Date.now();
+      peer.answeredAt = peer.answeredAt || Date.now();
+    }
+    await bridge(ccid, ctx.peerCcid);
+  }
+}
+
+async function handleMachineDetection(ccid: string, p: any): Promise<void> {
+  const ctx = getCall(ccid);
+  if (!ctx || !ctx.powerDialer) return;
+  const result = String(p?.machine_detection_result ?? p?.result ?? p?.answering_machine_detection_result ?? "").toLowerCase();
+  ctx.powerDialerResult = result || "unknown";
+  const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+  const human = /human|not_sure|unknown/.test(result);
+  if (!human) {
+    if (lead) {
+      logActivity(lead.id, {
+        type: "call",
+        direction: "outbound",
+        channel: "voice",
+        body: `Power Dialer skipped bridge: ${result || "machine"}`,
+        status: `machine:${result || "detected"}`,
+      });
+    }
+    await hangup(ccid).catch(() => {});
+    return;
+  }
+  if (!ctx.peerTarget) {
+    if (lead) logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer human detected but no agent target was available", status: "failed:no-agent-target" });
+    await hangup(ccid).catch(() => {});
+    return;
+  }
+  try {
+    ctx.stage = "ringing-agent";
+    const peer = await dialLeg(ctx.peerTarget, { timeoutSecs: config.inbound.cellRingSecs, from: config.telnyx.fromNumber });
+    ctx.peerCcid = peer;
+    setCall(peer, {
+      kind: "automated",
+      direction: "outbound",
+      startedAt: ctx.startedAt,
+      primary: false,
+      leadId: ctx.leadId,
+      contactPhone: ctx.contactPhone,
+      role: "bridge-on-answer",
+      peerCcid: ccid,
+      powerDialer: true,
+    });
+    if (lead) {
+      logActivity(lead.id, {
+        type: "call",
+        direction: "outbound",
+        channel: "voice",
+        body: "Power Dialer human detected; ringing agent",
+        status: "ringing-agent",
+        meta: { detection: result || "human" },
+      });
+    }
+  } catch (err) {
+    if (lead) logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer agent ring failed", status: "failed:agent-ring", meta: { error: String(err) } });
+    await hangup(ccid).catch(() => {});
+  }
+}
+
+async function handleGather(ccid: string, digits?: string): Promise<void> {
+  const ctx = getCall(ccid);
+  if (!ctx || ctx.kind !== "inbound") return;
+
+  // app-then-cell opt-out gather: 9 = opt out, anything else (incl. no input) → ring app.
+  if (ctx.stage === "optout-gather") {
+    if (digits === "9") {
+      if (ctx.contactPhone) await addToDnc(ctx.contactPhone, "ivr-optout");
+      await speak(ccid, "You have been removed from our call list. Goodbye.");
+      await hangup(ccid);
+      return;
+    }
+    ctx.stage = "ringing-app";
+    await startInboundAppThenCell(ccid);
+    return;
+  }
+
+  if (digits === "1" && config.voice.myCell) {
+    await transfer(ccid, config.voice.myCell); // forward to my cell
+  } else if (digits === "9") {
+    if (ctx.contactPhone) await addToDnc(ctx.contactPhone, "ivr-optout");
+    await speak(ccid, "You have been removed from our call list. Goodbye.");
+    await hangup(ccid);
+  } else {
+    await speak(ccid, "Sorry, I didn't catch that. Goodbye.");
+    await hangup(ccid);
+  }
+}
+
+async function handleHangup(ccid: string, p: any): Promise<void> {
+  // Conference leg ending — agent leg drop ends the whole conference, else just that party.
+  if (await onConfLegHangup(ccid)) return;
+  // Inbound app/cell dial-out leg ending → may trigger fall-back to the cell.
+  if (await onInboundLegHangup(ccid)) return;
+
+  const ctx = getCall(ccid);
+  if (ctx && ctx.primary && !ctx.logged) {
+    ctx.logged = true;
+    // "Connected" = a human (CRM app or cell) actually bridged. For inbound, answeredAt is
+    // unreliable because WE auto-answer the leg just to route it — so a true no-answer would
+    // still look "answered". connectedAt is set only on a real bridge, so it's what decides
+    // answered vs missed (and the talk-time duration). Outbound legs have no connectedAt, so
+    // they fall back to answeredAt as before.
+    const connectedAt = ctx.direction === "inbound" ? ctx.connectedAt : ctx.answeredAt;
+    const durationSec = connectedAt ? Math.max(0, Math.round((Date.now() - connectedAt) / 1000)) : 0;
+    const status = connectedAt ? "completed" : String(p?.hangup_cause ?? "no-answer");
+    // Record every inbound call in the Dialer's call log (answered vs missed).
+    if (ctx.direction === "inbound") {
+      const crmLead = ctx.contactPhone ? findLead({ phone: ctx.contactPhone }) : null;
+      const nm = crmLead ? [crmLead.first_name, crmLead.last_name].filter(Boolean).join(" ") || null : null;
+      insertCallLog({
+        direction: "inbound",
+        phone: ctx.contactPhone ?? null,
+        name: nm,
+        contactId: ctx.contactId ?? null,
+        leadId: crmLead?.id ?? null,
+        outcome: ctx.connectedAt ? "answered" : "missed",
+        durationSec,
+      });
+    }
+    if (ctx.direction === "outbound" && ctx.leadId) {
+      const crmLead = getLead(ctx.leadId);
+      const nm = crmLead ? leadDisplayName(crmLead) : null;
+      const outcome = ctx.powerDialer
+        ? ctx.connectedAt || ctx.peerCcid ? "answered" : ctx.powerDialerResult ? `amd-${ctx.powerDialerResult}` : status
+        : status;
+      insertCallLog({
+        direction: "outbound",
+        phone: ctx.contactPhone ?? null,
+        name: nm,
+        leadId: ctx.leadId,
+        outcome,
+        durationSec,
+      });
+      if (crmLead) {
+        logActivity(crmLead.id, {
+          type: "call",
+          direction: "outbound",
+          channel: "voice",
+          body: `Outbound call to ${ctx.contactPhone || ""}`.trim(),
+          status: outcome,
+          meta: { powerDialer: Boolean(ctx.powerDialer), durationSec, hangupCause: p?.hangup_cause },
+        });
+      }
+    }
+    if (ctx.contactId) {
+      try {
+        const r = await logCall({ contactId: ctx.contactId, direction: ctx.direction, durationSec, status, contactPhone: ctx.contactPhone });
+        recordCallLog({
+          at: new Date().toISOString(),
+          direction: ctx.direction,
+          contactId: ctx.contactId,
+          durationSec,
+          status,
+          loggedToGhl: r.ok,
+          error: r.ok ? undefined : `${r.status ?? ""} ${r.detail ?? ""}`.trim(),
+        });
+        if (!r.ok) log.error("call NOT logged to GHL", { ccid, contactId: ctx.contactId, status: r.status, detail: r.detail });
+      } catch (err) {
+        recordCallLog({ at: new Date().toISOString(), direction: ctx.direction, contactId: ctx.contactId, durationSec, status, loggedToGhl: false, error: String(err) });
+        log.error("logCall threw", { ccid, err: String(err) });
+      }
+    } else {
+      // No contact resolved (e.g. blocked/anonymous caller) — recorded so it isn't invisible.
+      recordCallLog({ at: new Date().toISOString(), direction: ctx.direction, durationSec, status, loggedToGhl: false, error: "no contactId (caller not resolved)" });
+      log.warn("call not logged: no contactId", { ccid, direction: ctx.direction, status });
+    }
+    log.info("call ended", { ccid, kind: ctx.kind, direction: ctx.direction, durationSec, status });
+  }
+  if (ctx?.powerDialer && ctx.primary) finishPowerDialerLeg();
+  delCall(ccid);
+}

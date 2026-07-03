@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Smartr8 Console",
+  "version": "0.2.0",
+  "description": "Smartr8 — calls, texts, and contacts in one console.",
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Open Smartr8 Console" },
+  "icons": {
+    "192": "icons/icon-192.png",
+    "512": "icons/icon-512.png"
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "category": "HELOC",
+  "campaign": "HELOC",
+  "enrollFilter": {
+    "category": "HELOC"
+  },
+  "rows": [
+    {
+      "channel": "sms",
+      "dayOffset": 0,
+      "body": "Hi {{first_name}}, Mykoal DeShazo with Adaxa Home (NMLS 1912347). You asked about a HELOC at smartr8.com. I can pull your options together with no credit pull. Reply STOP to opt out, HELP for help.",
+      "optOut": true,
+      "charCount": 189,
+      "segments": 2
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 1,
+      "body": "{{first_name}}, a HELOC lets you tap your equity without touching your first mortgage rate. Want me to see what you qualify for? Just reply here.",
+      "optOut": false,
+      "charCount": 137,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 3,
+      "body": "Lots of folks use a HELOC for renovations or to pay off higher interest debt, {{first_name}}. Tell me your goal and let us run your numbers.",
+      "optOut": false,
+      "charCount": 132,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 4,
+      "subject": "Smart ways people use a HELOC",
+      "preheader": "Renovations, debt payoff, and a flexible safety net.",
+      "body": "A HELOC is flexible, so people put it to work in different ways. Some fund a renovation or addition. Others pay off higher interest balances to simplify. Many keep a standby line ready for emergencies.\n\nNot sure which fits? That is what I am here for. Reply and tell me your goal.",
+      "cta": {
+        "label": "Talk through my options",
+        "url": "https://smartr8.com/heloc-v2"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 6,
+      "body": "{{first_name}}, a HELOC can also sit as a standby safety net you only tap if you need it. Happy to walk you through how it works.",
+      "optOut": false,
+      "charCount": 121,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 12,
+      "body": "Still thinking it over, {{first_name}}? No pressure. When you are ready I can show your HELOC options in minutes. Reply STOP to opt out.",
+      "optOut": true,
+      "charCount": 128,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 14,
+      "subject": "Still here when you are ready, {{first_name}}",
+      "preheader": "Your HELOC options are a quick conversation away.",
+      "body": "No rush at all. When you want to see what your equity could do, I can put your HELOC options together quickly with no credit pull to start.\n\nCall or text me anytime at (480) 206 9290.",
+      "cta": {
+        "label": "See my options",
+        "url": "https://smartr8.com/heloc-v2"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 21,
+      "body": "{{first_name}}, I will keep your HELOC request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal.",
+      "optOut": true,
+      "charCount": 114,
+      "segments": 1
+    }
+  ],
+  "crmAutomation": {
+    "name": "HELOC",
+    "trigger": "lead_created",
+    "enabled": false,
+    "filter": {
+      "category": "HELOC"
+    },
+    "steps": [
+      {
+        "type": "send_text",
+        "message": "Hi {{first_name}}, Mykoal DeShazo with Adaxa Home (NMLS 1912347). You asked about a HELOC at smartr8.com. I can pull your options together with no credit pull. Reply STOP to opt out, HELP for help.",
+        "delayMinutes": 0
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, a HELOC lets you tap your equity without touching your first mortgage rate. Want me to see what you qualify for? Just reply here.",
+        "delayMinutes": 1440
+      },
+      {
+        "type": "send_text",
+        "message": "Lots of folks use a HELOC for renovations or to pay off higher interest debt, {{first_name}}. Tell me your goal and let us run your numbers.",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_email",
+        "subject": "Smart ways people use a HELOC",
+        "preheader": "Renovations, debt payoff, and a flexible safety net.",
+        "html": "A HELOC is flexible, so people put it to work in different ways. Some fund a renovation or addition. Others pay off higher interest balances to simplify. Many keep a standby line ready for emergencies.\n\nNot sure which fits? That is what I am here for. Reply and tell me your goal.",
+        "text": "A HELOC is flexible, so people put it to work in different ways. Some fund a renovation or addition. Others pay off higher interest balances to simplify. Many keep a standby line ready for emergencies.\n\nNot sure which fits? That is what I am here for. Reply and tell me your goal.",
+        "ctaLabel": "Talk through my options",
+        "ctaUrl": "https://smartr8.com/heloc-v2",
+        "delayMinutes": 1440
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, a HELOC can also sit as a standby safety net you only tap if you need it. Happy to walk you through how it works.",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "Still thinking it over, {{first_name}}? No pressure. When you are ready I can show your HELOC options in minutes. Reply STOP to opt out.",
+        "delayMinutes": 8640
+      },
+      {
+        "type": "send_email",
+        "subject": "Still here when you are ready, {{first_name}}",
+        "preheader": "Your HELOC options are a quick conversation away.",
+        "html": "No rush at all. When you want to see what your equity could do, I can put your HELOC options together quickly with no credit pull to start.\n\nCall or text me anytime at (480) 206 9290.",
+        "text": "No rush at all. When you want to see what your equity could do, I can put your HELOC options together quickly with no credit pull to start.\n\nCall or text me anytime at (480) 206 9290.",
+        "ctaLabel": "See my options",
+        "ctaUrl": "https://smartr8.com/heloc-v2",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, I will keep your HELOC request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal.",
+        "delayMinutes": 10080
+      }
+    ]
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "version": "mismo-3.4-live-v1",
+  "description": "Canonical lead fields used by the Smartr8 MISMO 3.4 borrower/property/loan export.",
+  "fields": [
+    {
+      "canonical": "borrower.first_name",
+      "label": "Borrower first name",
+      "required": true,
+      "aliases": ["first_name"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/INDIVIDUAL/NAME/FirstName"]
+    },
+    {
+      "canonical": "borrower.last_name",
+      "label": "Borrower last name",
+      "required": true,
+      "aliases": ["last_name"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/INDIVIDUAL/NAME/LastName"]
+    },
+    {
+      "canonical": "borrower.phone",
+      "label": "Borrower phone",
+      "required": true,
+      "aliases": ["phone"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/INDIVIDUAL/CONTACT_POINTS/CONTACT_POINT/CONTACT_POINT_TELEPHONE/ContactPointTelephoneValue"]
+    },
+    {
+      "canonical": "borrower.email",
+      "label": "Borrower email",
+      "required": false,
+      "aliases": ["email"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/INDIVIDUAL/CONTACT_POINTS/CONTACT_POINT/CONTACT_POINT_EMAIL/ContactPointEmailValue"]
+    },
+    {
+      "canonical": "property.address",
+      "label": "Property street address",
+      "required": true,
+      "aliases": ["address", "street", "street_address", "streetAddress", "address1"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/COLLATERALS/COLLATERAL/SUBJECT_PROPERTY/ADDRESS/AddressLineText"]
+    },
+    {
+      "canonical": "property.state",
+      "label": "Property state",
+      "required": true,
+      "aliases": ["state", "property_state", "State", "region", "Region"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/COLLATERALS/COLLATERAL/SUBJECT_PROPERTY/ADDRESS/StateCode"]
+    },
+    {
+      "canonical": "property.value",
+      "label": "Property value",
+      "required": false,
+      "aliases": ["home_value", "homeValue", "Home Value", "estimated_value", "property_value", "propertyValue"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/COLLATERALS/COLLATERAL/SUBJECT_PROPERTY/PROPERTY_DETAIL/PropertyEstimatedValueAmount"]
+    },
+    {
+      "canonical": "loan.purpose",
+      "label": "Loan purpose",
+      "required": true,
+      "aliases": ["loan_purpose", "loan_goal", "loanGoal", "purpose", "loanType", "loan_type"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/LOANS/LOAN/TERMS_OF_LOAN/LoanPurposeType"]
+    },
+    {
+      "canonical": "loan.amount",
+      "label": "Loan amount",
+      "required": true,
+      "aliases": ["loan_amount", "loanAmount", "Loan Amount", "heloc_line", "helocLine", "heloc_line_available", "HELOC Line Available"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/LOANS/LOAN/TERMS_OF_LOAN/BaseLoanAmount"]
+    },
+    {
+      "canonical": "credit.score",
+      "label": "Credit score",
+      "required": false,
+      "aliases": ["credit_score", "creditScore", "fico", "FICO", "credit"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/CREDIT_SCORES/CREDIT_SCORE/CREDIT_SCORE_DETAIL/CreditScoreValue"]
+    },
+    {
+      "canonical": "borrower.dob",
+      "label": "Borrower DOB",
+      "required": false,
+      "aliases": ["dob", "date_of_birth", "dateOfBirth", "DOB"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/BORROWER_DETAIL/BorrowerBirthDate"]
+    },
+    {
+      "canonical": "borrower.ssn",
+      "label": "Borrower SSN",
+      "required": false,
+      "aliases": ["ssn", "ssn_full", "borrower_ssn", "social_security_number", "taxpayer_identifier"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/TAXPAYER_IDENTIFIERS/TAXPAYER_IDENTIFIER/TaxpayerIdentifierValue"]
+    },
+    {
+      "canonical": "borrower.employer",
+      "label": "Borrower employer",
+      "required": false,
+      "aliases": ["employer", "employer_name", "employment_employer", "current_employer", "income_source"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/EMPLOYERS/EMPLOYER/LEGAL_ENTITY/LEGAL_ENTITY_DETAIL/FullName"]
+    },
+    {
+      "canonical": "borrower.monthly_income",
+      "label": "Borrower monthly income",
+      "required": false,
+      "aliases": ["monthly_income", "monthlyIncome", "gross_monthly_income", "income"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/CURRENT_INCOME/CURRENT_INCOME_ITEMS/CURRENT_INCOME_ITEM/CURRENT_INCOME_ITEM_DETAIL/IncomeMonthlyTotalAmount"]
+    },
+    {
+      "canonical": "coborrower.ssn",
+      "label": "Co-borrower SSN",
+      "required": false,
+      "aliases": ["co_borrower_ssn", "coborrower_ssn", "coBorrowerSsn"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/TAXPAYER_IDENTIFIERS/TAXPAYER_IDENTIFIER/TaxpayerIdentifierValue"]
+    },
+    {
+      "canonical": "coborrower.employer",
+      "label": "Co-borrower employer",
+      "required": false,
+      "aliases": ["co_borrower_employer", "coborrower_employer", "coBorrowerEmployer"],
+      "mismoPaths": ["MESSAGE/DEAL_SETS/DEAL_SET/DEALS/DEAL/PARTIES/PARTY/ROLES/ROLE/BORROWER/EMPLOYERS/EMPLOYER/LEGAL_ENTITY/LEGAL_ENTITY_DETAIL/FullName"]
+    }
+  ],
+  "enumTranslations": {
+    "loanPurpose": {
+      "purchase": "Purchase",
+      "construction": "Construction",
+      "refinance": "Refinance"
+    },
+    "occupancy": {
+      "primary": "PrimaryResidence",
+      "second": "SecondHome",
+      "investment": "Investment"
+    },
+    "mortgageType": {
+      "conventional": "Conventional",
+      "fha": "FHA",
+      "va": "VA",
+      "usda": "USDARuralDevelopment"
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "category": "GENERAL",
+  "campaign": "General Nurture",
+  "enrollFilter": {
+    "category": "GENERAL"
+  },
+  "rows": [
+    {
+      "channel": "sms",
+      "dayOffset": 0,
+      "body": "Hi {{first_name}}, this is Mykoal DeShazo with Adaxa Home (NMLS 1912347). Thanks for reaching out at smartr8.com. Reply STOP to opt out, HELP for help.",
+      "optOut": true,
+      "charCount": 143,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 3,
+      "body": "{{first_name}}, whatever your goal, buying, refinancing, or an investment property, I can help you find the right path. Want a quick call?",
+      "optOut": false,
+      "charCount": 130,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 6,
+      "subject": "A quick question for you, {{first_name}}",
+      "preheader": "Knowing your goal helps me point you the right way.",
+      "body": "Everyone comes to us with a different goal. Knowing yours helps me share the most useful next steps, whether that is a purchase, a refinance, or financing an investment property.\n\nReply and tell me what you are thinking about, and I will guide you from there.",
+      "cta": {
+        "label": "Tell me your goal",
+        "url": "https://smartr8.com"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 7,
+      "body": "Happy to answer any mortgage questions you have, no obligation. Reply here or call (480) 206 9290 any time. Mykoal.",
+      "optOut": false,
+      "charCount": 115,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 12,
+      "body": "Even if you are just exploring, a short conversation can clarify your options. What time works this week? Mykoal.",
+      "optOut": false,
+      "charCount": 113,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 14,
+      "subject": "Here to help whenever you need it",
+      "preheader": "A short conversation can clarify your options.",
+      "body": "Even if you are early in the process, a quick conversation often brings clarity and saves time later.\n\nReply to this email or call (480) 206 9290 whenever you are ready, and I will help you find the right path.",
+      "cta": {
+        "label": "Call (480) 206 9290",
+        "url": "https://smartr8.com"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 16,
+      "body": "{{first_name}}, I am glad to be a resource whenever you need one. Call (480) 206 9290 with any questions. Reply STOP to opt out. Mykoal.",
+      "optOut": true,
+      "charCount": 128,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 21,
+      "body": "{{first_name}}, reach out any time and I will point you in the right direction. Call (480) 206 9290. Reply STOP to opt out. Mykoal.",
+      "optOut": true,
+      "charCount": 123,
+      "segments": 1
+    }
+  ],
+  "crmAutomation": {
+    "name": "General Nurture",
+    "trigger": "lead_created",
+    "enabled": false,
+    "filter": {
+      "category": "GENERAL"
+    },
+    "steps": [
+      {
+        "type": "send_text",
+        "message": "Hi {{first_name}}, this is Mykoal DeShazo with Adaxa Home (NMLS 1912347). Thanks for reaching out at smartr8.com. Reply STOP to opt out, HELP for help.",
+        "delayMinutes": 0
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, whatever your goal, buying, refinancing, or an investment property, I can help you find the right path. Want a quick call?",
+        "delayMinutes": 4320
+      },
+      {
+        "type": "send_email",
+        "subject": "A quick question for you, {{first_name}}",
+        "preheader": "Knowing your goal helps me point you the right way.",
+        "html": "Everyone comes to us with a different goal. Knowing yours helps me share the most useful next steps, whether that is a purchase, a refinance, or financing an investment property.\n\nReply and tell me what you are thinking about, and I will guide you from there.",
+        "text": "Everyone comes to us with a different goal. Knowing yours helps me share the most useful next steps, whether that is a purchase, a refinance, or financing an investment property.\n\nReply and tell me what you are thinking about, and I will guide you from there.",
+        "ctaLabel": "Tell me your goal",
+        "ctaUrl": "https://smartr8.com",
+        "delayMinutes": 4320
+      },
+      {
+        "type": "send_text",
+        "message": "Happy to answer any mortgage questions you have, no obligation. Reply here or call (480) 206 9290 any time. Mykoal.",
+        "delayMinutes": 1440
+      },
+      {
+        "type": "send_text",
+        "message": "Even if you are just exploring, a short conversation can clarify your options. What time works this week? Mykoal.",
+        "delayMinutes": 7200
+      },
+      {
+        "type": "send_email",
+        "subject": "Here to help whenever you need it",
+        "preheader": "A short conversation can clarify your options.",
+        "html": "Even if you are early in the process, a quick conversation often brings clarity and saves time later.\n\nReply to this email or call (480) 206 9290 whenever you are ready, and I will help you find the right path.",
+        "text": "Even if you are early in the process, a quick conversation often brings clarity and saves time later.\n\nReply to this email or call (480) 206 9290 whenever you are ready, and I will help you find the right path.",
+        "ctaLabel": "Call (480) 206 9290",
+        "ctaUrl": "https://smartr8.com",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, I am glad to be a resource whenever you need one. Call (480) 206 9290 with any questions. Reply STOP to opt out. Mykoal.",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, reach out any time and I will point you in the right direction. Call (480) 206 9290. Reply STOP to opt out. Mykoal.",
+        "delayMinutes": 7200
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+# Render blueprint. Create the service from this file, then set the `sync: false`
+# secrets in the Render dashboard (Environment tab). Railway works too — see README.
+services:
+  - type: web
+    name: loangenius-v2
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /v2/health
+    autoDeploy: true
+    # Persistent disk so OAuth tokens survive restarts/redeploys.
+    disk:
+      name: tokens
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TOKEN_DIR
+        value: /data
+      - key: GHL_API_VERSION
+        value: "2021-04-15"
+      - key: GHL_SEARCH_API_VERSION
+        value: "2023-02-21"
+      - key: IMESSAGE_TAG
+        value: imessage
+      - key: DEFAULT_COUNTRY_CODE
+        value: "+1"
+      - key: GHL_LOCATION_ID
+        sync: false
+      - key: GHL_CLIENT_ID
+        sync: false
+      - key: GHL_CLIENT_SECRET
+        sync: false
+      - key: GHL_REDIRECT_URI
+        sync: false
+      - key: GHL_CONVERSATION_PROVIDER_ID
+        sync: false
+      - key: TELNYX_API_KEY
+        sync: false
+      - key: TELNYX_FROM_NUMBER
+        sync: false
+      - key: TELNYX_MESSAGING_PROFILE_ID
+        sync: false
+      - key: TELNYX_VOICE_APP_ID
+        sync: false
+      - key: MY_CELL_NUMBER
+        sync: false
+      - key: BLUEBUBBLES_URL
+        sync: false
+      - key: BLUEBUBBLES_PASSWORD
+        sync: false
+      # Console / softphone access
+      - key: APP_PASSCODE
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # CRM lead-management + automations
+      - key: LEAD_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: VOICEMAIL_AUDIO_URL
+        sync: false

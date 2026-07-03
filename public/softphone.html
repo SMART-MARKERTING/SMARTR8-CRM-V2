@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Smartr8 Softphone</title>
+  <!-- Meta Pixel Code -->
+  <script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window,document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '723066527555884');
+  fbq('track', 'PageView');
+  </script>
+  <noscript>
+   <img height="1" width="1" style="display:none"
+  src="https://www.facebook.com/tr?id=723066527555884&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
+  <!-- Installable to the home screen (Android: "Install app" / iOS: "Add to Home Screen"). -->
+  <link rel="manifest" href="/public/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/public/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Softphone" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b1220; color: #e8eefc;
+      display: flex; justify-content: center;
+    }
+    main { width: 100%; max-width: 440px; padding: 1.25rem 1.1rem 2rem; }
+    h1 { font-size: 1.2rem; margin: .25rem 0 1rem; }
+    .status {
+      padding: .55rem .75rem; border-radius: .6rem; background: #16213a;
+      border: 1px solid #243456; font-size: .95rem; margin-bottom: 1rem;
+    }
+    label { display:block; font-size:.8rem; color:#9fb2d8; margin:.2rem 0 .35rem; }
+    input {
+      width: 100%; padding: .8rem .85rem; font-size: 1.05rem; border-radius: .6rem;
+      border: 1px solid #2b3c61; background: #0f1830; color: #e8eefc; margin-bottom: .85rem;
+    }
+    .row { display: flex; gap: .6rem; }
+    button {
+      flex: 1; padding: .9rem 1rem; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+      border: 0; border-radius: .6rem; background: #2f6bff; color: #fff;
+    }
+    button.secondary { background: #243456; }
+    button.danger { background: #c0344a; }
+    button:disabled { opacity: .5; cursor: default; }
+    .log {
+      margin-top: 1.1rem; padding: .7rem; height: 9rem; overflow: auto;
+      background: #0a0f1d; border: 1px solid #1d2a47; border-radius: .6rem;
+      font: .78rem/1.45 ui-monospace, Menlo, Consolas, monospace; color: #9fb2d8; white-space: pre-wrap;
+    }
+    .hint { font-size:.78rem; color:#7e90b6; margin-top:.4rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/public/logo.svg" alt="Smartr8" style="height:38px;margin-bottom:.5rem" />
+    <div id="status" class="status">Not connected</div>
+
+    <section id="connect">
+      <label for="passcode">Passcode</label>
+      <input id="passcode" type="password" placeholder="App passcode" autocomplete="off" />
+      <button id="connectBtn">Connect</button>
+      <p class="hint">Connects this browser to your Telnyx line. Allow microphone access when asked.</p>
+    </section>
+
+    <section id="dialer" hidden>
+      <label for="number">Number to call</label>
+      <input id="number" type="tel" inputmode="tel" placeholder="+1 555 123 4567" />
+      <div class="row">
+        <button id="callBtn">Call</button>
+        <button id="hangupBtn" class="danger" hidden>Hang up</button>
+        <button id="muteBtn" class="secondary" hidden>Mute</button>
+      </div>
+    </section>
+
+    <section id="incoming" hidden style="margin-top:1rem;padding:1rem;border:1px solid #2f6bff;border-radius:.6rem;background:#16213a;text-align:center">
+      <div style="font-size:.85rem;color:#9fb2d8">📞 Incoming call</div>
+      <div id="incFrom" style="font-size:1.2rem;font-weight:600;margin:.3rem 0 .8rem">Unknown</div>
+      <div class="row">
+        <button id="answerBtn" style="background:#1f9d55">Answer</button>
+        <button id="declineBtn" class="danger">Decline</button>
+      </div>
+    </section>
+
+    <audio id="remoteAudio" autoplay></audio>
+    <pre id="log" class="log"></pre>
+  </main>
+
+  <!-- Telnyx WebRTC SDK. If the SDK global is undefined on first load, this URL/global is the thing to adjust. -->
+  <script src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
+  <script>
+    var $ = function (id) { return document.getElementById(id); };
+    var statusEl = $('status'), logEl = $('log');
+    function setStatus(s) { statusEl.textContent = s; }
+    function logMsg(m) {
+      var t = new Date().toLocaleTimeString();
+      logEl.textContent += '[' + t + '] ' + m + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    var client = null, activeCall = null, callerNumber = null, muted = false;
+
+    // Remember the passcode locally for convenience.
+    $('passcode').value = localStorage.getItem('sp_pass') || '';
+
+    var SDK = (window.TelnyxWebRTC && (window.TelnyxWebRTC.TelnyxRTC || window.TelnyxWebRTC.default)) || window.TelnyxRTC;
+    if (!SDK) logMsg('⚠ Telnyx WebRTC SDK did not load — the <script> CDN URL/global may need adjusting.');
+
+    var IN_CALL = ['new','trying','requesting','recovering','ringing','answering','early','active','held'];
+
+    // Self-healing connection state (see connect() below). The gateway socket can
+    // drop (network blip, sleep/wake, one-time token aging out); we reconnect with
+    // a FRESH token instead of leaving the line dead until a manual reload.
+    var reconnectAttempt = 0, reconnecting = false, intentionalClose = false, socketCloseTimer = null;
+    function isFatalConnError(e) {
+      try {
+        var err = (e && e.error) || e || {};
+        var blob = (typeof err === 'string') ? err : JSON.stringify(err);
+        return /reconnect|websocket|gateway|unreachable|connection (was )?lost|unable to (re)?connect/i.test(blob);
+      } catch (_) { return false; }
+    }
+    function scheduleReconnect(reason) {
+      if (reconnecting) return;
+      reconnecting = true;
+      var delay = Math.min(30000, 1000 * Math.pow(2, Math.min(reconnectAttempt, 5)));
+      reconnectAttempt++;
+      logMsg('reconnect in ' + delay + 'ms (' + reason + ', attempt ' + reconnectAttempt + ')');
+      setStatus('Reconnecting…');
+      setTimeout(function () { reconnecting = false; doConnect(); }, delay);
+    }
+
+    async function doConnect() {
+      var pass = $('passcode').value.trim() || localStorage.getItem('sp_pass') || '';
+      if (!pass) { logMsg('Enter the passcode first.'); return; }
+      localStorage.setItem('sp_pass', pass);
+      clearTimeout(socketCloseTimer);
+      if (client) { intentionalClose = true; try { client.disconnect(); } catch (e) {} client = null; }
+      setStatus('Getting token…');
+      try {
+        var r = await fetch('/webrtc/token', { method: 'POST', headers: { 'x-app-passcode': pass } });
+        if (r.status === 401 || r.status === 403) { setStatus('Session expired'); logMsg('Passcode rejected — re-enter and connect.'); return; }
+        var data = await r.json();
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        callerNumber = data.callerNumber;
+        logMsg('Token received. Connecting to Telnyx…');
+        connect(data.token);
+      } catch (e) {
+        setStatus('Error'); logMsg('Token error: ' + e.message);
+        scheduleReconnect('connect-failed');
+      }
+    }
+    $('connectBtn').onclick = doConnect;
+
+    function connect(token) {
+      if (!SDK) { logMsg('Cannot connect — SDK not loaded.'); return; }
+      client = new SDK({ login_token: token });
+      var thisClient = client;
+      intentionalClose = false;
+      try { client.remoteElement = 'remoteAudio'; } catch (e) {}
+
+      client.on('telnyx.ready', function () {
+        if (client !== thisClient) return;
+        reconnectAttempt = 0; reconnecting = false; clearTimeout(socketCloseTimer);
+        setStatus('Connected — ready to call');
+        $('connect').hidden = true; $('dialer').hidden = false;
+        logMsg('Registered with Telnyx.');
+      });
+      client.on('telnyx.error', function (e) {
+        if (client !== thisClient) return;
+        setStatus('Telnyx error');
+        logMsg('telnyx.error: ' + JSON.stringify((e && e.error) || e));
+        if (isFatalConnError(e)) scheduleReconnect('telnyx.error');
+      });
+      // Socket dropped: give the SDK's own retry a few seconds; if it hasn't
+      // re-registered (telnyx.ready) by then, force a fresh-token reconnect.
+      client.on('telnyx.socket.close', function () {
+        if (client !== thisClient || intentionalClose) return;
+        setStatus('Reconnecting…');
+        clearTimeout(socketCloseTimer);
+        socketCloseTimer = setTimeout(function () { scheduleReconnect('socket.close'); }, 6000);
+      });
+      client.on('telnyx.notification', function (n) {
+        if (client !== thisClient) return;
+        if (n.type !== 'callUpdate' || !n.call) return;
+        activeCall = n.call;
+        var st = n.call.state;
+        setStatus('Call: ' + st);
+        logMsg('call state: ' + st);
+
+        // Incoming call: SDK marks the leg inbound and rings. Show Answer/Decline.
+        var dir = (n.call.direction || n.call.options && n.call.options.remoteCallerName) ? n.call.direction : null;
+        var isInbound = (n.call.direction === 'inbound') || (n.call.state === 'ringing' && n.call.cause === undefined && incomingHint(n.call));
+        if (st === 'ringing' && isInbound) {
+          showIncoming(n.call);
+        }
+
+        var inCall = IN_CALL.indexOf(st) !== -1;
+        // While an incoming call is still ringing, keep showing the prompt, not the in-call bar.
+        var ringingIncoming = (st === 'ringing' && incomingVisible);
+        $('callBtn').hidden = inCall || ringingIncoming;
+        $('hangupBtn').hidden = !inCall || ringingIncoming;
+        $('muteBtn').hidden = !inCall || ringingIncoming;
+        if (st === 'active') hideIncoming();
+        if (st === 'hangup' || st === 'destroy') {
+          activeCall = null; muted = false; $('muteBtn').textContent = 'Mute';
+          $('callBtn').hidden = false; $('hangupBtn').hidden = true; $('muteBtn').hidden = true;
+          hideIncoming();
+        }
+      });
+      client.connect();
+    }
+
+    // Heuristic: a call we didn't place. We clear `placedByUs` when we ring out.
+    var placedByUs = false, incomingVisible = false;
+    function incomingHint(call) { return !placedByUs; }
+    function showIncoming(call) {
+      incomingVisible = true;
+      var who = (call.options && (call.options.remoteCallerNumber || call.options.callerNumber)) || call.remoteCallerNumber || 'Unknown';
+      $('incFrom').textContent = who;
+      $('incoming').hidden = false;
+    }
+    function hideIncoming() { incomingVisible = false; $('incoming').hidden = true; }
+    document.addEventListener('DOMContentLoaded', function () {
+      $('answerBtn').onclick = function () { if (activeCall && activeCall.answer) activeCall.answer(); hideIncoming(); };
+      $('declineBtn').onclick = function () { if (activeCall && activeCall.hangup) activeCall.hangup(); hideIncoming(); };
+    });
+
+    $('callBtn').onclick = function () {
+      var number = $('number').value.trim();
+      if (!number) { logMsg('Enter a number to call.'); return; }
+      if (!client) { logMsg('Not connected.'); return; }
+      logMsg('Dialing ' + number + ' …');
+      placedByUs = true;
+      activeCall = client.newCall({ destinationNumber: number, callerNumber: callerNumber, audio: true, video: false });
+    };
+    $('hangupBtn').onclick = function () { if (activeCall) { placedByUs = false; activeCall.hangup(); } };
+    $('muteBtn').onclick = function () {
+      if (!activeCall) return;
+      muted = !muted;
+      if (muted) activeCall.muteAudio(); else activeCall.unmuteAudio();
+      $('muteBtn').textContent = muted ? 'Unmute' : 'Mute';
+    };
+  </script>
+</body>
+</html>

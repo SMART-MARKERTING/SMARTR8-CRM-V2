@@ -1,0 +1,2339 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Smartr8 CRM v2</title>
+  <link rel="icon" href="/logo.svg" />
+  <script defer src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
+  <style>
+    :root {
+      --bg: #0b111d;
+      --panel: #151c2a;
+      --line: #273347;
+      --text: #e8edf7;
+      --muted: #92a0b6;
+      --soft: #1d283a;
+      --nav: #0d1422;
+      --navText: #a9b5c9;
+      --field: #0f1726;
+      --fieldLine: #26344b;
+      --button: #101827;
+      --hover: #1d2638;
+      --item: #111827;
+      --empty: #0f1726;
+      --tableLine: #222d40;
+      --blue: #6d5dfc;
+      --teal: #18b6a6;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --purple: #9b5cf6;
+      --shadow: 0 20px 50px rgba(0, 0, 0, .26);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body.theme-light {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --line: #dfe6ef;
+      --text: #121926;
+      --muted: #65758b;
+      --soft: #eef3f8;
+      --nav: #ffffff;
+      --navText: #243247;
+      --field: #ffffff;
+      --fieldLine: #cfd8e5;
+      --button: #ffffff;
+      --hover: #f1f5f9;
+      --item: #ffffff;
+      --empty: #fbfdff;
+      --tableLine: #edf1f6;
+      --blue: #2458d6;
+      --teal: #087b83;
+      --green: #16865b;
+      --amber: #ad6900;
+      --red: #c53535;
+      --purple: #7c3bb7;
+      --shadow: 0 10px 24px rgba(18, 25, 38, .08);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    .hidden { display: none !important; }
+    .gate {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: radial-gradient(circle at top left, rgba(245,158,11,.14), transparent 32%), var(--bg);
+    }
+    .loginCard {
+      width: min(420px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .brandRow { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .brandMark {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, var(--blue), var(--teal));
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+    .loginCard h1, .pageTitle h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .loginCard p, .muted { color: var(--muted); }
+    label { display: grid; gap: 6px; font-size: 13px; font-weight: 750; color: var(--muted); }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--fieldLine);
+      border-radius: var(--radius);
+      padding: 10px 11px;
+      background: var(--field);
+      color: var(--text);
+      outline: none;
+    }
+    textarea { resize: vertical; min-height: 88px; }
+    input:focus, textarea:focus, select:focus { border-color: #7ba0ff; box-shadow: 0 0 0 3px rgba(36,88,214,.12); }
+    .btn {
+      border: 1px solid var(--fieldLine);
+      border-radius: var(--radius);
+      padding: 9px 12px;
+      background: var(--button);
+      color: var(--text);
+      font-weight: 800;
+      min-height: 38px;
+    }
+    .btn:hover { border-color: var(--muted); background: var(--hover); }
+    .btn.primary { border-color: var(--amber); background: var(--amber); color: #101827; }
+    .btn.teal { border-color: var(--teal); background: var(--teal); color: #fff; }
+    .btn.danger { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.12); color: var(--red); }
+    .btn.ghost { border-color: transparent; background: transparent; }
+    .btn.small { padding: 6px 9px; min-height: 30px; font-size: 12px; }
+    .btn.call { border-color: var(--green); background: var(--green); color: #fff; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 264px minmax(0, 1fr); }
+    .side {
+      background: var(--nav);
+      border-right: 1px solid var(--line);
+      padding: 18px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .side .brandRow { margin-bottom: 22px; }
+    .side small { color: var(--muted); font-weight: 800; text-transform: uppercase; }
+    .navGroup { margin: 18px 0 8px; }
+    .navBtn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      margin: 3px 0;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--navText);
+      text-align: left;
+      font-weight: 800;
+    }
+    .navBtn:hover { background: var(--hover); }
+    .navBtn.active { background: color-mix(in srgb, var(--amber) 18%, var(--hover)); border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); color: var(--text); }
+    .navIco {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .main { min-width: 0; }
+    .topbar {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      justify-content: space-between;
+      padding: 0 22px;
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 12;
+      backdrop-filter: blur(10px);
+    }
+    .globalSearch { max-width: 560px; flex: 1; }
+    .userPill { display: flex; align-items: center; gap: 9px; font-weight: 850; white-space: nowrap; }
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: color-mix(in srgb, var(--blue) 30%, var(--soft));
+      color: var(--text);
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .content { padding: 24px; max-width: 1540px; margin: 0 auto; }
+    .content.pipelineWide { max-width: none; margin: 0; }
+    .pageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .pageTitle p { margin: 6px 0 0; color: var(--muted); }
+    .toolbar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .grid { display: grid; gap: 14px; }
+    .cols2 { grid-template-columns: minmax(0, 1.55fr) minmax(340px, .9fr); }
+    .cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 2px rgba(0,0,0,.16);
+    }
+    .card.pad { padding: 16px; }
+    .cardHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .cardHead h2, .cardHead h3 { margin: 0; font-size: 16px; }
+    .metric { padding: 16px; }
+    .metric b { display: block; font-size: 28px; letter-spacing: 0; margin-top: 4px; }
+    .metric span { color: var(--muted); font-size: 13px; font-weight: 800; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th, .table td { padding: 12px 14px; border-bottom: 1px solid var(--tableLine); text-align: left; vertical-align: middle; }
+    .table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--bg) 52%, var(--panel)); }
+    .table tr:hover td { background: var(--hover); }
+    .leadCell { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+    .leadName { font-weight: 900; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 900;
+      background: var(--soft);
+      color: #46566e;
+      white-space: nowrap;
+    }
+    .badge.blue { background: #e8f0ff; color: #1f4bc0; }
+    .badge.green { background: #e8f8ef; color: #116c49; }
+    .badge.amber { background: #fff4d8; color: #875400; }
+    .badge.red { background: #ffe9e9; color: #a42525; }
+    .badge.purple { background: #f1e9ff; color: #6e2ead; }
+    .badge.teal { background: #dff8f7; color: #05676e; }
+    .warnBox { border: 1px solid #f0c96b; background: #fff8e5; color: #875400; padding: 12px; border-radius: var(--radius); line-height: 1.45; }
+    .dialPad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .dialKey { min-height: 52px; font-size: 18px; font-weight: 950; }
+    .popoutMode .app { grid-template-columns: minmax(0, 1fr); }
+    .popoutMode .side, .popoutMode .topbar { display: none; }
+    .popoutMode .content { padding: 14px; max-width: 620px; }
+    .popoutMode .pageHead { margin-bottom: 12px; }
+    .splitShell { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 14px; align-items: start; }
+    .drawer {
+      position: sticky;
+      top: 82px;
+      max-height: calc(100vh - 100px);
+      overflow: auto;
+    }
+    .fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .list { display: grid; gap: 8px; }
+    .item {
+      border: 1px solid #e6edf5;
+      border-radius: var(--radius);
+      padding: 10px;
+      background: var(--item);
+    }
+    .item.clickable { cursor: pointer; }
+    .item.clickable:hover { border-color: var(--muted); background: var(--hover); }
+    .empty { border: 1px dashed var(--fieldLine); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); background: var(--empty); }
+    .statusLine {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+    .okText { color: var(--green); }
+    .badText { color: var(--red); }
+    .warnText { color: var(--amber); }
+    .pipelineShell { overflow-x: auto; padding-bottom: 8px; }
+    .pipeline { display: flex; gap: 12px; align-items: stretch; min-width: max-content; padding-bottom: 4px; }
+    .stageCol { flex: 0 0 285px; min-width: 285px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; }
+    .stageCol.dragOver { outline: 2px solid var(--amber); outline-offset: 2px; }
+    [data-pipeline-card] { cursor: grab; }
+    [data-pipeline-card]:active { cursor: grabbing; }
+    .stageCol h3 { margin: 0 0 10px; font-size: 14px; display: flex; justify-content: space-between; }
+    .stageCol .list { overflow-y: auto; padding-right: 2px; }
+    .pipelineScroller {
+      position: sticky;
+      bottom: 0;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      backdrop-filter: blur(8px);
+    }
+    .pipelineScroller input[type="range"] { padding: 0; box-shadow: none; }
+    @media (min-width: 1100px) {
+      .pipelineShell { width: calc(100vw - 264px - 48px); }
+      .stageCol { flex-basis: clamp(285px, 18vw, 360px); min-height: calc(100vh - 220px); }
+      .stageCol .list { max-height: calc(100vh - 285px); }
+    }
+    .fstep {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--empty);
+    }
+    .fstepHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .stepNum {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: #e8f0ff;
+      color: #1f4bc0;
+      font-size: 12px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .delayWrap { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 850; }
+    .delayWrap input { width: 74px; }
+    .delayWrap select { width: auto; }
+    .thread { height: 360px; overflow: auto; padding: 12px; background: var(--empty); border: 1px solid var(--line); border-radius: var(--radius); }
+    .bubble { max-width: 86%; padding: 9px 11px; border-radius: var(--radius); margin: 6px 0; white-space: pre-wrap; }
+    .bubble.in { background: var(--item); border: 1px solid var(--line); }
+    .bubble.out { background: color-mix(in srgb, var(--blue) 24%, var(--item)); border: 1px solid color-mix(in srgb, var(--blue) 45%, var(--line)); margin-left: auto; }
+    .modalShade {
+      position: fixed;
+      inset: 0;
+      background: rgba(18,25,38,.48);
+      display: grid;
+      place-items: center;
+      z-index: 80;
+      padding: 18px;
+    }
+    .modal {
+      width: min(720px, 100%);
+      max-height: 88vh;
+      overflow: auto;
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .modalBody { padding: 16px; display: grid; gap: 12px; }
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      width: min(420px, calc(100vw - 36px));
+      background: #121926;
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+      z-index: 100;
+      font-weight: 750;
+    }
+    .mobileMenu { display: none; }
+    @media (max-width: 1120px) {
+      .cols2, .cols3, .splitShell { grid-template-columns: 1fr; }
+      .drawer { position: static; max-height: none; }
+    }
+    @media (max-width: 820px) {
+      .app { grid-template-columns: 1fr; }
+      .side { position: fixed; inset: 0 auto 0 0; width: 280px; transform: translateX(-100%); transition: transform .18s ease; z-index: 60; }
+      body.navOpen .side { transform: translateX(0); }
+      .mobileMenu { display: inline-flex; }
+      .topbar { padding: 0 12px; }
+      .content { padding: 16px; }
+      .globalSearch { display: none; }
+      .fieldGrid { grid-template-columns: 1fr; }
+      .tableWrap { overflow-x: auto; }
+      .table { min-width: 760px; }
+    }
+  </style>
+</head>
+<body>
+  <section id="gate" class="gate">
+    <div class="loginCard">
+      <div class="brandRow">
+        <div class="brandMark">S8</div>
+        <div>
+          <h1>Smartr8 CRM v2</h1>
+          <p style="margin:4px 0 0">Live workspace, isolated from the current console.</p>
+        </div>
+      </div>
+      <div class="grid">
+        <label>Username<input id="loginUser" autocomplete="username" placeholder="admin" /></label>
+        <label>Password<input id="loginPass" type="password" autocomplete="current-password" /></label>
+        <button id="loginBtn" class="btn primary">Sign in</button>
+        <div id="loginMsg" class="statusLine"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="app" class="app hidden">
+    <aside class="side">
+      <div class="brandRow">
+        <div class="brandMark">S8</div>
+        <div>
+          <strong>Smartr8 CRM</strong>
+          <div class="sub">Adaxa Home workspace</div>
+        </div>
+      </div>
+      <div class="navGroup">
+        <small>Workspace</small>
+        <button class="navBtn active" data-nav="dashboard"><span class="navIco">DB</span>Dashboard</button>
+        <button class="navBtn" data-nav="leads"><span class="navIco">LD</span>Leads</button>
+        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
+        <button class="navBtn" data-nav="pipeline"><span class="navIco">PL</span>Pipeline</button>
+        <button class="navBtn" data-nav="messages"><span class="navIco">MS</span>Conversations</button>
+        <button class="navBtn" data-nav="dialer"><span class="navIco">PH</span>Dialer</button>
+        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
+        <button class="navBtn" data-nav="portal"><span class="navIco">AP</span>Portal / Apps</button>
+        <button class="navBtn" data-nav="documents"><span class="navIco">DC</span>Documents</button>
+      </div>
+      <div class="navGroup">
+        <small>Operations</small>
+        <button class="navBtn" data-nav="automations"><span class="navIco">AU</span>Automations</button>
+        <button class="navBtn" data-nav="settings"><span class="navIco">ST</span>Settings</button>
+        <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
+      </div>
+      <div class="navGroup">
+        <button class="btn danger" data-action="logout" style="width:100%">Sign out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="btn ghost mobileMenu" data-action="mobile-menu">Menu</button>
+        <input id="topSearch" class="globalSearch" type="search" placeholder="Search leads, conversations, phone numbers..." />
+        <div class="userPill">
+          <span id="msgModeBadge" class="badge blue">auto</span>
+          <button id="themeToggle" class="btn small" data-action="toggle-theme">Dark</button>
+          <span class="avatar" id="userInitials">A</span>
+          <span id="userName">Admin</span>
+        </div>
+      </header>
+      <div id="content" class="content"></div>
+    </main>
+  </section>
+
+  <div id="modalShade" class="modalShade hidden">
+    <div class="modal">
+      <div class="cardHead">
+        <h2 id="modalTitle">Action</h2>
+        <button class="btn small" data-action="close-modal">Close</button>
+      </div>
+      <div id="modalBody" class="modalBody"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    (function () {
+      "use strict";
+      var $ = function (id) { return document.getElementById(id); };
+      var state = {
+        token: "",
+        user: null,
+        page: "dashboard",
+        leads: [],
+        selectedLead: null,
+        selectedIds: new Set(),
+        leadPool: [],
+        leadPoolSelectedIds: new Set(),
+        theme: "dark",
+        stages: ["Lead-In", "Replied", "Not Replying", "Quote Sent", "App Completed", "Suspended", "Processing", "Funded", "Lost"],
+        conversations: [],
+        activeThread: null,
+        portalVerifiedUntil: 0,
+        docLead: null,
+        portalApps: [],
+        automations: [],
+        editingAutomation: null,
+        automationDraftSteps: [],
+        dialerClient: null,
+        crmLineReady: false,
+        activeCall: null,
+        activeConferenceName: null,
+        powerDialerLeads: [],
+        powerDialerSelectedIds: new Set()
+      };
+
+      try { state.token = localStorage.getItem("sp_token") || ""; } catch (e) {}
+      try { state.theme = localStorage.getItem("sp_theme") || "dark"; } catch (e) {}
+      applyTheme(state.theme);
+
+      function applyTheme(theme) {
+        state.theme = theme === "light" ? "light" : "dark";
+        document.body.classList.toggle("theme-light", state.theme === "light");
+        if ($("themeToggle")) $("themeToggle").textContent = state.theme === "light" ? "Light" : "Dark";
+        try { localStorage.setItem("sp_theme", state.theme); } catch (e) {}
+      }
+      function toggleTheme() {
+        applyTheme(state.theme === "light" ? "dark" : "light");
+      }
+
+      function esc(value) {
+        return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+          return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+        });
+      }
+      function nameOf(lead) {
+        return [lead && lead.first_name, lead && lead.last_name].filter(Boolean).join(" ") || (lead && (lead.email || lead.phone)) || "Unnamed lead";
+      }
+      function initials(name) {
+        return String(name || "SM").split(/\s+/).filter(Boolean).slice(0, 2).map(function (p) { return p[0]; }).join("").toUpperCase() || "SM";
+      }
+      function money(n) {
+        var v = Number(n || 0);
+        return v ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "$0";
+      }
+      function when(ms) {
+        if (!ms) return "Never";
+        var diff = Date.now() - Number(ms);
+        var mins = Math.round(diff / 60000);
+        if (mins < 2) return "Now";
+        if (mins < 60) return mins + "m ago";
+        var hrs = Math.round(mins / 60);
+        if (hrs < 24) return hrs + "h ago";
+        return Math.round(hrs / 24) + "d ago";
+      }
+      function stageClass(stage) {
+        if (/funded|won/i.test(stage || "")) return "green";
+        if (/lost|suspend/i.test(stage || "")) return "red";
+        if (/quote|processing|app/i.test(stage || "")) return "amber";
+        if (/reply/i.test(stage || "")) return "purple";
+        return "blue";
+      }
+      function appBasePath() {
+        return location.pathname === "/v2" || location.pathname.indexOf("/v2/") === 0 ? "/v2" : "";
+      }
+      function apiPath(path) {
+        if (!path || /^https?:\/\//i.test(path)) return path;
+        var base = appBasePath();
+        if (!base || path === base || path.indexOf(base + "/") === 0) return path;
+        if (/^\/(api|webrtc|calls|dnc|admin|ghl|oauth|providers|webhooks|public|media)(\/|$)/.test(path)) return base + path;
+        return path;
+      }
+      function apiHref(path) {
+        var p = apiPath(path);
+        return p + (p.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(state.token || "");
+      }
+      function api(path, opts) {
+        opts = opts || {};
+        opts.headers = Object.assign({ "x-session-token": state.token }, opts.headers || {});
+        if (!opts.cache) opts.cache = "no-store";
+        return fetch(apiPath(path), opts);
+      }
+      async function json(path, opts) {
+        var r = await api(path, opts);
+        var text = await r.text();
+        var data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text }; }
+        if (!r.ok) throw new Error(data.error || data.detail || text || ("HTTP " + r.status));
+        return data;
+      }
+      function showToast(message, bad) {
+        var t = $("toast");
+        t.textContent = message;
+        t.style.background = bad ? "#8d1f1f" : "#121926";
+        t.classList.remove("hidden");
+        clearTimeout(showToast.timer);
+        showToast.timer = setTimeout(function () { t.classList.add("hidden"); }, 4600);
+      }
+      function status(id, msg, tone) {
+        var el = $(id);
+        if (!el) return;
+        el.className = "statusLine " + (tone || "");
+        el.textContent = msg || "";
+      }
+      function pageShell(title, sub, actions, body) {
+        $("content").innerHTML =
+          '<div class="pageHead"><div class="pageTitle"><h1>' + esc(title) + '</h1><p>' + esc(sub || "") + '</p></div><div class="toolbar">' + (actions || "") + '</div></div>' +
+          body;
+      }
+      function setActivePage(page) {
+        state.page = page;
+        document.body.classList.remove("navOpen");
+        $("content").classList.toggle("pipelineWide", page === "pipeline");
+        document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
+          b.classList.toggle("active", b.dataset.nav === page);
+        });
+      }
+
+      async function submitLogin() {
+        var username = $("loginUser").value.trim();
+        var password = $("loginPass").value;
+        if (!username || !password) { status("loginMsg", "Enter username and password.", "warnText"); return; }
+        status("loginMsg", "Signing in...");
+        try {
+          var data = await json("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username, password: password })
+          });
+          state.token = data.token;
+          state.user = data.user;
+          try { localStorage.setItem("sp_token", state.token); } catch (e) {}
+          $("loginPass").value = "";
+          enterApp();
+        } catch (e) {
+          status("loginMsg", e.message, "badText");
+        }
+      }
+      async function restoreSession() {
+        if (!state.token) return;
+        try {
+          var data = await json("/api/auth/me");
+          state.user = data.user;
+          enterApp();
+        } catch (e) {
+          try { localStorage.removeItem("sp_token"); } catch (x) {}
+          state.token = "";
+        }
+      }
+      function enterApp() {
+        $("gate").classList.add("hidden");
+        $("app").classList.remove("hidden");
+        $("userName").textContent = (state.user && (state.user.name || state.user.username)) || "Admin";
+        $("userInitials").textContent = initials($("userName").textContent);
+        loadMessagingMode();
+        var popout = new URLSearchParams(location.search).get("popout");
+        if (popout === "dialer") {
+          document.body.classList.add("popoutMode");
+          route("dialer");
+        } else {
+          route("dashboard");
+        }
+      }
+
+      async function loadMessagingMode() {
+        try {
+          var data = await json("/api/messaging-mode");
+          $("msgModeBadge").textContent = data.mode || "auto";
+        } catch (e) {}
+      }
+      async function setMessagingMode(mode) {
+        await json("/api/messaging-mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: mode })
+        });
+        $("msgModeBadge").textContent = mode;
+        showToast("Messaging mode set to " + mode + ".");
+      }
+
+      async function route(page) {
+        setActivePage(page);
+        if (page === "dashboard") return loadDashboard();
+        if (page === "leads") return loadLeadsView();
+        if (page === "leadpool") return loadLeadPool();
+        if (page === "pipeline") return loadPipeline();
+        if (page === "messages") return loadMessages();
+        if (page === "dialer") return loadDialer();
+        if (page === "powerdialer") return loadPowerDialer();
+        if (page === "portal") return renderPortal();
+        if (page === "documents") return renderDocuments();
+        if (page === "automations") return loadAutomations();
+        if (page === "settings") return loadSettings();
+      }
+
+      async function loadDashboard() {
+        pageShell("Dashboard", "Live activity, lead health, follow-up, and loan-service readiness.", '<button class="btn primary" data-action="new-lead">New lead</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
+        var dash = {}, leadsData = {};
+        try { dash = await json("/api/dashboard"); } catch (e) {}
+        try { leadsData = await json("/api/leads?limit=10"); } catch (e) {}
+        var leads = leadsData.leads || [];
+        var stats = leadsData.stats || {};
+        var messages = dash.messages || {};
+        var commission = dash.commission || {};
+        var dashBody = $("dashBody");
+        if (!dashBody || state.page !== "dashboard") return;
+        dashBody.innerHTML =
+          '<div class="grid cols3">' +
+            metric("Active leads", stats.active || stats.total || leads.length || 0, "Pipeline and contact records") +
+            metric("Texts today", messages.textsSentToday || dash.textsSentToday || 0, "iMessage-first router") +
+            metric("Commission MTD", money(commission.thisMonth), "Funded deals") +
+          '</div>' +
+          '<div class="grid cols2">' +
+            '<section class="card"><div class="cardHead"><h2>Recent leads</h2><button class="btn small" data-nav="leads">Open Leads</button></div><div class="tableWrap">' + leadsTable(leads.slice(0, 8), false) + '</div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Application services</h2>' + serviceCards() + '</section>' +
+          '</div>';
+      }
+      function metric(label, value, sub) {
+        return '<section class="card metric"><span>' + esc(label) + '</span><b>' + esc(value) + '</b><div class="sub">' + esc(sub) + '</div></section>';
+      }
+
+      async function loadLeadsView() {
+        pageShell("Leads", "Base44-style CRM layout wired to the existing Smartr8 lead, text, email, call, and app APIs.",
+          '<button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New lead</button>',
+          '<div class="splitShell"><section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search name, phone, email, address..." style="width:260px"><select id="stageFilter" style="width:170px"><option value="">All stages</option></select><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadListWrap" class="tableWrap"></div></section><aside id="leadDrawer" class="drawer card pad"><div class="empty">Select a lead to open the full workspace.</div></aside></div>');
+        state.stages.forEach(function (s) { $("stageFilter").insertAdjacentHTML("beforeend", '<option value="' + esc(s) + '">' + esc(s) + '</option>'); });
+        $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
+        $("stageFilter").addEventListener("change", loadLeads);
+        await loadLeads();
+      }
+      async function loadLeads() {
+        var q = $("leadSearch") ? $("leadSearch").value.trim() : "";
+        var stage = $("stageFilter") ? $("stageFilter").value : "";
+        var qs = "?limit=250" + (q ? "&q=" + encodeURIComponent(q) : "") + (stage ? "&stage=" + encodeURIComponent(stage) : "");
+        var data = await json("/api/leads" + qs);
+        state.leads = data.leads || [];
+        if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true);
+      }
+      function leadsTable(leads, selectable) {
+        if (!leads || !leads.length) return '<div class="empty">No leads found.</div>';
+        return '<table class="table"><thead><tr>' +
+          (selectable ? '<th><input type="checkbox" data-action="select-all"></th>' : '') +
+          '<th>Contact</th><th>Stage</th><th>Category</th><th>Consent</th><th>Last activity</th><th></th></tr></thead><tbody>' +
+          leads.map(function (l) {
+            var name = nameOf(l), selected = state.selectedIds.has(l.id);
+            var addr = leadAddressLine(l);
+            return '<tr>' +
+              (selectable ? '<td><input type="checkbox" data-action="toggle-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td>' : '') +
+              '<td><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><div class="leadName">' + esc(name) + '</div><div class="sub">' + esc([l.phone, l.email].filter(Boolean).join(" | ")) + '</div>' + (addr ? '<div class="sub">' + esc(addr) + '</div>' : '') + '</div></div></td>' +
+              '<td><select data-action="lead-stage-quick" data-id="' + esc(l.id) + '">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === (l.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></td>' +
+              '<td>' + esc(l.category || l.source || "manual") + '</td>' +
+              '<td>' + (l.sms_consent ? '<span class="badge green">SMS ok</span>' : '<span class="badge amber">No consent</span>') + '</td>' +
+              '<td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>' +
+              '<td><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button></td>' +
+            '</tr>';
+          }).join("") + '</tbody></table>';
+      }
+
+      async function openLead(id) {
+        var data = await json("/api/leads/" + encodeURIComponent(id));
+        state.selectedLead = data.lead;
+        renderLeadDrawer(data);
+      }
+      function renderLeadDrawer(data) {
+        var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
+        var name = nameOf(lead);
+        var addr = leadAddressParts(lead);
+        $("leadDrawer").innerHTML =
+          '<div class="toolbar" style="justify-content:space-between"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc(lead.phone || "") + '</div></div></div><button class="btn small" data-action="close-detail">Close</button></div>' +
+          '<div class="toolbar" style="margin:14px 0"><span class="badge ' + stageClass(lead.pipeline_stage) + '">' + esc(lead.pipeline_stage) + '</span>' + (data.dnc ? '<span class="badge red">DNC</span>' : '<span class="badge green">Contactable</span>') + (lead.sms_consent ? '<span class="badge green">SMS consent</span>' : '<span class="badge amber">Consent needed</span>') + '</div>' +
+          '<div class="grid fieldGrid">' +
+            field("First", "ldFirst", lead.first_name || "") + field("Last", "ldLast", lead.last_name || "") +
+            field("Phone", "ldPhone", lead.phone || "") + field("Email", "ldEmail", lead.email || "") +
+            field("Property address", "ldAddress", addr.street) + field("City", "ldCity", addr.city) +
+            field("State", "ldState", addr.state) + field("ZIP", "ldZip", addr.zip) +
+            '<label>Pipeline stage<select id="ldStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === lead.pipeline_stage ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
+            '<label>Status<select id="ldStatus">' + ["new","contacted","qualified","nurturing","won","lost"].map(function (s) { return '<option value="' + s + '"' + (s === lead.status ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select></label>' +
+            field("Purpose", "ldPurpose", custom.loan_goal || custom.loan_purpose || "") + field("Home value", "ldHomeValue", custom.home_value || "") +
+            field("Mortgage balance", "ldBalance", custom.mortgage_balance || "") + field("Credit band", "ldCredit", custom.credit || custom.credit_band || "") +
+          '</div>' +
+          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="save-lead">Save profile</button><button class="btn" data-action="sms-consent">Mark SMS consent</button><button class="btn danger" data-action="toggle-dnc" data-on="' + (data.dnc ? "0" : "1") + '">' + (data.dnc ? "Remove DNC" : "Add DNC") + '</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
+          '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0">' +
+          '<div class="grid">' +
+            '<label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button>' +
+            '<label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button>' +
+            '<label>Add note<textarea id="ldNote" placeholder="Internal note..."></textarea></label><button class="btn" data-action="add-note">Add note</button>' +
+          '</div>' +
+          '<div class="toolbar" style="margin:14px 0"><button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button></div><div id="leadActionMsg" class="statusLine"></div>' +
+          '<section class="card pad" style="margin-top:12px"><h3 style="margin-top:0">Documents</h3><div class="fieldGrid"><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>Upload<input id="ldDocFile" type="file"></label></div><button class="btn" data-action="upload-doc" style="margin-top:8px">Upload document</button><div id="docMiniList" class="list" style="margin-top:10px"></div></section>' +
+          '<section class="card pad" style="margin-top:12px"><h3 style="margin-top:0">Audit trail</h3><div class="list">' +
+            activities.slice(0, 8).map(function (a) { return '<div class="item"><b>' + esc(a.type) + '</b><div class="sub">' + esc(when(a.created_at)) + ' | ' + esc(a.status || "") + '</div><div>' + esc(a.body || a.subject || "") + '</div></div>'; }).join("") +
+            (notes.length ? notes.slice(0, 3).map(function (n) { return '<div class="item"><b>Note</b><div class="sub">' + esc(when(n.created_at)) + '</div><div>' + esc(n.body) + '</div></div>'; }).join("") : "") +
+          '</div></section>';
+        loadLeadDocs(lead.id, "docMiniList");
+      }
+      function field(label, id, value) {
+        return '<label>' + esc(label) + '<input id="' + esc(id) + '" value="' + esc(value) + '"></label>';
+      }
+      function passwordField(label, id, value) {
+        return '<label>' + esc(label) + '<input id="' + esc(id) + '" type="password" inputmode="numeric" autocomplete="off" value="' + esc(value) + '"></label>';
+      }
+      async function saveCurrentLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var custom = Object.assign({}, lead.custom || {}, {
+          loan_goal: $("ldPurpose").value.trim(),
+          home_value: $("ldHomeValue").value.trim(),
+          mortgage_balance: $("ldBalance").value.trim(),
+          credit: $("ldCredit").value.trim(),
+          address: $("ldAddress").value.trim(),
+          property_address: $("ldAddress").value.trim(),
+          city: $("ldCity").value.trim(),
+          state: $("ldState").value.trim(),
+          zip: $("ldZip").value.trim()
+        });
+        status("leadSaveMsg", "Saving...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: $("ldFirst").value.trim(),
+            last_name: $("ldLast").value.trim(),
+            phone: $("ldPhone").value.trim(),
+            email: $("ldEmail").value.trim(),
+            pipeline_stage: $("ldStage").value,
+            status: $("ldStatus").value,
+            custom: custom
+          })
+        });
+        state.selectedLead = data.lead;
+        status("leadSaveMsg", "Saved.", "okText");
+        await loadLeads();
+      }
+
+      async function deleteCurrentLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        if (!confirm("Delete " + nameOf(lead) + "? This hides the lead and stops pending automation jobs.")) return;
+        status("leadSaveMsg", "Deleting...");
+        await json("/api/leads/" + encodeURIComponent(lead.id), { method: "DELETE" });
+        state.selectedLead = null;
+        state.selectedIds.delete(lead.id);
+        if ($("leadDrawer")) $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
+        showToast("Lead deleted.");
+        if (state.page === "leadpool") await refreshLeadPool();
+        else if ($("leadListWrap")) await loadLeads();
+      }
+
+      function openNewLeadModal() {
+        openModal("New lead", '<div class="grid fieldGrid">' + field("First name", "newFirst", "") + field("Last name", "newLast", "") + field("Phone", "newPhone", "") + field("Email", "newEmail", "") + '<label>Loan type<select id="newLoanType"><option value="HELOC">HELOC</option><option value="CASHOUT_REFI">Cash-out refi</option><option value="PURCHASE">Purchase</option><option value="GENERAL">General</option></select></label><label><span>SMS consent</span><select id="newSmsConsent"><option value="1">Yes</option><option value="0">No</option></select></label></div><label>Note<textarea id="newNote" placeholder="Lead details..."></textarea></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="newRunAuto" type="checkbox" checked style="width:auto"> Run new-lead automation</label><div class="toolbar"><button class="btn primary" data-action="create-lead">Create lead</button></div><div id="newLeadMsg" class="statusLine"></div>');
+      }
+      async function createLead() {
+        status("newLeadMsg", "Creating...");
+        var body = {
+          first_name: $("newFirst").value.trim(),
+          last_name: $("newLast").value.trim(),
+          phone: $("newPhone").value.trim(),
+          email: $("newEmail").value.trim(),
+          loanType: $("newLoanType").value,
+          sms_consent: $("newSmsConsent").value === "1",
+          runAutomation: $("newRunAuto").checked,
+          custom: { message: $("newNote").value.trim(), loan_goal: $("newLoanType").value }
+        };
+        var data = await json("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        closeModal();
+        showToast("Lead created.");
+        if (state.page !== "leads") await route("leads"); else await loadLeads();
+        openLead(data.lead.id);
+      }
+
+      function selectedPoolIds() {
+        return Array.from(state.leadPoolSelectedIds);
+      }
+      function leadPoolStateOf(lead) {
+        var c = lead && lead.custom ? lead.custom : {};
+        return c.lead_pool_state || c.state || "";
+      }
+      function customValue(custom, keys) {
+        custom = custom || {};
+        for (var i = 0; i < keys.length; i++) {
+          var v = custom[keys[i]];
+          if (v !== undefined && v !== null && String(v).trim()) return String(v).trim();
+        }
+        return "";
+      }
+      function leadAddressParts(lead) {
+        var c = lead && lead.custom ? lead.custom : {};
+        return {
+          street: customValue(c, ["property_address", "address", "street", "street_address", "streetAddress", "address1"]),
+          city: customValue(c, ["city", "property_city", "City"]),
+          state: customValue(c, ["state", "lead_pool_state", "property_state", "State", "region", "Region"]),
+          zip: customValue(c, ["zip", "zipcode", "postal_code", "property_zip", "Zip"])
+        };
+      }
+      function leadAddressLine(lead) {
+        var a = leadAddressParts(lead);
+        return [a.street, [a.city, a.state].filter(Boolean).join(", "), a.zip].filter(Boolean).join(" ");
+      }
+      function leadPoolSampleColumns() {
+        return "first_name,last_name,phone,email,state,tags,source,loan_type,property_address,city,zip,notes,sms_consent";
+      }
+      function setSelectOptions(id, values, label, selected) {
+        var el = $(id);
+        if (!el) return;
+        var current = selected || el.value || "";
+        el.innerHTML = '<option value="">' + esc(label) + '</option>' + (values || []).map(function (v) {
+          return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
+        }).join("");
+        el.value = current;
+      }
+      async function loadLeadPool() {
+        pageShell("Lead Pool", "Old-list contacts live here until you move them into active Leads.",
+          '<button class="btn" data-action="download-pool-sample">Sample CSV</button><button class="btn" data-action="refresh-leadpool">Refresh</button>',
+          '<div class="splitShell">' +
+            '<div class="grid">' +
+              '<div class="grid cols2">' +
+                '<section class="card pad"><h2 style="margin-top:0">Upload old leads</h2><div class="sub" style="margin-bottom:10px">' + esc(leadPoolSampleColumns()) + '</div><input id="poolCsv" type="file" accept=".csv,text/csv"><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="import-leadpool">Upload CSV</button></div><div id="poolStatus" class="statusLine"></div></section>' +
+                '<section class="card pad"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>State<select id="poolState"><option value="">All states</option></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
+              '</div>' +
+              '<section class="card"><div class="cardHead"><h2>Pool records</h2><div class="toolbar"><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
+            '</div>' +
+            '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Open a Lead Pool record to work it like a normal profile.</div></aside>' +
+          '</div>');
+        if ($("poolSearch")) $("poolSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshLeadPool(); });
+        await loadLeadPoolCampaigns();
+        await refreshLeadPool();
+      }
+      async function loadLeadPoolCampaigns() {
+        try {
+          var data = await json("/api/automations");
+          state.automations = data.automations || [];
+          if ($("poolCampaign")) {
+            $("poolCampaign").innerHTML = '<option value="">Choose campaign</option>' + state.automations.map(function (a) {
+              return '<option value="' + esc(a.id) + '">' + esc(a.name || a.id) + (a.enabled ? "" : " (off)") + '</option>';
+            }).join("");
+          }
+        } catch (e) {}
+      }
+      async function refreshLeadPool() {
+        var q = $("poolSearch") ? $("poolSearch").value.trim() : "";
+        var st = $("poolState") ? $("poolState").value : "";
+        var tag = $("poolTag") ? $("poolTag").value : "";
+        var qs = "?limit=1000" + (q ? "&q=" + encodeURIComponent(q) : "") + (st ? "&state=" + encodeURIComponent(st) : "") + (tag ? "&tag=" + encodeURIComponent(tag) : "");
+        var data = await json("/api/lead-pool" + qs);
+        state.leadPool = data.leads || [];
+        setSelectOptions("poolState", data.states || [], "All states", st);
+        setSelectOptions("poolTag", data.tags || [], "All tags", tag);
+        if ($("poolListWrap")) $("poolListWrap").innerHTML = leadPoolTable(state.leadPool, data.total || 0);
+      }
+      function leadPoolTable(leads, total) {
+        if (!leads || !leads.length) return '<div class="empty">No Lead Pool records found.</div>';
+        return '<table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
+          leads.map(function (l) {
+            var name = nameOf(l), selected = state.leadPoolSelectedIds.has(l.id);
+            var addr = leadAddressLine(l);
+            return '<tr>' +
+              '<td><input type="checkbox" data-action="pool-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td>' +
+              '<td><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><div class="leadName">' + esc(name) + '</div><div class="sub">' + esc([l.phone, l.email].filter(Boolean).join(" | ")) + '</div>' + (addr ? '<div class="sub">' + esc(addr) + '</div>' : '') + '</div></div></td>' +
+              '<td>' + esc(leadPoolStateOf(l) || "-") + '</td>' +
+              '<td>' + (l.tags || []).map(function (t) { return '<span class="badge blue">' + esc(t) + '</span>'; }).join(" ") + '</td>' +
+              '<td>' + esc(l.source || "lead-pool") + '</td>' +
+              '<td>' + esc(when(l.updated_at || l.created_at)) + '</td>' +
+              '<td><div class="toolbar"><button class="btn small" data-action="open-pool" data-id="' + esc(l.id) + '">Open</button><button class="btn small primary" data-action="promote-pool" data-id="' + esc(l.id) + '">Move to Leads</button><button class="btn small danger" data-action="delete-pool" data-id="' + esc(l.id) + '">Delete</button></div></td>' +
+            '</tr>';
+          }).join("") + '</tbody></table><div class="sub" style="padding:10px 12px">Showing ' + leads.length + ' of ' + Number(total || leads.length) + ' pool records.</div>';
+      }
+      async function openPoolRecord(id) {
+        var data = await json("/api/leads/" + encodeURIComponent(id));
+        state.selectedLead = data.lead;
+        renderPoolDrawer(data);
+      }
+      function renderPoolDrawer(data) {
+        var lead = data.lead, custom = lead.custom || {}, notes = data.notes || [], activities = data.activities || [];
+        var name = nameOf(lead);
+        var addr = leadAddressParts(lead);
+        $("poolDrawer").innerHTML =
+          '<div class="toolbar" style="justify-content:space-between"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc(lead.phone || lead.email || "") + '</div></div></div><button class="btn small" data-action="close-pool-detail">Close</button></div>' +
+          '<div class="toolbar" style="margin:14px 0"><span class="badge purple">Lead Pool</span>' + (data.dnc ? '<span class="badge red">DNC</span>' : '<span class="badge green">Contactable</span>') + (lead.sms_consent ? '<span class="badge green">SMS consent</span>' : '<span class="badge amber">Consent needed</span>') + '</div>' +
+          '<div class="fieldGrid">' +
+            field("First", "poolFirst", lead.first_name || "") + field("Last", "poolLast", lead.last_name || "") +
+            field("Phone", "poolPhone", lead.phone || "") + field("Email", "poolEmail", lead.email || "") +
+            field("Property address", "poolAddressEdit", addr.street) + field("City", "poolCityEdit", addr.city) +
+            field("State", "poolStateEdit", addr.state || leadPoolStateOf(lead) || "") + field("ZIP", "poolZipEdit", addr.zip) +
+            field("Source", "poolSourceEdit", lead.source || "lead-pool") +
+            field("Loan type", "poolLoanType", custom.loan_type || "") + field("Loan goal", "poolLoanGoal", custom.loan_goal || "") +
+          '</div>' +
+          '<label style="margin-top:10px">Tags<input id="poolTagsEdit" value="' + esc((lead.tags || []).join(", ")) + '"></label>' +
+          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="save-pool-record">Save pool profile</button><button class="btn" data-action="pool-sms-consent">Mark SMS consent</button><button class="btn" data-action="pool-promote-current">Move to Leads</button><button class="btn danger" data-action="pool-delete-current">Delete</button></div><div id="poolDetailMsg" class="statusLine"></div>' +
+          '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0">' +
+          '<div class="grid">' +
+            '<label>Send text<textarea id="poolTextOne">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? I can send updated options. Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="pool-send-one-text">Send text</button>' +
+            '<label>Email subject<input id="poolEmailSubjectOne" value="Still interested in a HELOC, {{first_name}}?"></label><label>Email body<textarea id="poolEmailBodyOne">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.\n\nBest,\nMykoal</textarea></label><button class="btn" data-action="pool-send-one-email">Send email</button>' +
+            '<label>Add note<textarea id="poolNoteOne" placeholder="Internal Lead Pool note..."></textarea></label><button class="btn" data-action="pool-add-note-one">Add note</button>' +
+          '</div>' +
+          '<section class="card pad" style="margin-top:12px"><h3 style="margin-top:0">Timeline</h3><div class="list">' +
+            activities.slice(0, 10).map(function (a) { return '<div class="item"><b>' + esc(a.type) + '</b><div class="sub">' + esc(when(a.created_at)) + ' | ' + esc(a.status || "") + '</div><div>' + esc(a.body || a.subject || "") + '</div></div>'; }).join("") +
+            (notes.length ? notes.slice(0, 5).map(function (n) { return '<div class="item"><b>Note</b><div class="sub">' + esc(when(n.created_at)) + '</div><div>' + esc(n.body) + '</div></div>'; }).join("") : "") +
+          '</div></section>';
+      }
+      async function savePoolRecord() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var custom = Object.assign({}, lead.custom || {}, {
+          lead_pool: true,
+          lead_pool_state: $("poolStateEdit").value.trim(),
+          state: $("poolStateEdit").value.trim(),
+          address: $("poolAddressEdit").value.trim(),
+          property_address: $("poolAddressEdit").value.trim(),
+          city: $("poolCityEdit").value.trim(),
+          zip: $("poolZipEdit").value.trim(),
+          loan_type: $("poolLoanType").value.trim(),
+          loan_goal: $("poolLoanGoal").value.trim()
+        });
+        var tags = $("poolTagsEdit").value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+        status("poolDetailMsg", "Saving...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: $("poolFirst").value.trim(),
+            last_name: $("poolLast").value.trim(),
+            phone: $("poolPhone").value.trim(),
+            email: $("poolEmail").value.trim(),
+            source: $("poolSourceEdit").value.trim() || "lead-pool",
+            tags: tags,
+            custom: custom,
+            contact_only: true
+          })
+        });
+        state.selectedLead = data.lead;
+        status("poolDetailMsg", "Saved.", "okText");
+        await refreshLeadPool();
+        await openPoolRecord(data.lead.id);
+      }
+      async function poolLeadAction(action) {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var path = "", body = {};
+        if (action === "text") { path = "/api/leads/" + lead.id + "/message"; body = { message: $("poolTextOne").value }; }
+        if (action === "email") { path = "/api/leads/" + lead.id + "/email"; body = { subject: $("poolEmailSubjectOne").value, body: $("poolEmailBodyOne").value }; }
+        if (action === "note") { path = "/api/leads/" + lead.id + "/notes"; body = { body: $("poolNoteOne").value }; }
+        if (!path) return;
+        status("poolDetailMsg", "Running...");
+        var data = await json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        status("poolDetailMsg", JSON.stringify(data).slice(0, 220), data.ok === false ? "warnText" : "okText");
+        if (action === "note" && $("poolNoteOne")) $("poolNoteOne").value = "";
+        await openPoolRecord(lead.id);
+      }
+      async function importLeadPoolCsv() {
+        var file = $("poolCsv") && $("poolCsv").files && $("poolCsv").files[0];
+        if (!file) { status("poolStatus", "Choose a CSV first.", "warnText"); return; }
+        status("poolStatus", "Uploading...");
+        var csv = await file.text();
+        var data = await json("/api/lead-pool/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csv: csv })
+        });
+        state.leadPoolSelectedIds.clear();
+        status("poolStatus", "Imported " + data.created + ". Duplicates " + data.duplicates + ". Skipped " + data.skipped + ".", data.created ? "okText" : "warnText");
+        await refreshLeadPool();
+      }
+      function downloadLeadPoolSample() {
+        var a = document.createElement("a");
+        a.href = apiHref("/api/lead-pool/sample.csv");
+        a.download = "lead-pool-sample.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      function openPoolBlast(kind) {
+        var ids = selectedPoolIds();
+        if (!ids.length) { showToast("Select Lead Pool records first.", true); return; }
+        if (kind === "text") {
+          openModal("Text Lead Pool", '<p class="muted">Use {{first_name}}, {{last_name}}, {{name}}, {{email}}, and {{phone}}.</p><textarea id="poolBlastText" rows="7">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? I can send updated options. Reply YES to continue or STOP to opt out.</textarea><button class="btn primary" data-action="send-pool-text">Send to ' + ids.length + ' selected</button><div id="poolBlastMsg" class="statusLine"></div>');
+        } else {
+          openModal("Email Lead Pool", '<label>Subject<input id="poolBlastSubject" value="Still interested in a HELOC, {{first_name}}?"></label><label>Message<textarea id="poolBlastEmail" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit, but we never got a chance to finish reviewing your options.\n\nA HELOC may be useful if you are looking to access equity for home improvements, debt consolidation, emergency funds, investment opportunities, or large expenses without refinancing your entire first mortgage.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.\n\nBest,\nMykoal</textarea></label><button class="btn primary" data-action="send-pool-email">Send to ' + ids.length + ' selected</button><div id="poolBlastMsg" class="statusLine"></div>');
+        }
+      }
+      async function sendPoolText() {
+        status("poolBlastMsg", "Sending...");
+        var data = await json("/api/leads/blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedPoolIds(), message: $("poolBlastText").value }) });
+        status("poolBlastMsg", "Sent " + data.sent + ", skipped " + data.skipped + ", failed " + data.failed + ".", data.failed ? "warnText" : "okText");
+      }
+      async function sendPoolEmail() {
+        status("poolBlastMsg", "Sending...");
+        var data = await json("/api/leads/email-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedPoolIds(), subject: $("poolBlastSubject").value, body: $("poolBlastEmail").value }) });
+        status("poolBlastMsg", "Sent " + data.sent + ", skipped " + data.skipped + ", failed " + data.failed + ".", data.failed ? "warnText" : "okText");
+      }
+      async function enrollLeadPool() {
+        var ids = selectedPoolIds();
+        var automationId = $("poolCampaign") ? $("poolCampaign").value : "";
+        if (!ids.length) { status("poolActionMsg", "Select pool records first.", "warnText"); return; }
+        if (!automationId) { status("poolActionMsg", "Choose a campaign.", "warnText"); return; }
+        status("poolActionMsg", "Enrolling...");
+        var data = await json("/api/lead-pool/enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids, automationId: automationId }) });
+        status("poolActionMsg", "Enrolled " + data.enrolled + ", skipped " + data.skipped + ".", data.enrolled ? "okText" : "warnText");
+      }
+      async function deleteSelectedPoolLeads() {
+        var ids = selectedPoolIds();
+        if (!ids.length) { status("poolActionMsg", "Select pool records first.", "warnText"); return; }
+        if (!confirm("Delete " + ids.length + " Lead Pool records?")) return;
+        var data = await json("/api/leads/bulk-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids }) });
+        state.leadPoolSelectedIds.clear();
+        status("poolActionMsg", "Deleted " + data.deleted + ".", "okText");
+        await refreshLeadPool();
+      }
+      async function promotePoolLead(id) {
+        await json("/api/lead-pool/" + encodeURIComponent(id) + "/promote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        state.leadPoolSelectedIds.delete(id);
+        showToast("Moved to active Leads.");
+        await refreshLeadPool();
+      }
+      async function deletePoolLead(id) {
+        if (!confirm("Delete this Lead Pool record?")) return false;
+        await json("/api/leads/" + encodeURIComponent(id), { method: "DELETE" });
+        state.leadPoolSelectedIds.delete(id);
+        showToast("Lead Pool record deleted.");
+        await refreshLeadPool();
+        return true;
+      }
+
+      async function loadPipeline() {
+        pageShell("Pipeline", "Stage board for active mortgage and lead workflows.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="pipelineShell" class="pipelineShell"><div id="pipe" class="pipeline"></div></div><div class="pipelineScroller"><span class="sub">Slide board</span><input id="pipelineSlider" type="range" min="0" max="0" value="0"></div>');
+        var data = await json("/api/pipeline");
+        state.stages = (data.stages || []).map(function (s) { return s.name || s; });
+        var leads = data.leads || [];
+        $("pipe").innerHTML = state.stages.map(function (stage) {
+          var rows = leads.filter(function (l) { return (l.pipeline_stage || "Lead-In") === stage; });
+          return '<section class="stageCol" data-stage-drop="' + esc(stage) + '"><h3><span>' + esc(stage) + '</span><span class="badge">' + rows.length + '</span></h3><div class="list">' +
+            rows.slice(0, 40).map(function (l) { return '<div class="item clickable" draggable="true" data-pipeline-card="1" data-action="open-lead-from-pipeline" data-id="' + esc(l.id) + '" data-stage="' + esc(l.pipeline_stage || "Lead-In") + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div></div>'; }).join("") +
+            '</div></section>';
+        }).join("");
+        setupPipelineSlider();
+      }
+      function setupPipelineSlider() {
+        var shell = $("pipelineShell");
+        var slider = $("pipelineSlider");
+        if (!shell || !slider) return;
+        function syncMax() {
+          var max = Math.max(0, shell.scrollWidth - shell.clientWidth);
+          slider.max = String(max);
+          slider.disabled = max < 2;
+          if (Number(slider.value) > max) slider.value = String(max);
+        }
+        slider.addEventListener("input", function () {
+          shell.scrollLeft = Number(slider.value) || 0;
+        });
+        shell.addEventListener("scroll", function () {
+          slider.value = String(Math.round(shell.scrollLeft));
+        });
+        setTimeout(syncMax, 0);
+        setTimeout(syncMax, 250);
+      }
+      async function moveLeadStage(leadId, stage, opts) {
+        if (!leadId || !stage) return null;
+        var data = await json("/api/leads/" + encodeURIComponent(leadId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pipeline_stage: stage })
+        });
+        if (!opts || !opts.quiet) showToast("Moved to " + stage + ".");
+        if (state.selectedLead && state.selectedLead.id === leadId) state.selectedLead = data.lead;
+        return data.lead;
+      }
+      async function quickLeadStage(el) {
+        var lead = await moveLeadStage(el.dataset.id, el.value, { quiet: true });
+        if (lead && state.selectedLead && state.selectedLead.id === lead.id) await openLead(lead.id);
+        if ($("leadListWrap")) await loadLeads();
+      }
+      document.addEventListener("dragstart", function (e) {
+        var card = e.target.closest("[data-pipeline-card]");
+        if (!card || !e.dataTransfer) return;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", card.dataset.id || "");
+      });
+      document.addEventListener("dragover", function (e) {
+        var col = e.target.closest("[data-stage-drop]");
+        if (!col) return;
+        e.preventDefault();
+        col.classList.add("dragOver");
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      });
+      document.addEventListener("dragleave", function (e) {
+        var col = e.target.closest("[data-stage-drop]");
+        if (col && !col.contains(e.relatedTarget)) col.classList.remove("dragOver");
+      });
+      document.addEventListener("drop", async function (e) {
+        var col = e.target.closest("[data-stage-drop]");
+        if (!col || !e.dataTransfer) return;
+        e.preventDefault();
+        col.classList.remove("dragOver");
+        var id = e.dataTransfer.getData("text/plain");
+        var stage = col.dataset.stageDrop;
+        try {
+          await moveLeadStage(id, stage);
+          if (state.page === "pipeline") await loadPipeline();
+        } catch (err) {
+          showToast(err.message || String(err), true);
+        }
+      });
+
+      async function loadMessages() {
+        pageShell("Conversations", "Recent local message threads with iMessage-first sending and SMS fallback.", '<button class="btn" data-action="refresh">Refresh</button>', '<div class="grid cols2"><section class="card"><div class="cardHead"><h2>Inbox</h2></div><div id="convList" class="list" style="padding:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Thread</h2><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Write a message..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button><button class="btn" data-action="refresh-thread">Refresh thread</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div></section></div>');
+        var data = await json("/api/conversations");
+        state.conversations = data.conversations || [];
+        $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
+          return '<div class="item clickable" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><b>' + esc(c.name || c.phone || "Conversation") + '</b><div class="sub">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "") + '</div></div>';
+        }).join("") : '<div class="empty">No conversations yet.</div>';
+      }
+      function setConversationMode(mode) {
+        var isEmail = mode === "email";
+        if ($("convTextPanel")) $("convTextPanel").classList.toggle("hidden", isEmail);
+        if ($("convEmailPanel")) $("convEmailPanel").classList.toggle("hidden", !isEmail);
+        document.querySelectorAll('[data-action="conv-compose-mode"]').forEach(function (b) {
+          b.classList.toggle("primary", b.dataset.mode === mode);
+        });
+      }
+      async function openThread(id, phone, email) {
+        state.activeThread = id || null;
+        if ($("msgPhone")) $("msgPhone").value = phone || "";
+        if ($("convEmailTo")) $("convEmailTo").value = email || "";
+        var data = await json("/api/messages/" + encodeURIComponent(id));
+        $("thread").innerHTML = (data.messages || []).length ? (data.messages || []).map(function (m) {
+          var dir = m.direction === "inbound" ? "in" : "out";
+          return '<div class="bubble ' + dir + '">' + esc(m.body || "") + '<div class="sub">' + esc(m.channel || "") + ' ' + esc(m.status || "") + '</div></div>';
+        }).join("") : '<div class="empty">No messages logged yet.</div>';
+        $("thread").scrollTop = $("thread").scrollHeight;
+      }
+      async function sendThread() {
+        var message = $("msgBody").value.trim();
+        var phone = $("msgPhone").value.trim();
+        if (!message) { status("msgStatus", "Write a message first.", "warnText"); return; }
+        status("msgStatus", "Sending...");
+        var data = await json("/api/messages/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactId: state.activeThread || undefined, phone: phone || undefined, message: message })
+        });
+        state.activeThread = data.contactId || state.activeThread;
+        $("msgBody").value = "";
+        status("msgStatus", "Sent via " + data.path + ". " + (data.detail || ""), data.ok ? "okText" : "warnText");
+        if (state.activeThread) openThread(state.activeThread, phone);
+      }
+      async function sendConversationEmail() {
+        var to = $("convEmailTo").value.trim();
+        var subject = $("convEmailSubject").value.trim();
+        var body = $("convEmailBody").value.trim();
+        if (!to) { status("convEmailStatus", "Enter an email address.", "warnText"); return; }
+        if (!subject || !body) { status("convEmailStatus", "Subject and message are required.", "warnText"); return; }
+        status("convEmailStatus", "Sending...");
+        var data = await json("/api/email/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: to, subject: subject, body: body })
+        });
+        status("convEmailStatus", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+      }
+
+      async function loadDialer() {
+        var pop = document.body.classList.contains("popoutMode");
+        pageShell("Dialer", "CRM direct calling, cell bridge, inbound forwarding, call merge, and recent call activity.", '<button class="btn" data-action="popout-dialer">' + (pop ? "Already popped out" : "Pop out") + '</button><button class="btn" data-action="connect-crm-line">Connect CRM line</button><button class="btn" data-action="refresh-call-log">Refresh log</button>',
+          '<div class="grid cols2">' +
+            '<section class="card pad"><h2 style="margin-top:0">Place call</h2><audio id="remoteAudio" autoplay></audio><div id="crmLineStatus" class="statusLine">CRM line not connected.</div><label>Phone number<input id="dialPhone" type="tel" placeholder="+16232808351"></label><div class="fieldGrid"><label>Call path<select id="dialPath"><option value="crm">CRM direct</option><option value="cell">Cell bridge</option></select></label><label>Call from<select id="dialFrom"><option value="">Auto</option></select></label></div><div class="dialPad" style="margin-top:10px">' +
+              ["1","2","3","4","5","6","7","8","9","*","0","#"].map(function (n) { return '<button class="btn dialKey" data-action="dial-key" data-key="' + n + '">' + n + '</button>'; }).join("") +
+            '</div><div class="toolbar" style="margin-top:12px"><button class="btn call" data-action="dial-call">Call number</button><button class="btn danger" data-action="dial-end-call">End call</button><button class="btn" data-action="dial-backspace">Backspace</button><button class="btn" data-action="dial-clear">Clear</button></div><div id="dialMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Current lead</h2><div id="dialLeadBox" class="empty">Open a lead, then use this shortcut from the dialer.</div><div class="toolbar" style="margin-top:12px"><button class="btn teal" data-action="dial-selected-lead">Call selected lead</button></div><div id="dialLeadMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Incoming / active call</h2><div id="incomingCallBox" class="empty">Connect the CRM line to receive calls here.</div><div class="toolbar" style="margin-top:10px"><button class="btn call" data-action="dial-answer">Answer</button><button class="btn danger" data-action="dial-decline">Decline</button></div><label style="margin-top:12px">Add caller<input id="mergePhone" type="tel" placeholder="Number to merge into active call"></label><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="merge-caller">Merge caller</button><button class="btn danger" data-action="end-conference">End merged call</button></div><div id="mergeMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Inbound forwarding</h2><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="dialForwarding" type="checkbox" style="width:auto"> Forward inbound calls to my cell after CRM no-answer</label><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="save-forwarding">Save forwarding</button></div><div id="forwardingMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">Call log</h2><button class="btn small" data-action="refresh-call-log">Refresh</button></div><div id="callLogList" class="list" style="margin-top:12px"></div></section>' +
+          '</div>');
+        renderDialLead();
+        await loadDialerNumbers("dialFrom");
+        await loadForwarding();
+        await loadCallLog();
+      }
+      function renderDialLead() {
+        var lead = state.selectedLead;
+        if (!$("dialLeadBox")) return;
+        if (!lead) {
+          $("dialLeadBox").className = "empty";
+          $("dialLeadBox").innerHTML = "No lead selected yet.";
+          return;
+        }
+        $("dialLeadBox").className = "item";
+        $("dialLeadBox").innerHTML = '<b>' + esc(nameOf(lead)) + '</b><div class="sub">' + esc(lead.phone || lead.email || "No phone") + '</div>';
+        if ($("dialPhone") && lead.phone && !$("dialPhone").value) $("dialPhone").value = lead.phone;
+      }
+      async function loadForwarding() {
+        if (!$("dialForwarding")) return;
+        try {
+          var data = await json("/api/call-forwarding");
+          $("dialForwarding").checked = !!data.enabled;
+          status("forwardingMsg", "Mode: " + (data.mode || "default") + ". Window: " + (data.inWindow ? "open" : "closed") + ".", data.enabled ? "okText" : "");
+        } catch (e) {
+          status("forwardingMsg", e.message, "badText");
+        }
+      }
+      async function saveForwarding() {
+        status("forwardingMsg", "Saving...");
+        var data = await json("/api/call-forwarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: $("dialForwarding").checked }) });
+        status("forwardingMsg", data.enabled ? "Inbound forwarding is on." : "Inbound forwarding is off.", data.enabled ? "okText" : "warnText");
+      }
+      async function loadDialerNumbers(selectId) {
+        try {
+          var data = await json("/api/numbers");
+          var sel = $(selectId);
+          if (!sel) return;
+          sel.innerHTML = '<option value="">Auto</option>' + (data.numbers || []).map(function (n) {
+            return '<option value="' + esc(n.e164) + '">' + esc(n.label || n.e164) + '</option>';
+          }).join("");
+        } catch (e) {}
+      }
+      function telnyxSDK() {
+        return (window.TelnyxWebRTC && (window.TelnyxWebRTC.TelnyxRTC || window.TelnyxWebRTC.default)) || window.TelnyxRTC;
+      }
+      function activeCallControlId() {
+        var c = state.activeCall;
+        if (!c) return "";
+        return (c.telnyxIDs && c.telnyxIDs.telnyxCallControlId) || c.telnyxCallControlId || (c.options && c.options.telnyxCallControlId) || "";
+      }
+      async function connectCrmLine() {
+        var SDK = telnyxSDK();
+        if (!SDK) { status("crmLineStatus", "Telnyx SDK is still loading.", "warnText"); return; }
+        if (state.dialerClient && state.crmLineReady) { status("crmLineStatus", "CRM line ready.", "okText"); return; }
+        status("crmLineStatus", "Connecting CRM line...");
+        if (state.dialerClient) {
+          try { state.dialerClient.disconnect(); } catch (e) {}
+          state.dialerClient = null;
+          state.crmLineReady = false;
+        }
+        var token = await json("/webrtc/token", { method: "POST" });
+        var client = new SDK({ login_token: token.token });
+        state.dialerClient = client;
+        try { client.remoteElement = "remoteAudio"; } catch (e) {}
+        var readyResolve;
+        var readyPromise = new Promise(function (resolve) { readyResolve = resolve; });
+        var readyTimer = setTimeout(function () { if (readyResolve) readyResolve(false); }, 9000);
+        client.on("telnyx.ready", function () {
+          state.crmLineReady = true;
+          clearTimeout(readyTimer);
+          status("crmLineStatus", "CRM line ready.", "okText");
+          if (readyResolve) readyResolve(true);
+        });
+        client.on("telnyx.error", function (ev) {
+          state.crmLineReady = false;
+          status("crmLineStatus", "CRM line error: " + JSON.stringify((ev && ev.error) || ev).slice(0, 160), "badText");
+        });
+        client.on("telnyx.notification", function (n) {
+          if (n.type !== "callUpdate" || !n.call) return;
+          state.activeCall = n.call;
+          var st = n.call.state || "call";
+          var incoming = n.call.direction === "inbound" && st === "ringing";
+          var who = (n.call.options && (n.call.options.remoteCallerNumber || n.call.options.callerNumber)) || n.call.remoteCallerNumber || "Unknown";
+          if ($("incomingCallBox")) {
+            $("incomingCallBox").className = "item";
+            $("incomingCallBox").innerHTML = '<b>' + esc(incoming ? "Incoming call" : "Active call") + '</b><div class="sub">' + esc(who + " | " + st) + '</div>';
+          }
+          status("crmLineStatus", "Call: " + st, /hangup|destroy/i.test(st) ? "" : "okText");
+          if (/hangup|destroy/i.test(st)) {
+            state.activeCall = null;
+            if ($("incomingCallBox")) { $("incomingCallBox").className = "empty"; $("incomingCallBox").innerHTML = "No active call."; }
+            if (state.activeConferenceName) endConference(true);
+          }
+        });
+        client.connect();
+        return readyPromise;
+      }
+      async function dialCrmDirect(phone) {
+        if (!state.dialerClient || !state.crmLineReady) await connectCrmLine();
+        if (!state.dialerClient || !state.crmLineReady) throw new Error("CRM line is not connected yet.");
+        var from = $("dialFrom") ? $("dialFrom").value : "";
+        if (!from) {
+          try {
+            var route = await json("/api/route-from/" + encodeURIComponent(phone));
+            from = route.from || "";
+          } catch (e) {}
+        }
+        status("dialMsg", "Dialing from CRM...");
+        state.activeCall = state.dialerClient.newCall({ destinationNumber: phone, callerNumber: from || undefined, callerName: from || undefined, audio: true, video: false });
+        status("dialMsg", "CRM call started.", "okText");
+      }
+      async function dialNumber(phone) {
+        phone = String(phone || "").trim();
+        if (!phone) { status("dialMsg", "Enter a phone number first.", "warnText"); return; }
+        if (($("dialPath") && $("dialPath").value) === "crm") {
+          await dialCrmDirect(phone);
+        } else {
+          status("dialMsg", "Starting cell bridge...");
+          var data = await json("/calls/click-to-call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: phone }) });
+          status("dialMsg", JSON.stringify(data).slice(0, 260), data.ok ? "okText" : "warnText");
+        }
+        await loadCallLog();
+      }
+      function answerActiveCall() {
+        if (state.activeCall && state.activeCall.answer) {
+          state.activeCall.answer();
+          status("crmLineStatus", "Answered.", "okText");
+        } else {
+          status("crmLineStatus", "No incoming call to answer.", "warnText");
+        }
+      }
+      function endActiveCall() {
+        if (state.activeCall && state.activeCall.hangup) {
+          state.activeCall.hangup();
+          status("crmLineStatus", "Ending call...");
+        } else {
+          status("crmLineStatus", "No active call.", "warnText");
+        }
+      }
+      async function mergeCaller() {
+        var phone = $("mergePhone") ? $("mergePhone").value.trim() : "";
+        if (!phone) { status("mergeMsg", "Enter a caller to merge.", "warnText"); return; }
+        status("mergeMsg", "Merging...");
+        var ccid = activeCallControlId();
+        var path = state.activeConferenceName ? "/calls/conference/add" : "/calls/conference/from-call";
+        var body = state.activeConferenceName ? { name: state.activeConferenceName, phone: phone } : { ccid: ccid, phone: phone };
+        if (!state.activeConferenceName && !ccid) { status("mergeMsg", "No active CRM call control id yet.", "warnText"); return; }
+        var data = await json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (data.name) state.activeConferenceName = data.name;
+        if ($("mergePhone")) $("mergePhone").value = "";
+        status("mergeMsg", data.ok ? "Caller is being merged." : JSON.stringify(data).slice(0, 180), data.ok ? "okText" : "warnText");
+      }
+      async function endConference(silent) {
+        var name = state.activeConferenceName;
+        state.activeConferenceName = null;
+        if (!name) { if (!silent) status("mergeMsg", "No merged call is active.", "warnText"); return; }
+        await json("/calls/conference/hangup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name }) });
+        if (!silent) status("mergeMsg", "Merged call ended.", "okText");
+      }
+      async function dialSelectedLead() {
+        if (!state.selectedLead) { status("dialLeadMsg", "Open/select a lead first.", "warnText"); return; }
+        if (!state.selectedLead.phone) { status("dialLeadMsg", "Selected lead has no phone.", "warnText"); return; }
+        if ($("dialPhone")) $("dialPhone").value = state.selectedLead.phone;
+        status("dialLeadMsg", "Starting call...");
+        await dialNumber(state.selectedLead.phone);
+        status("dialLeadMsg", "Call started.", "okText");
+        await loadCallLog();
+      }
+      async function loadCallLog() {
+        if (!$("callLogList")) return;
+        $("callLogList").innerHTML = '<div class="empty">Loading calls...</div>';
+        try {
+          var data = await json("/api/calls/log");
+          var calls = data.calls || [];
+          $("callLogList").innerHTML = calls.length ? calls.slice(0, 60).map(function (c) {
+            var name = c.name || c.contact || c.phone || c.from || "Call";
+            var meta = [c.direction, c.outcome || c.status, c.phone || c.from || c.to, c.created_at ? new Date(c.created_at).toLocaleString() : ""].filter(Boolean).join(" | ");
+            return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(name) + '</b><div class="sub">' + esc(meta) + '</div></div><button class="btn small danger" data-action="delete-call-log" data-id="' + esc(c.id) + '">Delete</button></div></div>';
+          }).join("") : '<div class="empty">No calls logged yet.</div>';
+        } catch (e) {
+          $("callLogList").innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>';
+        }
+      }
+      async function deleteCallLog(id) {
+        await json("/api/calls/log/" + encodeURIComponent(id) + "/delete", { method: "POST" });
+        showToast("Call log entry removed.");
+        await loadCallLog();
+      }
+      function popoutDialer() {
+        var url = location.origin + location.pathname + "?popout=dialer";
+        window.open(url, "smartr8Dialer", "popup=yes,width=460,height=760,menubar=no,toolbar=no,location=no,status=no");
+      }
+
+      async function loadPowerDialer() {
+        pageShell("Power Dialer", "Progressive dialing with answering-machine detection before CRM/cell bridge.", '<button class="btn" data-action="refresh-power-status">Status</button>',
+          '<div class="grid cols2">' +
+            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Queue status</h2><div id="powerStatus" class="list"><div class="empty">No status loaded.</div></div></section>' +
+          '</div>' +
+          '<section class="card"><div class="cardHead"><h2>Dial list</h2><div class="toolbar"><button class="btn small" data-action="refresh-power-leads">Refresh</button></div></div><div id="powerLeadWrap" class="tableWrap"></div></section>');
+        if ($("powerSearch")) $("powerSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshPowerLeads(); });
+        await loadDialerNumbers("powerFrom");
+        await refreshPowerLeads();
+        await refreshPowerStatus();
+      }
+      async function refreshPowerLeads() {
+        var q = $("powerSearch") ? $("powerSearch").value.trim() : "";
+        var data = await json("/api/leads?limit=250&includeContacts=1" + (q ? "&q=" + encodeURIComponent(q) : ""));
+        state.powerDialerLeads = data.leads || [];
+        if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
+      }
+      function powerDialerTable(leads) {
+        if (!leads || !leads.length) return '<div class="empty">No leads found.</div>';
+        return '<table class="table"><thead><tr><th><input type="checkbox" data-action="power-select-all"></th><th>Contact</th><th>Stage</th><th>Consent</th><th>Phone</th></tr></thead><tbody>' +
+          leads.map(function (l) {
+            var selected = state.powerDialerSelectedIds.has(l.id);
+            return '<tr><td><input type="checkbox" data-action="power-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td><td><div class="leadCell"><span class="avatar">' + esc(initials(nameOf(l))) + '</span><div><div class="leadName">' + esc(nameOf(l)) + '</div><div class="sub">' + esc(l.email || "") + '</div></div></div></td><td><span class="badge ' + stageClass(l.pipeline_stage) + '">' + esc(l.pipeline_stage || l.status || "Lead") + '</span></td><td>' + (l.sms_consent ? '<span class="badge green">consent</span>' : '<span class="badge amber">review</span>') + '</td><td>' + esc(l.phone || "") + '</td></tr>';
+          }).join("") + '</tbody></table>';
+      }
+      async function startPowerDialer() {
+        var ids = Array.from(state.powerDialerSelectedIds);
+        if (!ids.length) { status("powerMsg", "Select leads first.", "warnText"); return; }
+        if (($("powerConnect") && $("powerConnect").value) === "crm" && !state.dialerClient) {
+          await connectCrmLine();
+        }
+        status("powerMsg", "Starting Power Dialer...");
+        var data = await json("/calls/power-dialer/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ids: ids,
+            connectTo: $("powerConnect").value,
+            from: $("powerFrom").value || undefined,
+            concurrency: Number($("powerConcurrency").value || 1)
+          })
+        });
+        status("powerMsg", "Queued " + data.queued + ", active " + data.active + ".", "okText");
+        await refreshPowerStatus();
+      }
+      async function stopPowerDialer() {
+        var data = await json("/calls/power-dialer/stop", { method: "POST" });
+        status("powerMsg", "Stopped queue. Cleared " + data.cleared + ", active " + data.active + ".", "warnText");
+        await refreshPowerStatus();
+      }
+      async function refreshPowerStatus() {
+        if (!$("powerStatus")) return;
+        var data = await json("/calls/power-dialer/status");
+        $("powerStatus").innerHTML =
+          '<div class="item"><b>' + (data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>';
+      }
+
+      function renderPortal() {
+        pageShell("Portal / Apps", "Step-up verification protects active borrower applications, co-borrowers, MISMO export, and service ordering.", '<button class="btn" data-action="refresh-portal-apps">Refresh apps</button>', '<div id="portalBody"></div>');
+        var body = $("portalBody");
+        if (!body) return;
+        body.innerHTML =
+          '<section id="portalGate" class="card pad"><h2 style="margin-top:0">Two-factor verification</h2><p class="muted">Re-enter your password before opening borrower DOB, SSN, income, employment, co-borrower, documents, or service orders.</p><div class="fieldGrid"><label>Password<input id="portalPass" type="password"></label><div style="align-self:end"><button class="btn primary" data-action="portal-verify">Verify</button></div></div><div id="portalMsg" class="statusLine"></div></section>' +
+          '<section id="portalShell" class="hidden grid cols2">' +
+            '<div class="card pad"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">Active apps</h2><button class="btn small" data-action="refresh-portal-apps">Refresh</button></div><div id="portalApps" class="list" style="margin-top:12px"></div></div>' +
+            '<div class="card pad"><h2 style="margin-top:0">Find / start application</h2><div class="toolbar"><input id="portalSearch" type="search" placeholder="Search lead..." style="flex:1"><button class="btn" data-action="portal-search">Search</button></div><div id="portalResults" class="list" style="margin-top:12px"></div></div>' +
+            '<div class="card pad" style="grid-column:1/-1"><div id="portalFile" class="empty">Select an active app or search for a borrower.</div></div>' +
+            '<div class="card pad"><h2 style="margin-top:0">Application services</h2>' + serviceCards(true) + '<div id="portalActionMsg" class="statusLine"></div></div>' +
+            '<div class="card pad"><h2 style="margin-top:0">Data sensitivity</h2><div class="warnBox">Borrower financial data stays behind Portal / Apps verification. Full SSN, DOB, income, employment, and co-borrower data are saved in encrypted storage when BORROWER_DATA_KEY is configured.</div></div>' +
+          '</section>';
+        if (Date.now() < state.portalVerifiedUntil) unlockPortal();
+      }
+      async function verifyPortal() {
+        var pass = $("portalPass").value;
+        status("portalMsg", "Verifying...");
+        var data = await json("/api/auth/portal-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pass }) });
+        state.portalVerifiedUntil = Number(data.verifiedUntil || (Date.now() + 900000));
+        unlockPortal();
+        if ($("portalMsg")) status("portalMsg", "Verified.", "okText");
+      }
+      function unlockPortal() {
+        if ($("portalGate")) $("portalGate").classList.add("hidden");
+        if ($("portalShell")) $("portalShell").classList.remove("hidden");
+        loadPortalApps();
+      }
+      async function portalSearch() {
+        var q = $("portalSearch").value.trim();
+        var data = await json("/api/leads?q=" + encodeURIComponent(q) + "&limit=12&includeContacts=1");
+        $("portalResults").innerHTML = (data.leads || []).map(function (l) {
+          return '<div class="item clickable" data-action="portal-select" data-id="' + esc(l.id) + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div><span class="badge ' + (l.custom && l.custom.application_started_at ? "green" : "amber") + '">' + (l.custom && l.custom.application_started_at ? "Active app" : "No app yet") + '</span></div>';
+        }).join("") || '<div class="empty">No borrower found.</div>';
+      }
+      async function loadPortalApps() {
+        if (!$("portalApps") || Date.now() >= state.portalVerifiedUntil) return;
+        $("portalApps").innerHTML = '<div class="empty">Loading active apps...</div>';
+        try {
+          var data = await json("/api/applications");
+          state.portalApps = data.applications || [];
+          $("portalApps").innerHTML = state.portalApps.length ? state.portalApps.map(function (app) {
+            return '<div class="item clickable" data-action="portal-select" data-id="' + esc(app.id) + '"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(nameOf(app)) + '</b><div class="sub">' + esc(app.phone || app.email || "") + '</div><div class="sub">' + esc(app.loanPurpose || "") + (app.startedAt ? " | started " + esc(when(app.startedAt)) : "") + '</div></div><span class="badge ' + appStatusClass(app.status) + '">' + esc(app.statusLabel || app.status || "App taken") + '</span></div></div>';
+          }).join("") : '<div class="empty">No active applications yet. Search a borrower and click Start App.</div>';
+        } catch (e) {
+          $("portalApps").innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>';
+        }
+      }
+      function appStatusClass(statusValue) {
+        if (statusValue === "approved") return "green";
+        if (statusValue === "suspended") return "red";
+        if (statusValue === "underwriting") return "purple";
+        if (statusValue === "processing") return "teal";
+        return "amber";
+      }
+      async function portalSelect(id) {
+        var detail = await json("/api/leads/" + encodeURIComponent(id));
+        var lead = detail.lead;
+        state.selectedLead = lead;
+        renderPortalFile(lead);
+        if ($("portalActionMsg")) $("portalActionMsg").textContent = "Selected " + nameOf(lead) + ".";
+        try {
+          var data = await json("/api/leads/" + encodeURIComponent(id) + "/sensitive");
+          var d = (data.sensitive && data.sensitive.data) || {};
+          var co = d.coBorrower || {};
+          setVal("sensDob", d.dob || "");
+          setVal("sensSsn", d.ssn || "");
+          setVal("sensSsnLast4", d.ssnLast4 || "");
+          setVal("sensCredit", d.creditScore || "");
+          setVal("sensIncome", d.monthlyIncome || "");
+          setVal("sensEmployer", d.employer || "");
+          setVal("sensAssets", d.assetSummary || "");
+          setVal("sensCompleted", d.applicationCompletedAt ? String(d.applicationCompletedAt).slice(0, 10) : "");
+          setVal("coFirst", co.firstName || "");
+          setVal("coLast", co.lastName || "");
+          setVal("coPhone", co.phone || "");
+          setVal("coEmail", co.email || "");
+          setVal("coDob", co.dob || "");
+          setVal("coSsn", co.ssn || "");
+          setVal("coSsnLast4", co.ssnLast4 || "");
+          setVal("coCredit", co.creditScore || "");
+          setVal("coIncome", co.monthlyIncome || "");
+          setVal("coEmployer", co.employer || "");
+          setVal("coAssets", co.assetSummary || "");
+          if (co.firstName || co.lastName || co.ssn || co.dob) showCoBorrower(true);
+          if (!data.configured) status("sensMsg", "Set BORROWER_DATA_KEY before saving sensitive fields.", "warnText");
+        } catch (e) { status("sensMsg", e.message, "badText"); }
+      }
+      function renderPortalFile(lead) {
+        var custom = lead.custom || {};
+        var appStatus = custom.application_status || "app_taken";
+        $("portalFile").className = "grid";
+        $("portalFile").innerHTML =
+          '<div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">' + esc(nameOf(lead)) + '</h2><div class="sub">' + esc(lead.phone || lead.email || "") + '</div></div><span class="badge ' + appStatusClass(appStatus) + '">' + esc(appStatusLabel(appStatus)) + '</span></div>' +
+          '<div class="fieldGrid"><label>Application status<select id="portalAppStatus">' + ["app_taken","processing","underwriting","approved","suspended"].map(function (s) { return '<option value="' + s + '"' + (s === appStatus ? " selected" : "") + '>' + esc(appStatusLabel(s)) + '</option>'; }).join("") + '</select></label><label>Started<input value="' + esc(custom.application_started_at ? when(custom.application_started_at) : "Not started") + '" readonly></label></div>' +
+          '<div class="toolbar"><button class="btn primary" data-action="portal-status">Save status</button><button class="btn" data-action="portal-service" data-service="start">Start App</button><button class="btn" data-action="export-mismo">Export MISMO 3.4</button><button class="btn" data-action="run-aus-preview">Run AUS preview</button><button class="btn" data-action="refresh-underwriting">Refresh review</button><button class="btn" data-action="add-coborrower">Add co-borrower</button><button class="btn danger" data-action="remove-coborrower">Remove co-borrower</button></div>' +
+          '<section><h3>Borrower encrypted fields</h3><div class="fieldGrid">' +
+            field("DOB", "sensDob", "") + passwordField("Full SSN", "sensSsn", "") + field("SSN last 4", "sensSsnLast4", "") + field("Credit score", "sensCredit", "") + field("Monthly income", "sensIncome", "") + field("Employer / income source", "sensEmployer", "") + field("Assets", "sensAssets", "") + field("Application completed", "sensCompleted", "") +
+          '</div></section>' +
+          '<section id="coBorrowerBox" class="hidden"><h3>Co-borrower</h3><div class="fieldGrid">' +
+            field("First", "coFirst", "") + field("Last", "coLast", "") + field("Phone", "coPhone", "") + field("Email", "coEmail", "") + field("DOB", "coDob", "") + passwordField("Full SSN", "coSsn", "") + field("SSN last 4", "coSsnLast4", "") + field("Credit score", "coCredit", "") + field("Monthly income", "coIncome", "") + field("Employer / income source", "coEmployer", "") + field("Assets", "coAssets", "") +
+          '</div></section>' +
+          '<div class="toolbar"><button class="btn primary" data-action="save-sensitive">Save borrower / co-borrower data</button></div><div id="sensMsg" class="statusLine"></div><div id="portalReadiness" class="list"></div><div id="portalUnderwriting" class="list" style="margin-top:12px"></div>';
+        loadPortalReadiness(lead.id);
+      }
+      function appStatusLabel(statusValue) {
+        return ({ app_taken: "App taken", processing: "Processing", underwriting: "Underwriting", approved: "Approved", suspended: "Suspended" })[statusValue] || "App taken";
+      }
+      function setVal(id, value) {
+        if ($(id)) $(id).value = value || "";
+      }
+      function showCoBorrower(show) {
+        if ($("coBorrowerBox")) $("coBorrowerBox").classList.toggle("hidden", !show);
+      }
+      async function removeCoBorrower() {
+        if (!state.selectedLead) return;
+        if (!confirm("Remove the co-borrower from this application file?")) return;
+        ["coFirst","coLast","coPhone","coEmail","coDob","coSsn","coSsnLast4","coCredit","coIncome","coEmployer","coAssets"].forEach(function (id) { setVal(id, ""); });
+        showCoBorrower(false);
+        await saveSensitive();
+      }
+      async function loadPortalReadiness(id) {
+        if (!$("portalReadiness")) return;
+        var los = await json("/api/leads/" + encodeURIComponent(id) + "/los/readiness").catch(function (e) { return { error: e.message }; });
+        var mismo = await json("/api/leads/" + encodeURIComponent(id) + "/mismo/portal/readiness").catch(function (e) { return { error: e.message }; });
+        var underwriting = await json("/api/leads/" + encodeURIComponent(id) + "/underwriting/preview").catch(function (e) { return { error: e.message }; });
+        var validation = mismo.validation || {};
+        $("portalReadiness").innerHTML =
+          '<div class="item"><b>LOS document readiness</b><div class="sub">' + esc(los.error || ((los.completedRequiredCount || 0) + " of " + (los.requiredCount || 0) + " required complete")) + '</div><span class="badge ' + (los.ok ? "green" : "amber") + '">' + esc(los.ok ? "Ready" : ((los.score || 0) + "% ready")) + '</span></div>' +
+          '<div class="item"><b>MISMO 3.4 validation</b><div class="sub">' + esc(mismo.error || ((validation.issues || []).slice(0, 3).map(function (i) { return i.message; }).join(" | ") || "Required mapped fields are present")) + '</div><span class="badge ' + (validation.ok ? "green" : "amber") + '">' + esc(validation.status || ((mismo.score || 0) + "% ready")) + '</span></div>' +
+          renderMismoExports(mismo.exports || []);
+        if ($("portalUnderwriting")) $("portalUnderwriting").innerHTML = renderUnderwriting(underwriting);
+      }
+      function renderMismoExports(exports) {
+        if (!exports || !exports.length) return '<div class="item"><b>MISMO export audit</b><div class="sub">No exports logged yet.</div><span class="badge amber">Waiting</span></div>';
+        return '<div class="item"><b>MISMO export audit</b><div class="sub">' + exports.slice(0, 3).map(function (x) {
+          return when(x.created_at) + " " + (x.validation_status || "logged") + " " + (x.validation_score || 0) + "%";
+        }).join(" | ") + '</div><span class="badge green">' + esc(exports.length + " recent") + '</span></div>';
+      }
+      function renderUnderwriting(data) {
+        if (!data || data.error) return '<div class="item"><b>Internal AUS preview</b><div class="sub">' + esc((data && data.error) || "No preview") + '</div><span class="badge amber">Review</span></div>';
+        var preview = data.preview || {};
+        var ratios = preview.ratios || {};
+        var cls = preview.decision === "approve" ? "green" : preview.decision === "decline" ? "red" : preview.decision === "suspend" ? "amber" : "purple";
+        var conditions = (preview.conditions || []).slice(0, 8).map(function (c) {
+          return '<div class="item"><b>' + esc(c.title) + '</b><div class="sub">' + esc(c.category || "") + ' | ' + esc(c.severity || "") + '</div><div>' + esc(c.detail || "") + '</div></div>';
+        }).join("");
+        return '<div class="item"><div class="toolbar" style="justify-content:space-between"><div><b>Internal AUS preview</b><div class="sub">' + esc(preview.summary || "No summary") + '</div><div class="sub">LTV ' + esc(ratios.ltv == null ? "-" : ratios.ltv + "%") + ' | CLTV ' + esc(ratios.cltv == null ? "-" : ratios.cltv + "%") + ' | DTI ' + esc(ratios.dti == null ? "-" : ratios.dti + "%") + ' | FICO ' + esc(ratios.creditScore || "-") + '</div></div><span class="badge ' + cls + '">' + esc(preview.decisionLabel || preview.decision || "Preview") + ' ' + esc(preview.score || 0) + '</span></div></div>' +
+          (data.latestSubmission ? '<div class="item"><b>Latest AUS run</b><div class="sub">' + esc(when(data.latestSubmission.created_at)) + ' | ' + esc(data.latestSubmission.provider || "internal") + '</div><span class="badge ' + cls + '">' + esc(data.latestSubmission.status || "") + '</span></div>' : '') +
+          (conditions || '<div class="item"><b>Conditions</b><div class="sub">No open conditions from the internal preview.</div><span class="badge green">Clear</span></div>');
+      }
+      async function runAusPreview() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("sensMsg", "Running AUS preview...");
+        await json("/api/leads/" + encodeURIComponent(lead.id) + "/aus/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        status("sensMsg", "AUS preview logged.", "okText");
+        await loadPortalReadiness(lead.id);
+      }
+      async function savePortalStatus() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("sensMsg", "Saving status...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/application", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: $("portalAppStatus").value })
+        });
+        state.selectedLead = data.lead;
+        renderPortalFile(data.lead);
+        await loadPortalApps();
+        status("sensMsg", "Application status saved.", "okText");
+      }
+      async function exportPortalMismo() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        if (!confirm("This MISMO export can include DOB, SSN, income, employment, and co-borrower data. Confirm borrower authorization and business purpose before downloading.")) return;
+        var url = apiHref("/api/leads/" + encodeURIComponent(lead.id) + "/mismo/portal");
+        var a = document.createElement("a");
+        a.href = url;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        status("sensMsg", "MISMO 3.4 export started.", "okText");
+      }
+      async function saveSensitive() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("sensMsg", "Saving...");
+        var ssn = $("sensSsn").value.replace(/\D/g, "").slice(0, 9);
+        var coSsn = $("coSsn").value.replace(/\D/g, "").slice(0, 9);
+        await json("/api/leads/" + encodeURIComponent(lead.id) + "/sensitive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: {
+            dob: $("sensDob").value,
+            ssn: ssn,
+            ssnLast4: ssn ? ssn.slice(-4) : $("sensSsnLast4").value,
+            creditScore: $("sensCredit").value,
+            monthlyIncome: $("sensIncome").value,
+            employer: $("sensEmployer").value,
+            assetSummary: $("sensAssets").value,
+            applicationCompletedAt: $("sensCompleted").value,
+            coBorrower: {
+              firstName: $("coFirst").value,
+              lastName: $("coLast").value,
+              phone: $("coPhone").value,
+              email: $("coEmail").value,
+              dob: $("coDob").value,
+              ssn: coSsn,
+              ssnLast4: coSsn ? coSsn.slice(-4) : $("coSsnLast4").value,
+              creditScore: $("coCredit").value,
+              monthlyIncome: $("coIncome").value,
+              employer: $("coEmployer").value,
+              assetSummary: $("coAssets").value
+            }
+          } })
+        });
+        await portalSelect(lead.id);
+        status("sensMsg", "Saved encrypted borrower / co-borrower data.", "okText");
+      }
+      function serviceCards(portal) {
+        var intakeAttrs = portal ? ' data-action="portal-service" data-service="start"' : ' data-action="nav-portal"';
+        var titleAttrs = portal ? ' data-action="portal-service" data-service="title"' : ' data-action="nav-portal"';
+        var floodAttrs = portal ? ' data-action="portal-service" data-service="flood"' : ' data-action="nav-portal"';
+        var fileAttrs = portal ? ' data-action="portal-service" data-service="file"' : ' data-action="nav-portal"';
+        var ausAttrs = portal ? ' data-action="run-aus-preview"' : ' data-action="nav-portal"';
+        return '<div class="list">' +
+          '<button class="item clickable" ' + intakeAttrs + ' style="text-align:left"><b>Borrower intake</b><div class="sub">Start the application file and keep borrower-sensitive data behind verification.</div><span class="badge green">Live</span></button>' +
+          '<button class="item clickable" ' + ausAttrs + ' style="text-align:left"><b>Internal AUS preview</b><div class="sub">Runs underwriting conditions, document readiness, ratios, MISMO validation, and audit findings.</div><span class="badge purple">Live</span></button>' +
+          '<button class="item clickable" ' + titleAttrs + ' style="text-align:left"><b>Title orders</b><div class="sub">Uses Settings vendor credentials, manual or live mode, and audit trail logging.</div><span class="badge amber">Configured in Settings</span></button>' +
+          '<button class="item clickable" ' + floodAttrs + ' style="text-align:left"><b>Flood reports</b><div class="sub">Uses Settings vendor credentials, manual or live mode, and audit trail logging.</div><span class="badge amber">Configured in Settings</span></button>' +
+          '<button class="item clickable" ' + fileAttrs + ' style="text-align:left"><b>Internal application file</b><div class="sub">Loan notes, documents, MISMO readiness, and application status.</div><span class="badge purple">Internal</span></button>' +
+        '</div>';
+      }
+
+      function renderDocuments() {
+        pageShell("Documents", "Upload borrower documents into the loan file with type and audit metadata.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload</button><div id="docStatus" class="statusLine"></div><div id="docList" class="list" style="margin-top:12px"></div></section></div>');
+      }
+      async function docSearch() {
+        var q = $("docSearch").value.trim();
+        var data = await json("/api/leads?q=" + encodeURIComponent(q) + "&limit=12&includeContacts=1");
+        $("docResults").innerHTML = (data.leads || []).map(function (l) {
+          return '<div class="item clickable" data-action="doc-select" data-id="' + esc(l.id) + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div></div>';
+        }).join("") || '<div class="empty">No borrower found.</div>';
+      }
+      async function docSelect(id) {
+        var data = await json("/api/leads/" + encodeURIComponent(id));
+        state.docLead = data.lead;
+        $("docLeadCard").className = "item";
+        $("docLeadCard").innerHTML = '<b>' + esc(nameOf(data.lead)) + '</b><div class="sub">' + esc(data.lead.phone || data.lead.email || "") + '</div>';
+        loadLeadDocs(id, "docList");
+      }
+      async function loadLeadDocs(id, target) {
+        var box = $(target);
+        if (!box) return;
+        try {
+          var data = await json("/api/leads/" + encodeURIComponent(id) + "/documents");
+          box.innerHTML = (data.documents || []).length ? (data.documents || []).map(function (d) {
+            return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(d.original_name) + '</b><div class="sub">' + esc(d.doc_type) + ' | ' + Math.round((d.size || 0) / 1024) + ' KB</div></div><div class="toolbar"><a class="btn small" href="' + esc(apiHref("/api/documents/" + encodeURIComponent(d.id) + "/download")) + '">Download</a><button class="btn small danger" data-action="delete-doc" data-id="' + esc(d.id) + '" data-lead="' + esc(id) + '" data-target="' + esc(target) + '">Delete</button></div></div></div>';
+          }).join("") : '<div class="empty">No documents uploaded yet.</div>';
+        } catch (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      }
+      async function deleteDocument(docId, leadId, target) {
+        if (!docId || !confirm("Remove this uploaded document from the borrower file?")) return;
+        var msgId = target === "docList" ? "docStatus" : "leadActionMsg";
+        status(msgId, "Removing document...");
+        await json("/api/documents/" + encodeURIComponent(docId), { method: "DELETE" });
+        status(msgId, "Document removed.", "okText");
+        if (leadId && target) await loadLeadDocs(leadId, target);
+        if (state.selectedLead && state.selectedLead.id === leadId && target !== "docMiniList" && $("docMiniList")) await loadLeadDocs(leadId, "docMiniList");
+        if (state.docLead && state.docLead.id === leadId && target !== "docList" && $("docList")) await loadLeadDocs(leadId, "docList");
+      }
+      async function uploadDocument(leadId, fileId, typeId, notesId, statusId, listId) {
+        var file = $(fileId).files && $(fileId).files[0];
+        if (!leadId || !file) { status(statusId, "Select a lead and choose a file.", "warnText"); return; }
+        status(statusId, "Uploading...");
+        var type = $(typeId).value;
+        var notes = notesId && $(notesId) ? $(notesId).value : "";
+        var r = await api("/api/leads/" + encodeURIComponent(leadId) + "/documents?type=" + encodeURIComponent(type) + "&notes=" + encodeURIComponent(notes), {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream", "x-filename": file.name, "x-document-type": type },
+          body: await file.arrayBuffer()
+        });
+        var data = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(data.error || ("upload failed " + r.status));
+        status(statusId, "Uploaded.", "okText");
+        loadLeadDocs(leadId, listId);
+      }
+
+      async function loadAutomations() {
+        pageShell("Automations", "Live flow controls for new-lead texting, email, voicemail drops, tags, stages, and follow-up timing.", '<button class="btn" data-action="auto-new">New flow</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="autoBody" class="grid cols2"></div>');
+        await loadPipelineStages();
+        var autos = await json("/api/automations").catch(function (e) { return { automations: [], error: e.message }; });
+        var health = await json("/api/automations/health").catch(function (e) { return { error: e.message }; });
+        var activity = await json("/api/automations/activity?limit=40").catch(function (e) { return { activity: [], error: e.message }; });
+        state.automations = autos.automations || [];
+        $("autoBody").innerHTML =
+          '<section class="card pad"><h2 style="margin-top:0">Setup health</h2>' + renderAutoHealth(health) + '<div style="margin-top:12px"><b>Website lead webhook</b><div class="toolbar" style="margin-top:6px"><input id="leadHookUrl" value="' + esc(location.origin + apiPath("/webhooks/lead")) + '" readonly><button class="btn small" data-action="copy-webhook">Copy</button></div></div></section>' +
+          '<section class="card"><div class="cardHead"><h2>Flows</h2><button class="btn small primary" data-action="auto-new">New flow</button></div><div class="list" style="padding:12px">' + renderAutomationList(state.automations, autos.error) + '</div></section>' +
+          '<section class="card pad" style="grid-column:1/-1"><h2 style="margin-top:0">Recent automation activity</h2>' + renderAutoActivity(activity.activity || [], activity.error) + '</section>';
+      }
+
+      async function loadPipelineStages() {
+        try {
+          var data = await json("/api/pipeline/stages");
+          var rows = data.stages || [];
+          state.stages = rows.map(function (s) { return s.name || s; }).filter(Boolean);
+        } catch (e) {}
+      }
+
+      function renderAutomationList(list, error) {
+        if (error) return '<div class="empty badText">' + esc(error) + '</div>';
+        if (!list.length) return '<div class="empty">No flows yet. Create one to start automating new leads.</div>';
+        return list.map(function (a) {
+          var steps = (a.steps || []).map(function (s) { return stepLabel(s.type); }).join(" -> ") || "no steps";
+          var filter = a.filter && (a.filter.category || a.filter.source)
+            ? " | filter: " + [a.filter.category, a.filter.source].filter(Boolean).join("/")
+            : "";
+          return '<div class="item">' +
+            '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(a.name || "Automation") + '</b><div class="sub">' + esc(a.trigger || "lead_created") + filter + '</div><div class="sub">' + esc(steps) + '</div></div><span class="badge ' + (a.enabled ? "green" : "amber") + '">' + (a.enabled ? "On" : "Off") + '</span></div>' +
+            '<div class="toolbar" style="margin-top:10px"><button class="btn small ' + (a.enabled ? "danger" : "primary") + '" data-action="auto-toggle" data-id="' + esc(a.id) + '">' + (a.enabled ? "Turn off" : "Turn on") + '</button><button class="btn small" data-action="auto-edit" data-id="' + esc(a.id) + '">Edit flow</button></div>' +
+          '</div>';
+        }).join("");
+      }
+
+      function renderAutoHealth(h) {
+        if (!h || h.error) return '<div class="empty badText">' + esc((h && h.error) || "Health unavailable") + '</div>';
+        var flows = h.flows || {};
+        var email = h.email || {};
+        var sms = h.sms || {};
+        var worker = h.worker || {};
+        var warnings = [];
+        if (!flows.enabledOnLeadCreated) warnings.push("No flows are enabled for new leads.");
+        if (!email.configured) warnings.push("Email automation will skip until email env/settings are configured.");
+        if (!sms.telnyx && !sms.imessage) warnings.push("Text automation has no working SMS/iMessage lane configured.");
+        return '<div class="toolbar">' +
+          healthPill(flows.enabledOnLeadCreated > 0, (flows.enabledOnLeadCreated || 0) + " new-lead flow(s)") +
+          healthPill(!!email.configured, "Email" + (email.from ? ": " + email.from : "")) +
+          healthPill(!!sms.telnyx, "Telnyx SMS") +
+          healthPill(!!sms.imessage, "iMessage") +
+          healthPill(true, (worker.pending || 0) + " queued") +
+          '</div>' +
+          (warnings.length ? '<ul class="warnText" style="margin:10px 0 0;padding-left:20px">' + warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join("") + '</ul>' : '<div class="statusLine okText">Automation setup looks ready.</div>');
+      }
+
+      function healthPill(ok, label) {
+        return '<span class="badge ' + (ok ? "green" : "red") + '">' + (ok ? "OK " : "Fix ") + esc(label) + '</span>';
+      }
+
+      function renderAutoActivity(rows, error) {
+        if (error) return '<div class="empty badText">' + esc(error) + '</div>';
+        if (!rows.length) return '<div class="empty">No automation steps have run yet.</div>';
+        return '<div class="list">' + rows.slice(0, 40).map(function (row) {
+          var cls = row.status === "done" ? "green" : row.status === "pending" ? "" : "amber";
+          var at = row.at ? new Date(row.at).toLocaleString() : "";
+          return '<div class="item"><b>' + esc(row.lead || "Lead") + '</b> <span class="badge ' + cls + '">' + esc(row.status || "step") + '</span><div class="sub">' + esc(row.step || "") + (row.count > 1 ? " x" + row.count : "") + " | " + esc(at) + '</div>' + (row.error ? '<div class="warnText">' + esc(row.error) + '</div>' : "") + '</div>';
+        }).join("") + '</div>';
+      }
+
+      function stepLabel(type) {
+        return ({ send_text: "Text", send_email: "Email", voicemail_drop: "Voicemail", wait: "Wait", add_tag: "Tag", set_status: "Status", set_stage: "Stage" })[type] || type || "Step";
+      }
+
+      function defaultStep(type) {
+        if (type === "send_email") return { type: "send_email", delayMinutes: 0, subject: "Quick follow-up, {{first_name}}", html: "Hi {{first_name}},\\n\\nI wanted to follow up and see if you are still interested." };
+        if (type === "voicemail_drop") return { type: "voicemail_drop", delayMinutes: 0, voicemailText: "Hi {{first_name}}, this is Mykoal with Adaxa Home. I am following up on your home equity options.", followupText: "Hi {{first_name}}, I just left you a quick voicemail. Reply HELOC and I will send next steps." };
+        if (type === "add_tag") return { type: "add_tag", delayMinutes: 0, tag: "follow-up" };
+        if (type === "set_status") return { type: "set_status", delayMinutes: 0, status: "contacted" };
+        if (type === "set_stage") return { type: "set_stage", delayMinutes: 0, stage: state.stages[0] || "Lead-In" };
+        if (type === "wait") return { type: "wait", delayMinutes: 1440 };
+        return { type: "send_text", delayMinutes: 0, message: "Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in reviewing your options?" };
+      }
+
+      function delayParts(min) {
+        min = Math.max(0, Math.round(Number(min || 0)));
+        if (min && min % 1440 === 0) return { value: min / 1440, unit: "days" };
+        if (min && min % 60 === 0) return { value: min / 60, unit: "hours" };
+        return { value: min, unit: "minutes" };
+      }
+
+      function delayMinutes(value, unit) {
+        var n = Math.max(0, Number(value || 0));
+        return Math.round(n * (unit === "days" ? 1440 : unit === "hours" ? 60 : 1));
+      }
+
+      function openAutomationEditor(auto) {
+        state.editingAutomation = auto || null;
+        state.automationDraftSteps = JSON.parse(JSON.stringify(auto && auto.steps ? auto.steps : [defaultStep("send_text")]));
+        var filter = (auto && auto.filter) || {};
+        openModal(auto ? "Edit flow" : "New flow",
+          '<div class="grid fieldGrid">' +
+            '<label>Name<input id="autoName" value="' + esc((auto && auto.name) || "New follow-up flow") + '"></label>' +
+            '<label>Trigger<select id="autoTrigger"><option value="lead_created">New lead</option><option value="past_client">Past client</option></select></label>' +
+            '<label>Category filter<input id="autoFilterCategory" placeholder="Optional: HELOC, PURCHASE..." value="' + esc(filter.category || "") + '"></label>' +
+            '<label>Source filter<input id="autoFilterSource" placeholder="Optional: website, manual..." value="' + esc(filter.source || "") + '"></label>' +
+          '</div>' +
+          '<label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="autoEnabled" type="checkbox" style="width:auto"' + (!auto || auto.enabled ? " checked" : "") + '> Flow is on</label>' +
+          '<label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="autoBypassHours" type="checkbox" style="width:auto"' + (auto && auto.bypassHours ? " checked" : "") + '> Send immediately, bypass sending-hours guard</label>' +
+          '<div class="toolbar"><strong style="flex:1">Steps</strong><button class="btn small" data-action="auto-add-step">Add step</button></div>' +
+          '<div id="autoStepList" class="list"></div>' +
+          '<details><summary style="cursor:pointer;font-weight:800">Advanced JSON</summary><textarea id="autoStepsJson" rows="8" style="font-family:Consolas,monospace"></textarea><button class="btn small" data-action="auto-load-json" style="margin-top:8px">Load JSON into editor</button></details>' +
+          '<div class="toolbar"><button class="btn primary" data-action="auto-save-flow">Save flow</button><button class="btn" data-action="close-modal">Cancel</button></div><div id="autoEditMsg" class="statusLine"></div>');
+        $("autoTrigger").value = (auto && auto.trigger) || "lead_created";
+        renderAutomationSteps();
+      }
+
+      function collectAutomationSteps() {
+        var rows = Array.from(document.querySelectorAll("#autoStepList .fstep"));
+        return rows.map(readAutomationStepRow);
+      }
+
+      function readAutomationStepRow(row) {
+        var type = row.querySelector(".autoStepType").value;
+        var step = defaultStep(type);
+        step.delayMinutes = delayMinutes(row.querySelector(".autoStepDelay").value, row.querySelector(".autoStepUnit").value);
+        if (type === "send_text" && row.querySelector(".autoTextMessage")) step.message = row.querySelector(".autoTextMessage").value;
+        if (type === "send_email") {
+          if (row.querySelector(".autoEmailSubject")) step.subject = row.querySelector(".autoEmailSubject").value;
+          if (row.querySelector(".autoEmailBody")) step.html = row.querySelector(".autoEmailBody").value;
+          step.text = step.html;
+        }
+        if (type === "voicemail_drop") {
+          if (row.querySelector(".autoVmText")) step.voicemailText = row.querySelector(".autoVmText").value;
+          if (row.querySelector(".autoVmAudio")) step.voicemailAudioUrl = row.querySelector(".autoVmAudio").value;
+          if (row.querySelector(".autoVmFollow")) step.followupText = row.querySelector(".autoVmFollow").value;
+        }
+        if (type === "add_tag" && row.querySelector(".autoTag")) step.tag = row.querySelector(".autoTag").value;
+        if (type === "set_status" && row.querySelector(".autoStatus")) step.status = row.querySelector(".autoStatus").value;
+        if (type === "set_stage" && row.querySelector(".autoStage")) step.stage = row.querySelector(".autoStage").value;
+        return step;
+      }
+
+      function renderAutomationSteps() {
+        var box = $("autoStepList");
+        if (!box) return;
+        box.innerHTML = state.automationDraftSteps.map(function (step, idx) { return automationStepHtml(step, idx); }).join("") || '<div class="empty">No steps. Add one before saving.</div>';
+        if ($("autoStepsJson")) $("autoStepsJson").value = JSON.stringify(state.automationDraftSteps, null, 2);
+      }
+
+      function automationStepHtml(step, idx) {
+        var d = delayParts(step.delayMinutes);
+        var types = ["send_text", "send_email", "voicemail_drop", "wait", "add_tag", "set_status", "set_stage"];
+        return '<div class="fstep" data-step="' + idx + '"><div class="fstepHead"><span class="stepNum">' + (idx + 1) + '</span><select class="autoStepType" data-action="auto-step-type" data-index="' + idx + '">' + types.map(function (t) { return '<option value="' + t + '"' + (step.type === t ? " selected" : "") + '>' + stepLabel(t) + '</option>'; }).join("") + '</select><span class="delayWrap">wait <input class="autoStepDelay" type="number" min="0" step="1" value="' + esc(d.value) + '"><select class="autoStepUnit"><option value="minutes"' + (d.unit === "minutes" ? " selected" : "") + '>minutes</option><option value="hours"' + (d.unit === "hours" ? " selected" : "") + '>hours</option><option value="days"' + (d.unit === "days" ? " selected" : "") + '>days</option></select></span><button class="btn small" data-action="auto-step-up" data-index="' + idx + '">Up</button><button class="btn small" data-action="auto-step-down" data-index="' + idx + '">Down</button><button class="btn small danger" data-action="auto-step-delete" data-index="' + idx + '">Delete</button></div><div style="margin-top:10px">' + automationStepBody(step) + '</div></div>';
+      }
+
+      function automationStepBody(step) {
+        if (step.type === "send_email") return '<label>Subject<input class="autoEmailSubject" value="' + esc(step.subject || "") + '"></label><label style="margin-top:8px">Body<textarea class="autoEmailBody" rows="5">' + esc(step.html || step.text || "") + '</textarea></label>';
+        if (step.type === "voicemail_drop") return '<label>Voicemail script<textarea class="autoVmText" rows="4">' + esc(step.voicemailText || "") + '</textarea></label><label style="margin-top:8px">Audio URL override<input class="autoVmAudio" value="' + esc(step.voicemailAudioUrl || "") + '"></label><label style="margin-top:8px">Follow-up text<textarea class="autoVmFollow" rows="3">' + esc(step.followupText || step.message || "") + '</textarea></label>';
+        if (step.type === "add_tag") return '<label>Tag<input class="autoTag" value="' + esc(step.tag || "") + '"></label>';
+        if (step.type === "set_status") return '<label>Status<select class="autoStatus">' + ["new","contacted","qualified","nurturing","won","lost"].map(function (s) { return '<option value="' + s + '"' + (step.status === s ? " selected" : "") + '>' + s + '</option>'; }).join("") + '</select></label>';
+        if (step.type === "set_stage") return '<label>Pipeline stage<select class="autoStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (step.stage === s ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>';
+        if (step.type === "wait") return '<div class="muted">This step only waits, then continues to the next step.</div>';
+        return '<label>Text message<textarea class="autoTextMessage" rows="4">' + esc(step.message || "") + '</textarea></label>';
+      }
+
+      async function saveAutomationFlow() {
+        var filter = {};
+        if ($("autoFilterCategory").value.trim()) filter.category = $("autoFilterCategory").value.trim();
+        if ($("autoFilterSource").value.trim()) filter.source = $("autoFilterSource").value.trim();
+        var payload = {
+          name: $("autoName").value.trim() || "Follow-up flow",
+          trigger: $("autoTrigger").value,
+          enabled: $("autoEnabled").checked,
+          bypassHours: $("autoBypassHours").checked,
+          filter: filter,
+          steps: collectAutomationSteps()
+        };
+        if (!payload.steps.length) { status("autoEditMsg", "Add at least one step.", "warnText"); return; }
+        status("autoEditMsg", "Saving...");
+        if (state.editingAutomation && state.editingAutomation.id) {
+          await json("/api/automations/" + encodeURIComponent(state.editingAutomation.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        } else {
+          var created = await json("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          if (payload.bypassHours && created.automation && created.automation.id) {
+            await json("/api/automations/" + encodeURIComponent(created.automation.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bypassHours: true }) });
+          }
+        }
+        closeModal();
+        showToast("Flow saved.");
+        await loadAutomations();
+      }
+
+      function findAutomation(id) {
+        return (state.automations || []).find(function (a) { return String(a.id) === String(id); });
+      }
+
+      async function toggleAutomation(id) {
+        var auto = findAutomation(id);
+        if (!auto) throw new Error("Automation not found.");
+        await json("/api/automations/" + encodeURIComponent(id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !auto.enabled })
+        });
+        showToast(!auto.enabled ? "Flow turned on." : "Flow turned off.");
+        await loadAutomations();
+      }
+
+      function changeAutomationStepType() {
+        state.automationDraftSteps = collectAutomationSteps();
+        renderAutomationSteps();
+      }
+
+      function addAutomationStep() {
+        state.automationDraftSteps = collectAutomationSteps();
+        state.automationDraftSteps.push(defaultStep("send_text"));
+        renderAutomationSteps();
+      }
+
+      function moveAutomationStep(index, direction) {
+        state.automationDraftSteps = collectAutomationSteps();
+        var next = index + direction;
+        if (next < 0 || next >= state.automationDraftSteps.length) return;
+        var tmp = state.automationDraftSteps[index];
+        state.automationDraftSteps[index] = state.automationDraftSteps[next];
+        state.automationDraftSteps[next] = tmp;
+        renderAutomationSteps();
+      }
+
+      function deleteAutomationStep(index) {
+        state.automationDraftSteps = collectAutomationSteps();
+        state.automationDraftSteps.splice(index, 1);
+        renderAutomationSteps();
+      }
+
+      function loadAutomationJson() {
+        try {
+          var steps = JSON.parse($("autoStepsJson").value || "[]");
+          if (!Array.isArray(steps)) throw new Error("Steps JSON must be an array.");
+          state.automationDraftSteps = steps.map(function (s) { return Object.assign(defaultStep(s.type), s); });
+          renderAutomationSteps();
+          status("autoEditMsg", "JSON loaded into editor.", "okText");
+        } catch (e) {
+          status("autoEditMsg", e.message || String(e), "badText");
+        }
+      }
+
+      async function copyWebhook() {
+        var input = $("leadHookUrl");
+        if (!input) return;
+        try {
+          await navigator.clipboard.writeText(input.value);
+        } catch (e) {
+          input.select();
+          document.execCommand("copy");
+        }
+        showToast("Webhook copied.");
+      }
+
+      async function loadSettings() {
+        pageShell("Settings", "Messaging channel, vendor credentials, ElevenLabs voice, voicemail audio, and service readiness.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="settingsBody" class="grid cols2"></div>');
+        var mode = await json("/api/messaging-mode").catch(function () { return { mode: "auto" }; });
+        var vendors = await json("/api/settings/loan-services").catch(function (e) { return { error: e.message }; });
+        var eleven = await json("/api/settings/elevenlabs").catch(function (e) { return { error: e.message }; });
+        var audio = await json("/api/settings/voicemail-audio").catch(function (e) { return { error: e.message }; });
+        $("settingsBody").innerHTML =
+          '<section class="card pad"><h2 style="margin-top:0">Outbound texting</h2><p class="muted">Auto tries BlueBubbles iMessage first, then Telnyx SMS on timeout, failure, or unreachable Mac.</p><div class="toolbar"><button class="btn ' + (mode.mode === "auto" ? "primary" : "") + '" data-action="mode" data-mode="auto">Auto</button><button class="btn ' + (mode.mode === "imessage" ? "primary" : "") + '" data-action="mode" data-mode="imessage">iMessage only</button><button class="btn ' + (mode.mode === "sms" ? "primary" : "") + '" data-action="mode" data-mode="sms">SMS only</button></div><div id="modeMsg" class="statusLine"></div></section>' +
+          vendorPanel("title", vendors.title || {}) + vendorPanel("flood", vendors.flood || {}) +
+          '<section class="card pad"><h2 style="margin-top:0">ElevenLabs voicemail</h2><div class="fieldGrid"><label>Enabled<select id="elEnabled"><option value="1">Enabled</option><option value="0">Disabled</option></select></label><label>Voice ID<input id="elVoice" value="' + esc(eleven.voiceId || "") + '"></label><label>API key<input id="elKey" type="password" placeholder="' + esc(eleven.apiKeySet ? "Saved: " + (eleven.apiKeyPreview || "set") : "ElevenLabs API key") + '"></label><label>Model<input id="elModel" value="' + esc(eleven.modelId || "eleven_multilingual_v2") + '"></label></div><label style="margin-top:10px">Default voicemail script<textarea id="elText">' + esc(eleven.defaultVoicemailText || "") + '</textarea></label><button class="btn primary" data-action="save-eleven" style="margin-top:10px">Save ElevenLabs</button><div id="elMsg" class="statusLine">' + esc(eleven.configured ? "Configured" : "Not configured") + '</div></section>' +
+          '<section class="card pad"><h2 style="margin-top:0">Voicemail audio</h2><p class="muted">Current source: ' + esc(audio.settings ? audio.settings.source : audio.source || "none") + '</p><input id="vmAudio" type="file" accept="audio/*"><button class="btn primary" data-action="upload-vm-audio" style="margin-top:10px">Upload default audio</button><div id="vmAudioMsg" class="statusLine">' + esc((audio.settings && audio.settings.configured) || audio.configured ? "Voicemail drops configured" : "Upload audio or set VOICEMAIL_AUDIO_URL") + '</div></section>';
+        $("elEnabled").value = eleven.enabled ? "1" : "0";
+      }
+      function vendorPanel(kind, data) {
+        var title = kind === "title" ? "Title vendor" : "Flood vendor";
+        return '<section class="card pad"><h2 style="margin-top:0">' + title + '</h2><div class="fieldGrid"><label>Enabled<select id="' + kind + 'Enabled"><option value="1"' + (data.enabled !== false ? " selected" : "") + '>Enabled</option><option value="0"' + (data.enabled === false ? " selected" : "") + '>Disabled</option></select></label><label>Mode<select id="' + kind + 'Mode"><option value="manual"' + (data.mode !== "live" ? " selected" : "") + '>Manual</option><option value="live"' + (data.mode === "live" ? " selected" : "") + '>Live API</option></select></label><label>Vendor name<input id="' + kind + 'Vendor" value="' + esc(data.vendorName || "") + '"></label><label>API base<input id="' + kind + 'Base" value="' + esc(data.apiBase || "") + '"></label><label>API key<input id="' + kind + 'Key" type="password" placeholder="' + esc(data.apiKeySet ? "Saved: " + (data.apiKeyPreview || "set") : "Vendor API key") + '"></label><label>Account ID<input id="' + kind + 'Account" value="' + esc(data.accountId || "") + '"></label></div><label style="margin-top:10px">Notes<input id="' + kind + 'Notes" value="' + esc(data.notes || "") + '"></label><button class="btn primary" data-action="save-vendor" data-kind="' + kind + '" style="margin-top:10px">Save ' + title + '</button><div id="' + kind + 'Msg" class="statusLine">' + esc(data.liveReady ? "Live ready" : data.configured ? "Configured/manual" : "Not configured") + '</div></section>';
+      }
+      async function saveVendor(kind) {
+        status(kind + "Msg", "Saving...");
+        await json("/api/settings/loan-services/" + kind, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: $(kind + "Enabled").value === "1",
+            mode: $(kind + "Mode").value,
+            vendorName: $(kind + "Vendor").value,
+            apiBase: $(kind + "Base").value,
+            apiKey: $(kind + "Key").value,
+            accountId: $(kind + "Account").value,
+            notes: $(kind + "Notes").value
+          })
+        });
+        status(kind + "Msg", "Saved.", "okText");
+      }
+      async function saveEleven() {
+        status("elMsg", "Saving...");
+        await json("/api/settings/elevenlabs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: $("elEnabled").value === "1", voiceId: $("elVoice").value, apiKey: $("elKey").value, modelId: $("elModel").value, defaultVoicemailText: $("elText").value })
+        });
+        status("elMsg", "Saved.", "okText");
+      }
+      async function uploadVmAudio() {
+        var file = $("vmAudio").files && $("vmAudio").files[0];
+        if (!file) { status("vmAudioMsg", "Choose an audio file first.", "warnText"); return; }
+        status("vmAudioMsg", "Uploading...");
+        var r = await api("/api/settings/voicemail-audio", { method: "POST", headers: { "Content-Type": file.type || "audio/mpeg", "x-filename": file.name }, body: await file.arrayBuffer() });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(d.error || "upload failed");
+        status("vmAudioMsg", "Default voicemail audio saved.", "okText");
+      }
+
+      function selectedIds() {
+        return Array.from(state.selectedIds);
+      }
+      function openBlast(kind) {
+        var ids = selectedIds();
+        if (!ids.length) { showToast("Select at least one lead first.", true); return; }
+        if (kind === "text") {
+          openModal("Text blast", '<p class="muted">Use {{first_name}}, {{last_name}}, {{name}}, {{email}}, and {{phone}}.</p><textarea id="blastText" rows="7">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? I can send updated options. Reply YES to continue or STOP to opt out.</textarea><button class="btn primary" data-action="send-bulk-text">Send to ' + ids.length + ' selected</button><div id="blastMsg" class="statusLine"></div>');
+        } else if (kind === "email") {
+          openModal("Email blast", '<label>Subject<input id="blastSubject" value="Still interested in a HELOC, {{first_name}}?"></label><label>Message<textarea id="blastEmail" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit, but we never got a chance to finish reviewing your options.\n\nA HELOC may be useful if you are looking to access equity for home improvements, debt consolidation, emergency funds, investment opportunities, or large expenses without refinancing your entire first mortgage.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.\n\nBest,\nMykoal</textarea></label><button class="btn primary" data-action="send-bulk-email">Send to ' + ids.length + ' selected</button><div id="blastMsg" class="statusLine"></div>');
+        } else {
+          openModal("Voicemail blast", '<label>Voicemail script<textarea id="blastVm" rows="6">Hi {{first_name}}, this is Mykoal with Adaxa Home. I am following up on your home equity options. I will send you a quick text too.</textarea></label><label style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input id="blastVmTextOn" type="checkbox" checked style="width:auto"> Send follow-up text</label><label>Follow-up text<textarea id="blastVmText" rows="4">Hi {{first_name}}, I just left you a quick voicemail about your home equity options. Reply HELOC and I will send next steps.</textarea></label><button class="btn primary" data-action="send-bulk-vm">Start drops for ' + ids.length + ' selected</button><div id="blastMsg" class="statusLine"></div>');
+        }
+      }
+      async function sendBulkText() {
+        status("blastMsg", "Sending...");
+        var data = await json("/api/leads/blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), message: $("blastText").value }) });
+        status("blastMsg", "Sent " + data.sent + ", skipped " + data.skipped + ", failed " + data.failed + ".", data.failed ? "warnText" : "okText");
+      }
+      async function sendBulkEmail() {
+        status("blastMsg", "Sending...");
+        var data = await json("/api/leads/email-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), subject: $("blastSubject").value, body: $("blastEmail").value }) });
+        status("blastMsg", "Sent " + data.sent + ", skipped " + data.skipped + ", failed " + data.failed + ".", data.failed ? "warnText" : "okText");
+      }
+      async function sendBulkVm() {
+        status("blastMsg", "Starting...");
+        var data = await json("/api/leads/voicemail-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), voicemailText: $("blastVm").value, sendText: $("blastVmTextOn").checked, text: $("blastVmText").value }) });
+        status("blastMsg", "Initiated " + data.initiated + ", skipped " + data.skipped + ", failed " + data.failed + ". Text sent " + data.textSent + ".", data.failed ? "warnText" : "okText");
+      }
+      async function deleteSelectedLeads() {
+        var ids = selectedIds();
+        if (!ids.length) { showToast("Select at least one lead first.", true); return; }
+        if (!confirm("Delete " + ids.length + " selected lead" + (ids.length === 1 ? "" : "s") + "? This hides them and stops pending automation jobs.")) return;
+        var selectedLeadDeleted = state.selectedLead && state.selectedIds.has(state.selectedLead.id);
+        var data = await json("/api/leads/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: ids })
+        });
+        state.selectedIds.clear();
+        if (selectedLeadDeleted) {
+          state.selectedLead = null;
+          if ($("leadDrawer")) $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
+        }
+        showToast("Deleted " + data.deleted + " lead" + (data.deleted === 1 ? "" : "s") + ".");
+        if ($("leadListWrap")) await loadLeads();
+      }
+
+      function openModal(title, html) {
+        $("modalTitle").textContent = title;
+        $("modalBody").innerHTML = html;
+        $("modalShade").classList.remove("hidden");
+      }
+      function closeModal() {
+        $("modalShade").classList.add("hidden");
+        $("modalBody").innerHTML = "";
+      }
+
+      async function leadAction(action, statusId) {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var path = "";
+        var body = {};
+        if (action === "text") { path = "/api/leads/" + lead.id + "/message"; body = { message: $("ldText").value }; }
+        if (action === "email") { path = "/api/leads/" + lead.id + "/email"; body = { subject: $("ldEmailSubject").value, body: $("ldEmailBody").value }; }
+        if (action === "note") { path = "/api/leads/" + lead.id + "/notes"; body = { body: $("ldNote").value }; }
+        if (action === "call") path = "/api/leads/" + lead.id + "/call";
+        if (action === "vm") { path = "/api/leads/" + lead.id + "/voicemail-drop"; body = { voicemailText: "", sendText: true, text: "Hi {{first_name}}, I just left you a quick voicemail. Reply HELOC and I will send next steps." }; }
+        if (action === "runflow") path = "/api/leads/" + lead.id + "/run-automation";
+        if (action === "start") { path = "/api/leads/" + lead.id + "/application/start"; body = { seedChecklist: false, requestedFrom: "v2" }; }
+        if (action === "title") path = "/api/leads/" + lead.id + "/orders/title";
+        if (action === "flood") path = "/api/leads/" + lead.id + "/orders/flood";
+        if (!path) throw new Error("Unknown lead action: " + action);
+        status(statusId || "leadActionMsg", "Running...");
+        var data = await json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        status(statusId || "leadActionMsg", (data.detail || data.path || data.ok) ? JSON.stringify(data).slice(0, 260) : "Done.", data.ok === false ? "warnText" : "okText");
+        if (action === "note" && $("ldNote")) $("ldNote").value = "";
+        return data;
+      }
+
+      document.addEventListener("click", async function (e) {
+        var nav = e.target.closest("[data-nav]");
+        if (nav) { e.preventDefault(); route(nav.dataset.nav); return; }
+        var btn = e.target.closest("[data-action]");
+        if (!btn) return;
+        var a = btn.dataset.action;
+        try {
+          if (a === "mobile-menu") document.body.classList.toggle("navOpen");
+          else if (a === "toggle-theme") toggleTheme();
+          else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); try { localStorage.removeItem("sp_token"); } catch (x) {} location.reload(); }
+          else if (a === "refresh") route(state.page);
+          else if (a === "close-modal") closeModal();
+          else if (a === "auto-new") openAutomationEditor(null);
+          else if (a === "auto-toggle") await toggleAutomation(btn.dataset.id);
+          else if (a === "auto-edit") {
+            var auto = findAutomation(btn.dataset.id);
+            if (!auto) throw new Error("Automation not found.");
+            openAutomationEditor(auto);
+          }
+          else if (a === "auto-add-step") addAutomationStep();
+          else if (a === "auto-load-json") loadAutomationJson();
+          else if (a === "auto-save-flow") await saveAutomationFlow();
+          else if (a === "auto-step-type") return;
+          else if (a === "auto-step-up") moveAutomationStep(Number(btn.dataset.index || 0), -1);
+          else if (a === "auto-step-down") moveAutomationStep(Number(btn.dataset.index || 0), 1);
+          else if (a === "auto-step-delete") deleteAutomationStep(Number(btn.dataset.index || 0));
+          else if (a === "copy-webhook") await copyWebhook();
+          else if (a === "new-lead") openNewLeadModal();
+          else if (a === "create-lead") await createLead();
+          else if (a === "refresh-leads") await loadLeads();
+          else if (a === "refresh-leadpool") await refreshLeadPool();
+          else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) $("poolState").value = ""; if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
+          else if (a === "download-pool-sample") downloadLeadPoolSample();
+          else if (a === "import-leadpool") await importLeadPoolCsv();
+          else if (a === "pool-select") { btn.checked ? state.leadPoolSelectedIds.add(btn.dataset.id) : state.leadPoolSelectedIds.delete(btn.dataset.id); }
+          else if (a === "pool-select-all") { state.leadPool.forEach(function (l) { btn.checked ? state.leadPoolSelectedIds.add(l.id) : state.leadPoolSelectedIds.delete(l.id); }); await refreshLeadPool(); }
+          else if (a === "pool-text") openPoolBlast("text");
+          else if (a === "pool-email") openPoolBlast("email");
+          else if (a === "send-pool-text") await sendPoolText();
+          else if (a === "send-pool-email") await sendPoolEmail();
+          else if (a === "enroll-leadpool") await enrollLeadPool();
+          else if (a === "pool-delete-selected") await deleteSelectedPoolLeads();
+          else if (a === "open-pool") await openPoolRecord(btn.dataset.id);
+          else if (a === "close-pool-detail") $("poolDrawer").innerHTML = '<div class="empty">Open a Lead Pool record to work it like a normal profile.</div>';
+          else if (a === "save-pool-record") await savePoolRecord();
+          else if (a === "pool-send-one-text") await poolLeadAction("text");
+          else if (a === "pool-send-one-email") await poolLeadAction("email");
+          else if (a === "pool-add-note-one") await poolLeadAction("note");
+          else if (a === "pool-sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true, note: "Manual Lead Pool consent" }) }); showToast("SMS consent recorded."); await openPoolRecord(state.selectedLead.id); }
+          else if (a === "pool-promote-current") { if (state.selectedLead) await promotePoolLead(state.selectedLead.id); if ($("poolDrawer")) $("poolDrawer").innerHTML = '<div class="empty">Moved to active Leads.</div>'; }
+          else if (a === "pool-delete-current") { if (state.selectedLead && await deletePoolLead(state.selectedLead.id)) { state.selectedLead = null; if ($("poolDrawer")) $("poolDrawer").innerHTML = '<div class="empty">Lead Pool record deleted.</div>'; } }
+          else if (a === "promote-pool") await promotePoolLead(btn.dataset.id);
+          else if (a === "delete-pool") await deletePoolLead(btn.dataset.id);
+          else if (a === "open-lead") await openLead(btn.dataset.id);
+          else if (a === "open-lead-from-pipeline") { await route("leads"); await openLead(btn.dataset.id); }
+          else if (a === "close-detail") $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
+          else if (a === "toggle-select") { btn.checked ? state.selectedIds.add(btn.dataset.id) : state.selectedIds.delete(btn.dataset.id); }
+          else if (a === "select-all") { state.leads.forEach(function (l) { btn.checked ? state.selectedIds.add(l.id) : state.selectedIds.delete(l.id); }); await loadLeads(); }
+          else if (a === "bulk-text") openBlast("text");
+          else if (a === "bulk-email") openBlast("email");
+          else if (a === "bulk-vm") openBlast("vm");
+          else if (a === "bulk-delete") await deleteSelectedLeads();
+          else if (a === "send-bulk-text") await sendBulkText();
+          else if (a === "send-bulk-email") await sendBulkEmail();
+          else if (a === "send-bulk-vm") await sendBulkVm();
+          else if (a === "popout-dialer") popoutDialer();
+          else if (a === "connect-crm-line") await connectCrmLine();
+          else if (a === "dial-key") { if ($("dialPhone")) $("dialPhone").value += btn.dataset.key || ""; }
+          else if (a === "dial-backspace") { if ($("dialPhone")) $("dialPhone").value = $("dialPhone").value.slice(0, -1); }
+          else if (a === "dial-clear") { if ($("dialPhone")) $("dialPhone").value = ""; }
+          else if (a === "dial-call") await dialNumber($("dialPhone").value);
+          else if (a === "dial-answer") answerActiveCall();
+          else if (a === "dial-decline") endActiveCall();
+          else if (a === "dial-end-call") endActiveCall();
+          else if (a === "merge-caller") await mergeCaller();
+          else if (a === "end-conference") await endConference(false);
+          else if (a === "dial-selected-lead") await dialSelectedLead();
+          else if (a === "refresh-power-leads") await refreshPowerLeads();
+          else if (a === "power-select") { btn.checked ? state.powerDialerSelectedIds.add(btn.dataset.id) : state.powerDialerSelectedIds.delete(btn.dataset.id); }
+          else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); await refreshPowerLeads(); }
+          else if (a === "start-power-dialer") await startPowerDialer();
+          else if (a === "stop-power-dialer") await stopPowerDialer();
+          else if (a === "refresh-power-status") await refreshPowerStatus();
+          else if (a === "save-forwarding") await saveForwarding();
+          else if (a === "refresh-call-log") await loadCallLog();
+          else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
+          else if (a === "save-lead") await saveCurrentLead();
+          else if (a === "delete-lead") await deleteCurrentLead();
+          else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
+          else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
+          else if (a === "send-lead-text") await leadAction("text");
+          else if (a === "send-lead-email") await leadAction("email");
+          else if (a === "add-note") await leadAction("note");
+          else if (a === "call-lead") await leadAction("call");
+          else if (a === "voicemail-lead") await leadAction("vm");
+          else if (a === "run-flow") await leadAction("runflow");
+          else if (a === "start-app") await leadAction("start");
+          else if (a === "order-title") await leadAction("title");
+          else if (a === "order-flood") await leadAction("flood");
+          else if (a === "upload-doc") await uploadDocument(state.selectedLead && state.selectedLead.id, "ldDocFile", "ldDocType", null, "leadActionMsg", "docMiniList");
+          else if (a === "open-thread") await openThread(btn.dataset.id, btn.dataset.phone, btn.dataset.email);
+          else if (a === "conv-compose-mode") setConversationMode(btn.dataset.mode);
+          else if (a === "send-thread") await sendThread();
+          else if (a === "send-conv-email") await sendConversationEmail();
+          else if (a === "refresh-thread" && state.activeThread) await openThread(state.activeThread, $("msgPhone").value);
+          else if (a === "portal-verify") await verifyPortal();
+          else if (a === "refresh-portal-apps") await loadPortalApps();
+          else if (a === "portal-search") await portalSearch();
+          else if (a === "portal-select") await portalSelect(btn.dataset.id);
+          else if (a === "portal-service") {
+            if (!state.selectedLead) { status("portalActionMsg", "Select a borrower first.", "warnText"); return; }
+            if (btn.dataset.service === "file") { await route("leads"); await openLead(state.selectedLead.id); return; }
+            var svc = await leadAction(btn.dataset.service, "portalActionMsg");
+            if (svc && svc.lead) state.selectedLead = svc.lead;
+            await loadPortalApps();
+            await portalSelect(state.selectedLead.id);
+          }
+          else if (a === "portal-status") await savePortalStatus();
+          else if (a === "export-mismo") await exportPortalMismo();
+          else if (a === "run-aus-preview") await runAusPreview();
+          else if (a === "refresh-underwriting" && state.selectedLead) await loadPortalReadiness(state.selectedLead.id);
+          else if (a === "add-coborrower") showCoBorrower(true);
+          else if (a === "remove-coborrower") await removeCoBorrower();
+          else if (a === "save-sensitive") await saveSensitive();
+          else if (a === "nav-portal") route("portal");
+          else if (a === "doc-search") await docSearch();
+          else if (a === "doc-select") await docSelect(btn.dataset.id);
+          else if (a === "doc-upload") await uploadDocument(state.docLead && state.docLead.id, "docFile", "docType", "docNotes", "docStatus", "docList");
+          else if (a === "delete-doc") await deleteDocument(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
+          else if (a === "mode") { await setMessagingMode(btn.dataset.mode); await loadSettings(); }
+          else if (a === "save-vendor") await saveVendor(btn.dataset.kind);
+          else if (a === "save-eleven") await saveEleven();
+          else if (a === "upload-vm-audio") await uploadVmAudio();
+        } catch (err) {
+          showToast(err.message || String(err), true);
+          ["leadActionMsg","leadSaveMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+        }
+      });
+
+      document.addEventListener("change", async function (e) {
+        var el = e.target.closest("[data-action]");
+        if (!el) return;
+        try {
+          if (el.dataset.action === "auto-step-type") changeAutomationStepType(el);
+          else if (el.dataset.action === "lead-stage-quick") await quickLeadStage(el);
+        } catch (err) {
+          showToast(err.message || String(err), true);
+          if ($("autoEditMsg")) status("autoEditMsg", err.message || String(err), "badText");
+        }
+      });
+
+      $("loginBtn").addEventListener("click", submitLogin);
+      $("loginPass").addEventListener("keydown", function (e) { if (e.key === "Enter") submitLogin(); });
+      $("topSearch").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          route("leads").then(function () {
+            $("leadSearch").value = $("topSearch").value;
+            loadLeads();
+          });
+        }
+      });
+      restoreSession();
+    }());
+  </script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+{
+  "category": "DSCR",
+  "campaign": "DSCR Investor",
+  "enrollFilter": {
+    "category": "DSCR"
+  },
+  "rows": [
+    {
+      "channel": "sms",
+      "dayOffset": 0,
+      "body": "Hi {{first_name}}, Mykoal DeShazo with Adaxa Home (NMLS 1912347). You asked about a DSCR loan at smartr8.com. These qualify on the rental cash flow, not your tax returns. Reply STOP to opt out, HELP for help.",
+      "optOut": true,
+      "charCount": 200,
+      "segments": 2
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 1,
+      "body": "{{first_name}}, with DSCR there are no W2s or tax returns to dig up. We look at what the property earns. Want me to run your scenario?",
+      "optOut": false,
+      "charCount": 126,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 3,
+      "body": "Tell me the property and the rough rent, {{first_name}}, and let us run your numbers to see how it pencils out.",
+      "optOut": false,
+      "charCount": 103,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 4,
+      "subject": "Built for investors who want to keep buying",
+      "preheader": "Scale your portfolio without income walls.",
+      "body": "DSCR loans are designed for real estate investors. They qualify on the rental cash flow, not your returns. They work for single family homes, condos, two to four units, and many short term rentals. And they leave you room to keep growing your portfolio.\n\nTell me what you are looking at next and let us run your numbers.",
+      "cta": {
+        "label": "Talk through a scenario",
+        "url": "https://smartr8.com/dscr"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 6,
+      "body": "{{first_name}}, DSCR is built to help investors keep buying without hitting income walls. Happy to map out your next purchase.",
+      "optOut": false,
+      "charCount": 118,
+      "segments": 1
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 12,
+      "body": "Still weighing it, {{first_name}}? When you are ready I can show your DSCR options fast. Reply STOP to opt out.",
+      "optOut": true,
+      "charCount": 103,
+      "segments": 1
+    },
+    {
+      "channel": "email",
+      "dayOffset": 14,
+      "subject": "Ready when your next deal is, {{first_name}}",
+      "preheader": "Your DSCR options are a quick conversation away.",
+      "body": "Whenever you spot your next rental, I can move quickly on DSCR financing so you do not lose the deal to paperwork.\n\nCall or text me anytime at (480) 206 9290.",
+      "cta": {
+        "label": "See my options",
+        "url": "https://smartr8.com/dscr"
+      },
+      "optOut": true
+    },
+    {
+      "channel": "sms",
+      "dayOffset": 21,
+      "body": "{{first_name}}, I will keep your DSCR request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal.",
+      "optOut": true,
+      "charCount": 113,
+      "segments": 1
+    }
+  ],
+  "crmAutomation": {
+    "name": "DSCR Investor",
+    "trigger": "lead_created",
+    "enabled": false,
+    "filter": {
+      "category": "DSCR"
+    },
+    "steps": [
+      {
+        "type": "send_text",
+        "message": "Hi {{first_name}}, Mykoal DeShazo with Adaxa Home (NMLS 1912347). You asked about a DSCR loan at smartr8.com. These qualify on the rental cash flow, not your tax returns. Reply STOP to opt out, HELP for help.",
+        "delayMinutes": 0
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, with DSCR there are no W2s or tax returns to dig up. We look at what the property earns. Want me to run your scenario?",
+        "delayMinutes": 1440
+      },
+      {
+        "type": "send_text",
+        "message": "Tell me the property and the rough rent, {{first_name}}, and let us run your numbers to see how it pencils out.",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_email",
+        "subject": "Built for investors who want to keep buying",
+        "preheader": "Scale your portfolio without income walls.",
+        "html": "DSCR loans are designed for real estate investors. They qualify on the rental cash flow, not your returns. They work for single family homes, condos, two to four units, and many short term rentals. And they leave you room to keep growing your portfolio.\n\nTell me what you are looking at next and let us run your numbers.",
+        "text": "DSCR loans are designed for real estate investors. They qualify on the rental cash flow, not your returns. They work for single family homes, condos, two to four units, and many short term rentals. And they leave you room to keep growing your portfolio.\n\nTell me what you are looking at next and let us run your numbers.",
+        "ctaLabel": "Talk through a scenario",
+        "ctaUrl": "https://smartr8.com/dscr",
+        "delayMinutes": 1440
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, DSCR is built to help investors keep buying without hitting income walls. Happy to map out your next purchase.",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "Still weighing it, {{first_name}}? When you are ready I can show your DSCR options fast. Reply STOP to opt out.",
+        "delayMinutes": 8640
+      },
+      {
+        "type": "send_email",
+        "subject": "Ready when your next deal is, {{first_name}}",
+        "preheader": "Your DSCR options are a quick conversation away.",
+        "html": "Whenever you spot your next rental, I can move quickly on DSCR financing so you do not lose the deal to paperwork.\n\nCall or text me anytime at (480) 206 9290.",
+        "text": "Whenever you spot your next rental, I can move quickly on DSCR financing so you do not lose the deal to paperwork.\n\nCall or text me anytime at (480) 206 9290.",
+        "ctaLabel": "See my options",
+        "ctaUrl": "https://smartr8.com/dscr",
+        "delayMinutes": 2880
+      },
+      {
+        "type": "send_text",
+        "message": "{{first_name}}, I will keep your DSCR request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal.",
+        "delayMinutes": 10080
+      }
+    ]
+  }
+}

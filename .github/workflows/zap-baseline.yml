@@ -1,0 +1,42 @@
+name: OWASP ZAP Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Public staging or preview URL to scan"
+        required: false
+        default: "STAGING_URL_HERE"
+  schedule:
+    - cron: "41 11 1 * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  zap-baseline:
+    name: Passive baseline scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve target URL
+        id: target
+        shell: bash
+        run: |
+          TARGET="${{ github.event.inputs.target_url || vars.ZAP_TARGET_URL || 'STAGING_URL_HERE' }}"
+          if [ "$TARGET" = "STAGING_URL_HERE" ] || [ -z "$TARGET" ]; then
+            echo "::error::Set repository variable ZAP_TARGET_URL or provide workflow_dispatch input target_url."
+            exit 1
+          fi
+          echo "url=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Run ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ steps.target.outputs.url }}
+          cmd_options: "-a -r zap-report.html -J zap-report.json"
+          fail_action: false
+          allow_issue_writing: true
+          artifact_name: zap-baseline-report

@@ -1,0 +1,107 @@
+# Smartr8 Texting — GHL Conversation Provider
+
+Standalone v2 CRM service for `crm.smartr8.com/v2`. This repo is split from
+`SMART-MARKERTING/Smartr8-texting`, which remains the root `crm.smartr8.com` app.
+
+Open `/v2` after deploy. The same backend is also mounted under `/v2/api`, `/v2/calls`,
+`/v2/webrtc`, and related prefixed paths so Cloudflare can route only `/v2*` to this
+service without leaking v2 calls to the root CRM repo.
+
+A small Node/TypeScript service that lets you text from inside **GoHighLevel** and
+routes each message to the right channel:
+
+- **iMessage** (via a self-hosted **BlueBubbles** server) when the contact has the `imessage` tag
+- **SMS** (via **Telnyx**) otherwise
+- **Inbound** SMS and iMessage are logged back into the GHL conversation
+
+It registers as a **GHL custom conversation provider**, so the GHL "send" button
+replaces the n8n form as your front door — while the routing logic lives here in code.
+
+> New here? Read `CLAUDE.md` (project brief) and `docs/architecture.md` (endpoints + gotchas).
+
+---
+
+## What's in the box
+
+```
+src/
+  index.ts                 Express bootstrap, /health, route mounting
+  config.ts                env config (+ missing-var report)
+  store/tokenStore.ts      GHL OAuth tokens: exchange, persist, auto-refresh
+  services/ghl.ts          GHL API: upsert, getContact, log inbound, status callback
+  services/telnyx.ts       SMS send
+  services/bluebubbles.ts  iMessage send (+ 524 "likely-sent" handling) + ping
+  services/router.ts       channel choice (imessage tag) + send
+  routes/oauth.ts          /oauth/install, /oauth/callback
+  routes/provider.ts       /providers/ghl/messages  (GHL outbound Delivery URL)
+  routes/webhooks.ts       /webhooks/telnyx, /webhooks/bluebubbles  (inbound)
+render.yaml                Render blueprint
+```
+
+### Endpoints (after deploy, `BASE` = your service URL)
+
+| Purpose | URL |
+|---|---|
+| Health | `GET BASE/health` |
+| OAuth install (visit once) | `GET BASE/oauth/install` |
+| OAuth redirect | `GET BASE/oauth/callback` |
+| GHL outbound Delivery URL | `POST BASE/providers/ghl/messages` |
+| Telnyx inbound webhook | `POST BASE/webhooks/telnyx` |
+| BlueBubbles inbound webhook | `POST BASE/webhooks/bluebubbles` |
+
+---
+
+## Local run
+
+```bash
+npm install
+cp .env.example .env      # fill in values
+npm run dev               # or: npm run build && npm start
+curl localhost:3000/health
+```
+
+## Deploy (Render)
+
+1. Push this repo to GitHub (already on `mdeshazo/smartr8-texting`).
+2. Render → **New → Blueprint** → pick this repo (`render.yaml` is detected).
+3. Set the `sync: false` secrets in the Environment tab (everything in `.env.example`).
+4. Note the service URL — that's `BASE` above.
+
+**Railway alternative:** New Project → Deploy from repo. Build `npm run build`,
+start `npm start`. Add a **volume** mounted at `/data` and set `TOKEN_DIR=/data`
+so OAuth tokens persist across restarts.
+
+## Connect GoHighLevel (one-time)
+
+1. **marketplace.gohighlevel.com** → create a **private/unpublished** app (no review needed).
+2. **Auth** → add scopes: `contacts.readonly/write`, `conversations.readonly/write`,
+   `conversations/message.readonly/write`. Redirect URL = `BASE/oauth/callback`.
+   Copy **Client ID** + **Client Secret** into your env.
+3. **Conversation Provider** → create one, **type SMS**, Delivery URL =
+   `BASE/providers/ghl/messages`. Do **not** check "Is this a Custom Conversation
+   Provider." Copy the **conversationProviderId** into `GHL_CONVERSATION_PROVIDER_ID`.
+4. Install: open `BASE/oauth/install` in a browser, pick your sub-account, Allow.
+   Tokens are saved and auto-refresh from then on.
+5. Point **Telnyx** messaging-profile inbound webhook → `BASE/webhooks/telnyx`.
+6. Point **BlueBubbles** webhook ("New Messages") → `BASE/webhooks/bluebubbles`.
+
+---
+
+## ⚠️ Before production — read these
+
+- **Rotate the two exposed secrets** (GHL PIT, BlueBubbles password). Never commit them.
+- **Verify the marked `TODO(verify)` spots on first real run** — they're isolated on purpose:
+  - GHL outbound delivery payload field names (`src/routes/provider.ts`)
+  - GHL message **status callback** endpoint/body (`src/services/ghl.ts`)
+  - BlueBubbles inbound payload shape + `isFromMe` (`src/routes/webhooks.ts`)
+
+  Each handler logs the raw payload, so the first live message tells you the exact
+  shape to lock in — the same "confirm before trusting the endpoint" discipline that
+  got the n8n build working.
+- **iMessage sending is best-effort** without the BlueBubbles Private API (= SIP off).
+  Fine for 1:1; route bulk through Telnyx SMS (the router already does this by tag).
+- **Token persistence:** the file store needs a persistent disk (the Render blueprint
+  mounts one at `/data`). On ephemeral hosting, tokens would vanish on restart —
+  swap `store/tokenStore.ts` for a DB/Redis if needed.
+- BlueBubbles needs an **always-on Mac** + ideally a **named Cloudflare tunnel**
+  (fixed URL) so `BLUEBUBBLES_URL` doesn't change on restart.

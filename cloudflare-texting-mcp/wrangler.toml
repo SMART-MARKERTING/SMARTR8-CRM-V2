@@ -1,0 +1,51 @@
+# Smartr8 Texting + MCP — net-new Cloudflare Worker.
+#
+# Net-new stack that lives ALONGSIDE the Render service and the smartr8 Pages
+# app. It shares the Telnyx + BlueBubbles hardware and reads/writes the SAME
+# smartr8-leads D1, but only ADDS tables (migrations/) — it never touches the
+# Pages-owned `leads` / `tcpa_consents` tables.
+#
+# Deploy:
+#   cd cloudflare-texting-mcp
+#   npm install
+#   wrangler kv namespace create OAUTH_KV     # paste the id below
+#   wrangler d1 migrations apply smartr8-leads --remote
+#   wrangler secret put TELNYX_API_KEY
+#   wrangler secret put TELNYX_MESSAGING_PROFILE_ID
+#   wrangler secret put BLUEBUBBLES_URL        # tunnel URL — can change, never hardcode
+#   wrangler secret put BLUEBUBBLES_PASSWORD
+#   wrangler secret put MCP_AUTH_SECRET        # the secret you paste into Claude's connector
+#   wrangler secret put WEBHOOK_SECRET         # optional: gates the inbound webhooks
+#   wrangler deploy
+
+name = "smartr8-texting-crm"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret config. The sender number is public caller ID; everything sensitive
+# (API keys, BlueBubbles URL/password, MCP secret) is a `wrangler secret`.
+[vars]
+TELNYX_FROM_NUMBER = "+16197826916"
+
+# Same database the Pages lead-capture owns. We only add tables (see migrations/).
+[[d1_databases]]
+binding = "LEADS_DB"
+database_name = "smartr8-leads"
+database_id = "b1be7618-d79e-4889-b21f-9b3782e59b00"
+migrations_dir = "migrations"
+
+# Storage for the OAuth provider (issued tokens, registered clients/grants).
+# Create it with `wrangler kv namespace create OAUTH_KV` and paste the id here.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "814379c5c5c647a7b0d7cd112a327af4"
+
+# Durable Object backing the remote MCP server (Streamable HTTP transport/session).
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "TextingMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TextingMCP"]

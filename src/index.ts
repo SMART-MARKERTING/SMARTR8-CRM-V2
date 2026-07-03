@@ -1,0 +1,127 @@
+import express from "express";
+import path from "path";
+import { config, reportMissingConfig } from "./config";
+import { log } from "./logger";
+import { ping } from "./services/bluebubbles";
+import { oauthRouter } from "./routes/oauth";
+import { providerRouter } from "./routes/provider";
+import { webhooksRouter } from "./routes/webhooks";
+import { voiceRouter } from "./routes/voice";
+import { appRouter } from "./routes/app";
+import { ghlWorkflowRouter } from "./routes/ghlWorkflow";
+import { adminRouter } from "./routes/admin";
+import { crmRouter } from "./routes/crm";
+import { usersRouter } from "./routes/users";
+import { startCallNowPoller } from "./services/callNowPoller";
+import { seedCampaigns, startAutomationWorker } from "./services/automations";
+import { seedAdminIfEmpty } from "./services/auth";
+
+const app = express();
+const publicDir = path.resolve(process.cwd(), "public");
+app.set("trust proxy", true); // behind Render's proxy: req.protocol reflects https (for media URLs)
+app.use((_req, res, next) => {
+  // Practical baseline for the current inline-script console. Tighten CSP once
+  // public/*.html is moved to bundled assets or nonce-based scripts.
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), payment=(), usb=(), display-capture=(), microphone=(self)");
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://connect.facebook.net",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://www.facebook.com",
+      "font-src 'self' data:",
+      "connect-src 'self' https://api.telnyx.com https://*.telnyx.com wss://*.telnyx.com",
+      "media-src 'self' blob: data:",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+    ].join("; ")
+  );
+  next();
+});
+app.use(express.json({ limit: "16mb" })); // CSV imports post the whole file as JSON — allow large exports
+app.use(express.urlencoded({ extended: true }));
+
+app.get(["/health", "/v2/health"], async (_req, res) => {
+  // Always 200 so Render keeps the service live; BlueBubbles is reported as a
+  // sub-status, never a reason to fail the health check (avoids tunnel-down 502s).
+  let bluebubbles = false;
+  try {
+    bluebubbles = await ping();
+  } catch {
+    bluebubbles = false;
+  }
+  res.json({
+    ok: true,
+    bluebubbles,
+    time: new Date().toISOString(),
+    commit: process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION || null,
+  });
+});
+
+app.get("/", (_req, res) => {
+  res.redirect(302, "/v2");
+});
+
+app.get(["/logo.svg", "/v2/logo.svg"], (_req, res) => {
+  res.sendFile(path.join(publicDir, "logo.svg"));
+});
+
+function publicStatic() {
+  return express.static(publicDir, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".webmanifest")) res.set("Cache-Control", "no-store");
+    },
+  });
+}
+
+app.use("/oauth", oauthRouter);
+app.use("/providers/ghl", providerRouter);
+app.use("/webhooks", webhooksRouter);
+app.use(voiceRouter); // /calls/*, /dnc, /webhooks/telnyx-voice
+app.use(
+  "/public",
+  express.static(path.resolve(process.cwd(), "public"), {
+    setHeaders: (res, filePath) => {
+      // Never cache the PWA manifest: it drives the install start_url/icon, so a stale
+      // copy pins an old start_url (e.g. "/app") on phones after we change it. Icons/JS
+      // can cache normally.
+      if (filePath.endsWith(".webmanifest")) res.set("Cache-Control", "no-store");
+    },
+  })
+);
+app.use(appRouter); // /app (softphone UI), /webrtc/token
+app.use(ghlWorkflowRouter); // /ghl/workflow/* — GHL custom workflow actions
+app.use(adminRouter); // /admin/deploy, /admin/redeploy
+app.use(usersRouter); // /api/auth/* (login, me, logout, change-password) + /api/users (admin)
+app.use(crmRouter); // /webhooks/lead (intake) + /api/leads, /api/automations
+
+app.use("/v2/oauth", oauthRouter);
+app.use("/v2/providers/ghl", providerRouter);
+app.use("/v2/webhooks", webhooksRouter);
+app.use("/v2", voiceRouter);
+app.use("/v2/public", publicStatic());
+app.use("/v2", appRouter);
+app.use("/v2", ghlWorkflowRouter);
+app.use("/v2", adminRouter);
+app.use("/v2", usersRouter);
+app.use("/v2", crmRouter);
+
+app.use((_req, res) => res.status(404).json({ error: "not found" }));
+
+app.listen(config.port, () => {
+  log.info(`LoanGenius v2 CRM app listening on :${config.port}`);
+  reportMissingConfig((m) => log.warn(m));
+  seedAdminIfEmpty(); // one-time: seed the first admin from APP_PASSCODE + assign existing leads
+  startCallNowPoller(); // watch GHL for the `call-now` tag → click-to-dial
+  seedCampaigns(); // one-time: seed the 5 category nurture campaigns (disabled)
+  startAutomationWorker(); // run due CRM automation steps (email/text/voicemail)
+});

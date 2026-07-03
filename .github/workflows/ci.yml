@@ -1,0 +1,42 @@
+# Build check: compiles the TypeScript on every PR / branch push — the same
+# `npm run build` Render runs on deploy, so a red X here means the deploy would
+# fail too. Catches it in ~30s instead of after a failed Render deploy.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, claude/practical-ride-3flGM]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  worker-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare-texting-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudflare-texting-mcp/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: true

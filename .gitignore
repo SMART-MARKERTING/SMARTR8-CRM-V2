@@ -1,0 +1,33 @@
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.env
+*.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+tokens.json
+.tokens/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

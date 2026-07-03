@@ -1,0 +1,26 @@
+{
+  "name": "smartr8-texting-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Net-new Cloudflare Workers texting layer + remote MCP connector for Smartr8/Adaxa mortgage leads. Shares Telnyx + BlueBubbles hardware with the Render service; reads/writes the smartr8-leads D1 (additive tables only).",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "migrate": "wrangler d1 migrations apply smartr8-leads --remote",
+    "migrate:local": "wrangler d1 migrations apply smartr8-leads --local"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.0.5",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "agents": "^0.0.109",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250506.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.14.0"
+  }
+}
