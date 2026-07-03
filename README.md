@@ -3,6 +3,8 @@
 Standalone v2 CRM service for `crm.smartr8.com/v2`. This repo is split from
 `SMART-MARKERTING/Smartr8-texting`, which remains the root `crm.smartr8.com` app.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/SMART-MARKERTING/LOANGENIUS)
+
 Open `/v2` after deploy. The same backend is also mounted under `/v2/api`, `/v2/calls`,
 `/v2/webrtc`, and related prefixed paths so Cloudflare can route only `/v2*` to this
 service without leaking v2 calls to the root CRM repo.
