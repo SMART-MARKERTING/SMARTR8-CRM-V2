@@ -2371,7 +2371,8 @@
       async function sendBulkVm() {
         status("blastMsg", "Starting...");
         var data = await json("/api/leads/voicemail-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedIds(), voicemailText: $("blastVm").value, sendText: $("blastVmTextOn").checked, text: $("blastVmText").value }) });
-        status("blastMsg", "Initiated " + data.initiated + ", skipped " + data.skipped + ", failed " + data.failed + ". Text sent " + data.textSent + ".", data.failed ? "warnText" : "okText");
+        var reasons = data.reasons ? Object.keys(data.reasons).map(function (k) { return k + " (" + data.reasons[k] + ")"; }).join("; ") : "";
+        status("blastMsg", "Initiated " + data.initiated + ", skipped " + data.skipped + ", failed " + data.failed + ". Text sent " + data.textSent + "." + (reasons ? " Reasons: " + reasons : ""), data.failed ? "warnText" : "okText");
       }
       async function deleteSelectedLeads() {
         var ids = selectedIds();

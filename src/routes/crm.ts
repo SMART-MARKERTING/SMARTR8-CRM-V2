@@ -1677,7 +1677,16 @@ async function resolveLeadVoicemailAudioUrl(
   if (explicitAudioUrl) return explicitAudioUrl;
   const script = renderLeadMergeTemplate(scriptTemplate, lead).trim();
   if (!script) return undefined;
-  return (await generateVoicemailAudio(script, { baseUrl })).url;
+  try {
+    return (await generateVoicemailAudio(script, { baseUrl })).url;
+  } catch (err) {
+    const fallbackAudioUrl = getDefaultVoicemailAudioUrl();
+    if (fallbackAudioUrl) {
+      log.warn("voicemail audio generation failed; using default audio", { leadId: lead.id, err: String(err) });
+      return fallbackAudioUrl;
+    }
+    throw err;
+  }
 }
 
 crmRouter.post("/api/leads/:id/voicemail-drop", requirePass, async (req, res) => {
@@ -1742,7 +1751,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
       audioUrl = await resolveLeadVoicemailAudioUrl(lead, voicemailText, audioUrlInput, requestPublicBase(req));
     } catch (err) {
       failed++;
-      note("audio generation failed");
+      note(`audio generation failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 220));
       if (sendText) textSkipped++;
       log.warn("voicemail blast audio generation failed", { leadId: lead.id, err: String(err) });
       continue;
@@ -1755,7 +1764,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
         const text = await sendLeadTextFollowup(lead, textTemplate, leadActionAuthor(req), true);
         if ("ok" in text) textSent++;
         else if ("skipped" in text) { textSkipped++; note(`text ${text.reason}`); }
-        else { textFailed++; note("text failed"); }
+        else { textFailed++; note(`text failed: ${text.error}`.slice(0, 220)); }
       }
     } else if ("skipped" in voicemail) {
       skipped++;
@@ -1763,7 +1772,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
       if (sendText) textSkipped++;
     } else {
       failed++;
-      note("provider error");
+      note(`provider error: ${voicemail.error}`.slice(0, 220));
       if (sendText) textSkipped++;
     }
 
