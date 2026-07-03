@@ -238,6 +238,28 @@
     .badge.red { background: #ffe9e9; color: #a42525; }
     .badge.purple { background: #f1e9ff; color: #6e2ead; }
     .badge.teal { background: #dff8f7; color: #05676e; }
+    .leadScopeSummary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(248,250,252,.9), rgba(255,255,255,.96));
+    }
+    .scopeTile {
+      border: 1px solid var(--fieldLine);
+      border-radius: var(--radius);
+      background: #fff;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .scopeTile span { color: var(--muted); font-size: 12px; font-weight: 850; }
+    .scopeTile b { color: var(--text); font-size: 18px; }
+    @media (max-width: 760px) { .leadScopeSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .statusTabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
     .statusTab {
       border: 1px solid var(--fieldLine);
@@ -440,6 +462,8 @@
         <button class="navBtn" data-nav="portal"><span class="navIco">AP</span>Portal / Apps</button>
         <button class="navBtn" data-nav="messages"><span class="navIco">MS</span>Conversations</button>
         <button class="navBtn" data-nav="dialer"><span class="navIco">PH</span>Dialer</button>
+        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
+        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
         <button class="navBtn" data-nav="campaigns"><span class="navIco">TC</span>Text Campaigns</button>
         <button class="navBtn" data-nav="tasks"><span class="navIco">TS</span>Tasks</button>
         <button class="navBtn" data-nav="calendar"><span class="navIco">CA</span>Calendar</button>
@@ -455,8 +479,6 @@
         <button class="navBtn" data-nav="email"><span class="navIco">EM</span>Email</button>
         <button class="navBtn" data-nav="admin"><span class="navIco">AD</span>Admin / Sub-Accounts</button>
         <button class="navBtn" data-nav="settings"><span class="navIco">ST</span>Settings</button>
-        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
-        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
         <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
       </div>
       <div class="navGroup">
@@ -788,7 +810,7 @@
         state.leadStageFilter = state.leadStageFilter || "";
         pageShell("Leads", "Manage borrowers, pipeline status, task follow-up, and loan workflow notes.",
           '<button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
-          '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
+          '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadScopeSummary" class="leadScopeSummary"></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
         await loadLeads();
       }
@@ -799,8 +821,17 @@
         if ($("leadListWrap")) $("leadListWrap").innerHTML = '<div class="spinner"></div>';
         var data = await json("/api/leads" + qs);
         state.leads = data.leads || [];
+        renderLeadScopeSummary(data.stats || {});
         await renderLeadStatusTabs(q);
-        if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true);
+        if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true, data.stats || {});
+      }
+      function renderLeadScopeSummary(stats) {
+        if (!$("leadScopeSummary")) return;
+        $("leadScopeSummary").innerHTML =
+          '<div class="scopeTile"><span>Active leads</span><b>' + Number(stats.active || 0) + '</b></div>' +
+          '<button class="scopeTile" data-nav="contacts"><span>Contacts</span><b>' + Number(stats.contacts || 0) + '</b></button>' +
+          '<button class="scopeTile" data-nav="pastclients"><span>Past clients</span><b>' + Number(stats.past || 0) + '</b></button>' +
+          '<button class="scopeTile" data-nav="deleted"><span>Deleted</span><b>' + Number(stats.deleted || 0) + '</b></button>';
       }
       async function renderLeadStatusTabs(q) {
         var counts = {};
@@ -823,8 +854,11 @@
           return '<button class="statusTab' + (state.leadStageFilter === s ? ' active' : '') + '" data-action="lead-status-tab" data-stage="' + esc(s) + '">' + esc(s) + ' <span class="badge">' + Number(counts[s] || 0) + '</span></button>';
         })).join("");
       }
-      function leadsTable(leads, selectable) {
-        if (!leads || !leads.length) return '<div class="empty">No leads found.</div>';
+      function leadsTable(leads, selectable, stats) {
+        if (!leads || !leads.length) {
+          var hidden = stats && (Number(stats.contacts || 0) + Number(stats.past || 0) + Number(stats.deleted || 0));
+          return '<div class="empty">No active leads found.' + (hidden ? ' Check Contacts, Past Clients, or Deleted above for hidden records.' : '') + '</div>';
+        }
         return '<table class="table"><thead><tr>' +
           (selectable ? '<th><input type="checkbox" data-action="select-all"></th>' : '') +
           '<th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Owner</th><th>Source</th><th>Last contact</th><th></th></tr></thead><tbody>' +

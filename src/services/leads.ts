@@ -969,23 +969,36 @@ export function listPipeline(limit = 1000, ownerUserId?: string): PipelineLead[]
 
 /** Lightweight stats for the console header. */
 export function leadStats(ownerUserId?: string): Record<string, number> {
-  // Active-pipeline counts exclude past clients (they have their own view), so the Leads
-  // header total matches the list, which also hides past clients. Non-admins are scoped
-  // to the leads they own.
-  const rows = db
-    .prepare(
-      `SELECT status, COUNT(*) AS n FROM leads
-       WHERE deleted_at IS NULL AND past_client = 0 ${ownerUserId ? "AND owner_user_id = @owner" : ""}
-       GROUP BY status`,
-    )
-    .all(ownerUserId ? { owner: ownerUserId } : {}) as Array<{
+  // Active-pipeline counts match the Leads tab exactly: no deleted records, no past
+  // clients, and no contact-only rows. Contacts/Past/Deleted get their own totals so
+  // the UI can explain where records are instead of looking like they disappeared.
+  const ownerWhere = ownerUserId ? "AND owner_user_id = @owner" : "";
+  const params = ownerUserId ? { owner: ownerUserId } : {};
+  const count = (where: string): number => {
+    const stmt = db.prepare(`SELECT COUNT(*) AS n FROM leads WHERE ${where} ${ownerWhere}`);
+    return (ownerUserId ? (stmt.get(params) as { n: number }) : (stmt.get() as { n: number })).n;
+  };
+  const statusStmt = db.prepare(
+    `SELECT status, COUNT(*) AS n FROM leads
+     WHERE deleted_at IS NULL AND past_client = 0 AND contact_only = 0 ${ownerWhere}
+     GROUP BY status`,
+  );
+  const rows = (ownerUserId ? statusStmt.all(params) : statusStmt.all()) as Array<{
     status: string;
     n: number;
   }>;
-  const out: Record<string, number> = { total: 0 };
+  const out: Record<string, number> = {
+    active: count("deleted_at IS NULL AND past_client = 0 AND contact_only = 0"),
+    contacts: count("deleted_at IS NULL AND contact_only = 1"),
+    past: count("deleted_at IS NULL AND past_client = 1"),
+    deleted: count("deleted_at IS NOT NULL"),
+    all: count("1 = 1"),
+    total: 0,
+  };
   for (const r of rows) {
     out[r.status] = r.n;
     out.total += r.n;
   }
+  out.total = out.active;
   return out;
 }
