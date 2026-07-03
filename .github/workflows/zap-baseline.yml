@@ -33,7 +33,7 @@ jobs:
           echo "url=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Run ZAP baseline scan
-        uses: zaproxy/action-baseline@v0.14.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ steps.target.outputs.url }}
           cmd_options: "-a -r zap-report.html -J zap-report.json"
