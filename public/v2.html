@@ -809,7 +809,7 @@
       async function loadLeadsView() {
         state.leadStageFilter = state.leadStageFilter || "";
         pageShell("Leads", "Manage borrowers, pipeline status, task follow-up, and loan workflow notes.",
-          '<button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
+          '<button class="btn" data-action="download-lead-sample">Sample CSV</button><button class="btn" data-action="open-lead-import">Import CSV</button><button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
           '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadScopeSummary" class="leadScopeSummary"></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
         await loadLeads();
@@ -824,6 +824,44 @@
         renderLeadScopeSummary(data.stats || {});
         await renderLeadStatusTabs(q);
         if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true, data.stats || {});
+      }
+      function leadImportSampleColumns() {
+        return "First Name, Last Name, Phone Number, Email, Status, Source, Property Address, City, State, Zip, DOB, Credit Score, Home Value, Mortgage Balance, Loan Purpose, Tags, Notes, SMS Consent";
+      }
+      function downloadLeadSample() {
+        var a = document.createElement("a");
+        a.href = apiHref("/api/leads/sample.csv");
+        a.download = "active-leads-sample.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      function openLeadImport() {
+        openModal("Import Leads CSV",
+          '<div class="sub" style="margin-bottom:10px">Accepted columns: ' + esc(leadImportSampleColumns()) + '</div>' +
+          '<input id="leadImportCsv" type="file" accept=".csv,text/csv">' +
+          '<div class="fieldGrid" style="margin-top:12px">' +
+            '<label>Destination<select id="leadImportDestination"><option value="leads">Active Leads</option><option value="past_clients">Past Clients</option></select></label>' +
+            '<label>Default stage<select id="leadImportStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === "Lead-In" ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
+          '</div>' +
+          '<div class="toolbar" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="run-lead-import">Import CSV</button></div>' +
+          '<div id="leadImportMsg" class="statusLine"></div>');
+      }
+      async function importLeadCsv() {
+        var file = $("leadImportCsv") && $("leadImportCsv").files && $("leadImportCsv").files[0];
+        if (!file) { status("leadImportMsg", "Choose a CSV first.", "warnText"); return; }
+        var destination = $("leadImportDestination") ? $("leadImportDestination").value : "leads";
+        var defaultStage = $("leadImportStage") ? $("leadImportStage").value : "Lead-In";
+        status("leadImportMsg", "Importing...");
+        var csv = await file.text();
+        var data = await json("/api/leads/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csv: csv, destination: destination, defaultStage: defaultStage })
+        });
+        state.selectedIds.clear();
+        status("leadImportMsg", "Created " + data.created + ", updated " + data.updated + ", skipped " + data.skipped + " of " + data.total + ".", (data.created || data.updated) ? "okText" : "warnText");
+        await loadLeads();
       }
       function renderLeadScopeSummary(stats) {
         if (!$("leadScopeSummary")) return;
@@ -2466,6 +2504,9 @@
           else if (a === "copy-webhook") await copyWebhook();
           else if (a === "new-lead") openNewLeadModal();
           else if (a === "create-lead") await createLead();
+          else if (a === "download-lead-sample") downloadLeadSample();
+          else if (a === "open-lead-import") openLeadImport();
+          else if (a === "run-lead-import") await importLeadCsv();
           else if (a === "refresh-leads") await loadLeads();
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
@@ -2576,7 +2617,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 

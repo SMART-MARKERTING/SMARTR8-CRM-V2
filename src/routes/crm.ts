@@ -1139,6 +1139,19 @@ crmRouter.post("/api/leads", requirePass, (req, res) => {
   }
 });
 
+function csvHeaderKey(value: string): string {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function csvHeaderCompact(value: string): string {
+  return csvHeaderKey(value).replace(/_/g, "");
+}
+
 /** Minimal CSV parser: row objects keyed by lowercased header. Handles quoted fields
  *  (commas/newlines inside quotes, "" escaping). */
 function parseCsv(text: string): Record<string, string>[] {
@@ -1163,10 +1176,22 @@ function parseCsv(text: string): Record<string, string>[] {
   }
   if (field !== "" || row.length) { row.push(field); if (row.some((x) => x.trim() !== "")) rows.push(row); }
   if (!rows.length) return [];
-  const headers = rows[0].map((h) => h.trim().toLowerCase());
+  const headers = rows[0].map((h) => {
+    const raw = h.replace(/^\uFEFF/, "").trim().toLowerCase();
+    return {
+      raw,
+      key: csvHeaderKey(raw),
+      compact: csvHeaderCompact(raw),
+    };
+  });
   return rows.slice(1).map((r) => {
     const o: Record<string, string> = {};
-    headers.forEach((h, idx) => { o[h] = (r[idx] ?? "").trim(); });
+    headers.forEach((h, idx) => {
+      const value = (r[idx] ?? "").trim();
+      if (h.raw) o[h.raw] = value;
+      if (h.key && o[h.key] === undefined) o[h.key] = value;
+      if (h.compact && o[h.compact] === undefined) o[h.compact] = value;
+    });
     return o;
   });
 }
@@ -1193,6 +1218,12 @@ const LEAD_POOL_SAMPLE_CSV = [
   "Chris,Johnson,+14805550125,chris@example.com,CA,\"cashout;spanish\",referral,Cash-out refi,88 Market St,San Diego,92101,\"Send updated numbers\",no",
 ].join("\n") + "\n";
 
+const LEAD_IMPORT_SAMPLE_CSV = [
+  "First Name,Last Name,Phone Number,Email,Status,Source,Property Address,City,State,Zip,DOB,Credit Score,Home Value,Mortgage Balance,Loan Purpose,Tags,Notes,SMS Consent",
+  "Wesley,Smith,+14694417338,wesley@example.com,new,website,4915 Sandy Ct,Manassas,VA,20110,1984-05-15,680,525000,315000,HELOC,\"hot;heloc\",\"Asked for updated equity options\",yes",
+  "Nikolao,Kollas,+17203000000,nikolao@example.com,nurturing,import,88 Market St,San Diego,CA,92101,1979-09-10,720,650000,402000,Cash-out refi,\"nurture;refi\",\"Follow up next week\",no",
+].join("\n") + "\n";
+
 function csvEscapeCell(value: unknown): string {
   const s = String(value ?? "");
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -1216,12 +1247,23 @@ function splitImportTags(value: string | undefined): string[] | undefined {
 
 function rowValue(row: Record<string, string>, keys: string[]): string {
   for (const key of keys) {
-    const direct = row[key];
-    if (direct) return direct;
-    const compact = row[key.replace(/\s+/g, "_")];
-    if (compact) return compact;
+    const candidates = Array.from(new Set([key, csvHeaderKey(key), csvHeaderCompact(key), key.replace(/\s+/g, "_")].filter(Boolean)));
+    for (const candidate of candidates) {
+      const value = row[candidate];
+      if (value) return value;
+    }
   }
   return "";
+}
+
+function splitImportName(value: string): { first: string; last: string } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return { first: parts.shift() || "", last: parts.join(" ") };
+}
+
+function normalizeSsnLast4(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : value.trim();
 }
 
 function truthyCell(value: string | undefined): boolean {
@@ -1254,15 +1296,19 @@ function leadPoolSearchBlob(lead: Lead): string {
 /** CSV header (lowercased) → canonical custom key. Only these extra columns are kept on import,
  *  so a 100+ column CRM export doesn't bloat each lead's custom data. Keys match the Quote panel. */
 const IMPORT_CUSTOM_ALIASES: Record<string, string> = {
-  dob: "dob", date_of_birth: "dob",
+  dob: "dob", date_of_birth: "dob", dateofbirth: "dob", birth_date: "dob", birthdate: "dob",
+  ssn: "ssn_last4", ssn_last4: "ssn_last4", last4ssn: "ssn_last4", ssnlast4: "ssn_last4",
+  employer: "employer", employer_name: "employer", employername: "employer",
+  employment: "employment", employment_status: "employment", employmentstatus: "employment",
+  income: "income", monthly_income: "income", monthlyincome: "income", annual_income: "income", annualincome: "income",
   creditscore: "credit", credit_score: "credit", credit: "credit", creditband: "credit", credit_band: "credit",
   homevalue: "home_value", home_value: "home_value", estimated_home_value: "home_value", estimatedhomevalue: "home_value",
   mortgagebalance: "mortgage_balance", mortgage_balance: "mortgage_balance", loan_balance_remaining: "mortgage_balance",
-  loanamount: "loan_amount", loan_amount: "loan_amount",
-  loanpurpose: "loan_goal", loan_purpose: "loan_goal", loan_goal: "loan_goal", goal: "loan_goal",
-  address: "address", address1: "address", street: "address", mortgage_address: "address",
-  city: "city", state: "state", mortgage_state: "state",
-  zip: "zip", zipcode: "zip", postal_code: "zip", postalcode: "zip", mortgage_zipcode: "zip",
+  loanamount: "loan_amount", loan_amount: "loan_amount", requested_amount: "loan_amount", requestedamount: "loan_amount",
+  loanpurpose: "loan_goal", loan_purpose: "loan_goal", loan_goal: "loan_goal", goal: "loan_goal", purpose: "loan_goal",
+  propertyaddress: "address", property_address: "address", address: "address", address1: "address", street: "address", street_address: "address", mortgage_address: "address",
+  city: "city", property_city: "city", state: "state", property_state: "state", mortgage_state: "state",
+  zip: "zip", zipcode: "zip", postal_code: "zip", postalcode: "zip", property_zip: "zip", mortgage_zipcode: "zip",
   loantype: "loan_type", loan_type: "loan_type", mortgage_type: "loan_type",
   loan_start_date: "funded_date", funded_date: "funded_date", funding_date: "funded_date",
   lead_type: "lead_type", leadtype: "lead_type", contact_type: "lead_type",
@@ -1270,6 +1316,71 @@ const IMPORT_CUSTOM_ALIASES: Record<string, string> = {
 
 /** Lead statuses accepted on import (CSV `status` column). Anything else falls back to default. */
 const IMPORT_STATUSES = new Set(["new", "contacted", "qualified", "nurturing", "won", "lost"]);
+
+function importChoiceKey(value: string | undefined): string {
+  return (value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function importLeadStatus(value: string | undefined, fallback?: LeadStatus): LeadStatus | undefined {
+  const raw = (value || "").trim().toLowerCase();
+  if (IMPORT_STATUSES.has(raw)) return raw as LeadStatus;
+  const aliases: Record<string, LeadStatus> = {
+    leadin: "new",
+    replied: "contacted",
+    contacted: "contacted",
+    notreplying: "nurturing",
+    noresponse: "nurturing",
+    quotesent: "qualified",
+    appcompleted: "qualified",
+    applicationcompleted: "qualified",
+    processing: "qualified",
+    underwriting: "qualified",
+    funded: "won",
+    closed: "won",
+    won: "won",
+    lost: "lost",
+    dead: "lost",
+  };
+  return aliases[importChoiceKey(value)] || fallback;
+}
+
+function importPipelineStage(value: string | undefined): string | undefined {
+  const key = importChoiceKey(value);
+  if (!key) return undefined;
+  const match = PIPELINE_STAGES.find((s) => importChoiceKey(s.name) === key);
+  if (match) return match.name;
+  const aliases: Record<string, string> = {
+    lead: "Lead-In",
+    leadin: "Lead-In",
+    new: "Lead-In",
+    replied: "Replied",
+    contacted: "Replied",
+    notreplying: "Not Replying",
+    noresponse: "Not Replying",
+    nurture: "Not Replying",
+    nurturing: "Not Replying",
+    quotesent: "Quote Sent",
+    qualified: "Quote Sent",
+    appcompleted: "App Completed",
+    applicationcompleted: "App Completed",
+    suspended: "Suspended",
+    paused: "Suspended",
+    processing: "Processing",
+    underwriting: "Processing",
+    funded: "Funded",
+    closed: "Funded",
+    won: "Funded",
+    lost: "Lost",
+    dead: "Lost",
+  };
+  return aliases[key];
+}
+
+crmRouter.get("/api/leads/sample.csv", requirePass, (_req, res) => {
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", 'attachment; filename="active-leads-sample.csv"');
+  res.send(LEAD_IMPORT_SAMPLE_CSV);
+});
 
 /** Bulk-import leads from CSV (header row + rows). Dedups by phone/email (updates instead
  *  of duplicating). `destination` picks where the rows land:
@@ -1283,6 +1394,7 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
     markPastClients?: boolean;
     destination?: string;
     defaultStatus?: string;
+    defaultStage?: string;
   };
   const csv = typeof body.csv === "string" ? body.csv : "";
   if (!csv.trim()) {
@@ -1292,6 +1404,7 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
   const toPastClients = body.destination === "past_clients" || Boolean(body.markPastClients);
   const defaultStatusRaw = (body.defaultStatus || "").trim().toLowerCase();
   const defaultStatus = IMPORT_STATUSES.has(defaultStatusRaw) ? (defaultStatusRaw as LeadStatus) : undefined;
+  const defaultStage = importPipelineStage(body.defaultStage);
   let rows: Record<string, string>[];
   try {
     rows = parseCsv(csv);
@@ -1303,11 +1416,13 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
   let updated = 0;
   let skipped = 0;
   for (const r of rows) {
-    const first = r.first_name || r.first || r.firstname || "";
-    const last = r.last_name || r.last || r.lastname || "";
+    const fullName = rowValue(r, ["full_name", "full name", "name", "contact_name", "contact name", "borrower", "borrower_name"]);
+    const split = splitImportName(fullName);
+    const first = rowValue(r, ["first_name", "first name", "first", "firstname", "given_name"]) || split.first;
+    const last = rowValue(r, ["last_name", "last name", "last", "lastname", "surname", "family_name"]) || split.last;
     // Accept singular OR plural column names (Shape/Jungo/etc. export `emails`/`phones`).
-    const email = r.email || firstOf(r.emails) || "";
-    const phone = r.phone || firstOf(r.phones) || "";
+    const email = firstOf(rowValue(r, ["email", "emails", "email_address", "email address", "primary_email"]));
+    const phone = firstOf(rowValue(r, ["phone", "phones", "phone_number", "phone number", "mobile", "cell", "primary_phone"]));
     if (!first && !last && !email && !phone) {
       skipped++;
       continue;
@@ -1316,15 +1431,16 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
     // the Quote/loan-details + DOB fields display) — so a 120-column export doesn't bloat it.
     const custom: Record<string, unknown> = {};
     for (const k of Object.keys(r)) {
-      const canon = IMPORT_CUSTOM_ALIASES[k] || IMPORT_CUSTOM_ALIASES[k.replace(/\s+/g, "_")];
-      if (canon && r[k]) custom[canon] = canon === "dob" ? normalizeDob(r[k]) : r[k];
+      const canon = IMPORT_CUSTOM_ALIASES[k] || IMPORT_CUSTOM_ALIASES[csvHeaderKey(k)] || IMPORT_CUSTOM_ALIASES[csvHeaderCompact(k)];
+      if (canon && r[k]) custom[canon] = canon === "dob" ? normalizeDob(r[k]) : canon === "ssn_last4" ? normalizeSsnLast4(r[k]) : r[k];
     }
-    const tags = r.tags ? r.tags.split(/[;|]/).map((t) => t.trim()).filter(Boolean) : undefined;
+    const tags = splitImportTags(rowValue(r, ["tags", "tag", "labels"]));
     // A row's own `status` column wins; otherwise fall back to the import's defaultStatus
     // (e.g. "nurturing" for a nurture/contacts upload). Only known statuses are honored.
-    const statusRaw = (r.status || "").trim().toLowerCase();
-    const status = IMPORT_STATUSES.has(statusRaw) ? (statusRaw as LeadStatus) : defaultStatus;
-    const rowPast = toPastClients || /^(1|true|yes|y)$/i.test(r.past_client || "");
+    const pipelineStage = importPipelineStage(rowValue(r, ["pipeline_stage", "pipeline status", "pipeline", "stage", "status", "lead status"])) || defaultStage;
+    const rowStatus = rowValue(r, ["status", "lead_status", "lead status"]);
+    const status = importLeadStatus(rowStatus || pipelineStage, defaultStatus);
+    const rowPast = toPastClients || truthyCell(rowValue(r, ["past_client", "past client", "closed_client", "funded"]));
     const existing = findLead({ phone: phone || undefined, email: email || undefined });
     let leadId: string;
     if (existing) {
@@ -1334,16 +1450,20 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
       if (email) patch.email = email;
       if (phone) patch.phone = phone;
       if (status) patch.status = status;
+      if (pipelineStage) patch.pipeline_stage = pipelineStage;
       if (tags) patch.tags = Array.from(new Set([...existing.tags, ...tags]));
       if (Object.keys(custom).length) patch.custom = { ...existing.custom, ...custom };
+      if (req.authUser && !existing.owner_user_id) patch.owner_user_id = req.authUser.id;
       if (Object.keys(patch).length) updateLead(existing.id, patch);
       leadId = existing.id;
       updated++;
     } else {
-      const lead = createLead({ first_name: first, last_name: last, email, phone, source: r.source || "import", status, tags, custom });
+      const lead = createLead({ first_name: first, last_name: last, name: fullName, email, phone, source: rowValue(r, ["source", "lead_source", "lead source"]) || "import", status, pipeline_stage: pipelineStage || DEFAULT_STAGE, tags, custom });
       leadId = lead.id;
+      if (req.authUser) updateLead(lead.id, { owner_user_id: req.authUser.id });
       // A `notes` column becomes a real timeline note (visible) — e.g. funded date / loan summary.
-      if (r.notes) addNote(leadId, r.notes, "import");
+      const notes = rowValue(r, ["notes", "note", "last_note", "description"]);
+      if (notes) addNote(leadId, notes, "import");
       created++;
     }
     if (rowPast) markPastClient(leadId);
