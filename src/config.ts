@@ -150,6 +150,10 @@ export const config = {
     // Mirror leads/notes/activity into GHL as well (best-effort). Off by default since
     // the local DB is now the system of record.
     mirrorToGhl: env("CRM_MIRROR_TO_GHL", "false") === "true",
+    // One-way legacy CRM sync receiver. The old crm.smartr8.com app posts lead snapshots
+    // here so /v2 stays live while both apps run side-by-side. Prefer a dedicated secret;
+    // LEAD_WEBHOOK_SECRET is a fallback so existing Render envs can be wired quickly.
+    legacySyncSecret: env("CRM_V2_SYNC_SECRET", env("CRM_SYNC_SECRET", env("LEAD_WEBHOOK_SECRET"))),
     // Public origin of this service (e.g. https://smartr8-texting-1wx7.onrender.com),
     // used to build email unsubscribe links + List-Unsubscribe headers. Falls back
     // to the OAuth redirect URI's origin when unset.

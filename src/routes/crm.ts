@@ -97,6 +97,7 @@ import {
 import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocument, softDeleteLeadDocument } from "../services/documents";
 import { listSettlementVendorSettings, saveSettlementVendorSettings, SettlementVendorKind } from "../services/loanServiceSettings";
 import { mimeForExt, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
+import { applyLegacyCrmSync } from "../services/legacyCrmSync";
 import {
   generateVoicemailAudio,
   publicElevenLabsSettings,
@@ -1099,6 +1100,31 @@ crmRouter.post("/api/admin/revert-import", requirePass, (req, res) => {
 crmRouter.post("/api/admin/dedupe-contacts", requirePass, (req, res) => {
   const body = (req.body ?? {}) as { dryRun?: unknown };
   res.json(dedupeContacts(body.dryRun === false ? false : true));
+});
+
+crmRouter.post("/api/sync/legacy-crm", (req, res) => {
+  const expected = config.crm.legacySyncSecret;
+  if (!expected) {
+    res.status(503).json({ error: "legacy CRM sync is not configured" });
+    return;
+  }
+  const provided =
+    req.get("x-crm-sync-secret") ||
+    req.get("x-legacy-sync-secret") ||
+    (typeof req.query.key === "string" ? req.query.key : undefined) ||
+    (req.body && typeof req.body.secret === "string" ? req.body.secret : undefined);
+  if (provided !== expected) {
+    res.status(401).json({ error: "bad sync secret" });
+    return;
+  }
+  try {
+    const result = applyLegacyCrmSync(req.body);
+    log.info("legacy CRM sync applied", result);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    log.error("legacy CRM sync failed", { err: String(err) });
+    res.status(400).json({ error: String(err) });
+  }
 });
 
 /** Create a lead by hand. Lead-created automations run by default; set body.runAutomation=false to only save. */
