@@ -13,6 +13,12 @@ export interface ResendUpdateEmailResult {
   detail?: string;
 }
 
+export interface ResendCancelEmailResult {
+  ok: boolean;
+  id?: string;
+  detail?: string;
+}
+
 export type EmailRecipient = string | string[];
 
 export interface ResendEmailTemplate {
@@ -143,6 +149,26 @@ async function resendPatch<T>(
       method: "PATCH",
       headers: resendHeaders(),
       body: JSON.stringify(body),
+    });
+    const raw = await res.text().catch(() => "");
+    const data = raw ? JSON.parse(raw) as T : undefined;
+    if (!res.ok) return { ok: false, status: res.status, detail: raw || res.statusText, data };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, detail: String(err) };
+  }
+}
+
+async function resendPost<T>(
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<{ ok: boolean; data?: T; detail?: string; status?: number }> {
+  if (!resendApiConfigured()) return { ok: false, detail: "RESEND_API_KEY is not set" };
+  try {
+    const res = await fetch(`https://api.resend.com${path}`, {
+      method: "POST",
+      headers: resendHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
     });
     const raw = await res.text().catch(() => "");
     const data = raw ? JSON.parse(raw) as T : undefined;
@@ -415,6 +441,14 @@ export async function updateScheduledEmail(
   const result = await resendPatch<{ object?: string; id?: string }>(`/emails/${encodeURIComponent(id)}`, {
     scheduled_at: new Date(when).toISOString(),
   });
+  if (!result.ok) return { ok: false, detail: result.detail };
+  return { ok: true, id: result.data?.id || id };
+}
+
+export async function cancelScheduledEmail(emailId: string): Promise<ResendCancelEmailResult> {
+  const id = String(emailId || "").trim();
+  if (!id) return { ok: false, detail: "email id is required" };
+  const result = await resendPost<{ object?: string; id?: string }>(`/emails/${encodeURIComponent(id)}/cancel`);
   if (!result.ok) return { ok: false, detail: result.detail };
   return { ok: true, id: result.data?.id || id };
 }

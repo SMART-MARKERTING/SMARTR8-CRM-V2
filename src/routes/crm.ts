@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails, updateScheduledEmail } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails, updateScheduledEmail, cancelScheduledEmail } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3431,6 +3431,15 @@ crmRouter.patch("/api/email/sent/:emailId", requirePass, async (req, res) => {
   res.json({ ok: true, id: result.id, scheduled_at: scheduledAt });
 });
 
+crmRouter.post("/api/email/sent/:emailId/cancel", requirePass, async (req, res) => {
+  const result = await cancelScheduledEmail(req.params.emailId);
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.detail || "could not cancel scheduled email" });
+    return;
+  }
+  res.json({ ok: true, id: result.id, status: "canceled" });
+});
+
 crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
   res.json({
     ok: true,
@@ -3730,6 +3739,53 @@ crmRouter.patch("/api/email/activity/:activityId/reschedule", requirePass, async
     meta: { sourceActivityId: activity.id, resend_id: result.id || resendId, scheduled_at: scheduledAt },
   });
   res.json({ ok: true, activityId: activity.id, id: result.id || resendId, scheduled_at: scheduledAt });
+});
+
+crmRouter.post("/api/email/activity/:activityId/cancel", requirePass, async (req, res) => {
+  const row = db.prepare(`SELECT * FROM activities WHERE id = ? AND deleted_at IS NULL`).get(req.params.activityId) as
+    | { id: string; lead_id: string; type: string; direction: string | null; subject: string | null; body: string | null; status: string | null; meta: string | null }
+    | undefined;
+  const activity = row ? { ...row, meta: safeMeta(row.meta) } : null;
+  if (!activity || activity.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return;
+  }
+  const lead = getLead(activity.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const meta = { ...(activity.meta || {}) };
+  const resendId = cleanText(meta.id || meta.resend_id || meta.resend_email_id);
+  if (!resendId) {
+    res.status(400).json({ error: "this email activity has no Resend id to cancel" });
+    return;
+  }
+  const result = await cancelScheduledEmail(resendId);
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.detail || "could not cancel scheduled email" });
+    return;
+  }
+  meta.resend_id = result.id || resendId;
+  meta.last_event = "canceled";
+  meta.canceled_at = new Date().toISOString();
+  meta.canceled_by = leadActionAuthor(req);
+  db.prepare(`UPDATE activities SET status = ?, meta = ? WHERE id = ?`).run("canceled", JSON.stringify(meta), activity.id);
+  logActivity(lead.id, {
+    type: "email_canceled",
+    direction: "system",
+    channel: "email",
+    subject: "Scheduled email canceled",
+    body: "Scheduled email canceled before send.",
+    status: "canceled",
+    meta: { sourceActivityId: activity.id, resend_id: result.id || resendId },
+  });
+  res.json({ ok: true, activityId: activity.id, id: result.id || resendId, status: "canceled" });
 });
 
 /** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.
