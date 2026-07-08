@@ -471,6 +471,44 @@
       box-shadow: var(--shadow);
     }
     .modalBody { padding: 16px; display: grid; gap: 12px; }
+    .modal.fullscreen {
+      width: calc(100vw - 28px);
+      max-width: none;
+      height: calc(100vh - 28px);
+      max-height: none;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal.fullscreen .modalBody { flex: 1; overflow: auto; align-content: start; }
+    .leadProfileHero {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+      box-shadow: 0 8px 22px rgba(15,23,42,.08);
+    }
+    .leadProfileTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .leadQuickBar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .leadProfileGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 14px; align-items: start; }
+    .leadWide { grid-column: 1 / -1; }
+    .leadStickyFooter {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      margin-top: 4px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--panel) 95%, var(--bg));
+      box-shadow: 0 -8px 22px rgba(15,23,42,.08);
+    }
+    .calendarLeadResults { max-height: 260px; overflow: auto; }
     .toast {
       position: fixed;
       right: 18px;
@@ -488,6 +526,7 @@
     @media (max-width: 1120px) {
       .cols2, .cols3, .splitShell, .emailShell { grid-template-columns: 1fr; }
       .drawer { position: static; max-height: none; }
+      .leadProfileGrid { grid-template-columns: 1fr; }
     }
     @media (max-width: 820px) {
       .app { grid-template-columns: 1fr; }
@@ -498,6 +537,7 @@
       .content { padding: 16px; }
       .globalSearch { display: none; }
       .fieldGrid { grid-template-columns: 1fr; }
+      .modal.fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
       .tableWrap { overflow-x: auto; }
       .table { min-width: 760px; }
     }
@@ -702,6 +742,12 @@
         var d = new Date(Number(ms));
         if (isNaN(d.getTime())) return "";
         return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      }
+      function phoneHref(value) {
+        var digits = String(value || "").replace(/\D/g, "");
+        if (!digits) return "";
+        if (digits.length === 10) digits = "1" + digits;
+        return "tel:+" + digits;
       }
       function isoFromLocalDateInput(value) {
         if (!value) return "";
@@ -1254,9 +1300,17 @@
         var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
         var name = nameOf(lead);
         var addr = leadAddressParts(lead);
-        openModal("Lead Detail",
-          '<div class="toolbar" style="justify-content:space-between"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email].filter(Boolean).join(" | ")) + '</div></div></div>' + statusBadge(lead.pipeline_stage || "Lead-In") + '</div>' +
-          '<div class="grid fieldGrid">' +
+        var telHref = phoneHref(lead.phone || "");
+        var telButton = telHref ? '<a class="btn call" href="' + esc(telHref) + '">Call phone</a>' : '<button class="btn" disabled>No phone</button>';
+        var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
+        openModal("Lead Profile",
+          '<section class="leadProfileHero">' +
+            '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '</div></div>' +
+            '<div class="leadQuickBar">' + telButton + '<button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div id="leadActionMsg" class="statusLine"></div>' +
+          '</section>' +
+          '<div class="leadProfileGrid">' +
+          '<section class="card pad"><h3 style="margin-top:0">Contact details</h3><div class="grid fieldGrid">' +
             field("Full Name", "ldFull", name) +
             field("Phone", "ldPhone", lead.phone || "") +
             field("Email", "ldEmail", lead.email || "") +
@@ -1272,12 +1326,14 @@
             field("State", "ldState", addr.state) +
             field("ZIP", "ldZip", addr.zip) +
           '</div>' +
-          '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label>' +
+          '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label></section>' +
+          '<section id="leadAppointmentCard" class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
-          '<section class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
-          '<details class="card pad" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
-          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-lead">Save</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
-          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button></div><div id="leadWhatsappMsg" class="statusLine"></div><div class="toolbar"><button class="btn" data-action="sms-consent">Mark SMS consent</button>' + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
+          '<section class="card pad"><h3 style="margin-top:0">File folders</h3><div class="fieldGrid"><label>Folder<input id="ldDocFolder" list="emailFolderOptions" value="General"></label><label>File name<input id="ldDocDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="ldDocFile" type="file"></label></div><button class="btn primary" data-action="upload-doc" style="margin-top:10px">Upload document</button><div id="docMiniList" class="list" style="margin-top:12px"><div class="spinner"></div></div></section>' +
+          '<details class="card pad leadWide" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
+          '<section id="leadCommsCard" class="card pad leadWide"><h3 style="margin-top:0">Communication and actions</h3><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button><button class="btn teal" data-action="call-lead">Click-to-call</button><button class="btn" data-action="open-lead-dialer">Open dialer</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadWhatsappMsg" class="statusLine"></div></div></section>' +
+          '</div><div class="leadStickyFooter"><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="save-lead">Save lead</button></div><div id="leadSaveMsg" class="statusLine"></div></div>',
+          { fullscreen: true });
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
@@ -1459,6 +1515,16 @@
         status("leadCalendarMsg", via === "none" ? "Appointment booked." : "Appointment booked and invite queued.", "okText");
         showToast("Appointment booked.");
         if (state.page === "calendar") await refreshCalendar();
+      }
+
+      async function openLeadDialer() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        closeModal();
+        await route("dialer");
+        if ($("dialPhone") && lead.phone) $("dialPhone").value = lead.phone;
+        renderDialLead();
+        if (lead.phone) status("dialLeadMsg", "Ready to call " + lead.phone + ".", "okText");
       }
 
       async function toggleTask(todoId, done) {
@@ -1814,7 +1880,7 @@
       async function loadCalendar() {
         var monthDate = new Date(state.calendarMonth || new Date().setDate(1));
         pageShell("Calendar", "Monthly appointment calendar with task events and sendable calendar links.",
-          '<button class="btn" data-action="cal-prev">Prev</button><button class="btn" data-action="cal-today">Today</button><button class="btn" data-action="cal-next">Next</button>',
+          '<button class="btn" data-action="cal-prev">Prev</button><button class="btn" data-action="cal-today">Today</button><button class="btn" data-action="cal-next">Next</button><button class="btn primary" data-action="cal-add-event">Add appointment</button>',
           '<section class="card pad"><div class="calendarToolbar"><div><h2 id="calendarTitle" style="margin:0"></h2><div class="sub">Book appointments from any open lead, contact, lead-pool record, or past client profile.</div></div><button class="btn small" data-action="refresh">Refresh</button></div><div id="calendarWrap"><div class="spinner"></div></div></section>');
         $("calendarTitle").textContent = monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
         await refreshCalendar();
@@ -1852,14 +1918,30 @@
         box.innerHTML = '<div class="calendarGrid">' + dows + cells.join("") + '</div>';
       }
       async function openAddCalendarEvent() {
-        var contacts = await json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
-        var options = (contacts.contacts || []).slice(0, 5000).map(function (c) {
-          return '<option value="' + esc(c.id) + '">' + esc(c.name || c.phone || c.email || "Contact") + ' - ' + esc(c.scope || "Lead") + '</option>';
-        }).join("");
         var start = new Date(Date.now() + 60 * 60_000);
         start.setMinutes(0, 0, 0);
         openModal("Add Calendar Event",
-          '<div class="grid fieldGrid"><label>Contact<select id="calLead">' + options + '</select></label><label>Title<input id="calTitle" value="Mortgage review appointment"></label><label>Start<input id="calStart" type="datetime-local" value="' + localDateInput(start.getTime()) + '"></label><label>Duration<select id="calDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label><label>Location<input id="calLocation" placeholder="Phone call, Zoom, office..."></label><label>Send invite<select id="calInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="calDescription">We will review your mortgage and home equity options.</textarea></label><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="cal-save-event">Save event</button></div><div id="calEventMsg" class="statusLine"></div>');
+          '<div class="grid"><section class="card pad"><h3 style="margin-top:0">Choose lead</h3><div class="toolbar"><input id="calLeadSearch" placeholder="Search name, phone, email, address..." style="flex:1"><button class="btn" data-action="cal-search-leads">Search</button></div><input id="calLead" type="hidden"><div id="calSelectedLead" class="statusLine">Select a lead below.</div><div id="calLeadResults" class="list calendarLeadResults"><div class="spinner"></div></div></section><section class="card pad"><h3 style="margin-top:0">Appointment details</h3><div class="grid fieldGrid"><label>Title<input id="calTitle" value="Mortgage review appointment"></label><label>Start<input id="calStart" type="datetime-local" value="' + localDateInput(start.getTime()) + '"></label><label>Duration<select id="calDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label><label>Location<input id="calLocation" placeholder="Phone call, Zoom, office..."></label><label>CC Email<input id="calCc" placeholder="optional@example.com"></label><label>Send invite<select id="calInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="calDescription">We will review your mortgage and home equity options.</textarea></label></section><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="cal-save-event">Save event</button></div><div id="calEventMsg" class="statusLine"></div></div>');
+        if ($("calLeadSearch")) $("calLeadSearch").addEventListener("keydown", function (e) {
+          if (e.key === "Enter") searchCalendarLeads();
+        });
+        await searchCalendarLeads();
+      }
+      async function searchCalendarLeads() {
+        var box = $("calLeadResults");
+        if (!box) return;
+        box.innerHTML = '<div class="spinner"></div>';
+        var q = $("calLeadSearch") ? $("calLeadSearch").value.trim() : "";
+        var data = await json("/api/leads?q=" + encodeURIComponent(q) + "&limit=30&includePastClients=1&includeContacts=1&includeLeadPool=1").catch(function (e) { return { leads: [], error: e.message }; });
+        var leads = data.leads || [];
+        box.innerHTML = leads.map(function (l) {
+          var meta = [l.phone, l.email, leadAddressParts(l).street].filter(Boolean).join(" | ");
+          return '<button class="item clickable" data-action="cal-select-lead" data-id="' + esc(l.id) + '" data-name="' + esc(nameOf(l)) + '" style="text-align:left"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(meta || l.source || "Lead") + '</div>' + statusBadge(l.pipeline_stage || l.status || "Lead-In") + '</button>';
+        }).join("") || '<div class="empty">' + esc(data.error || "No matching leads found.") + '</div>';
+      }
+      function selectCalendarLead(btn) {
+        if ($("calLead")) $("calLead").value = btn.dataset.id || "";
+        if ($("calSelectedLead")) $("calSelectedLead").innerHTML = '<span class="badge green">&#10003; Selected</span> ' + esc(btn.dataset.name || "Lead");
       }
       function localDateInput(ms) {
         var d = new Date(Number(ms));
@@ -1867,16 +1949,16 @@
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
       }
       async function saveCalendarEvent() {
-        var leadId = $("calLead").value;
+        var leadId = $("calLead") ? $("calLead").value : "";
         var start = new Date($("calStart").value).getTime();
-        if (!leadId || !Number.isFinite(start)) { status("calEventMsg", "Choose a contact and start time.", "warnText"); return; }
+        if (!leadId || !Number.isFinite(start)) { status("calEventMsg", "Choose a lead and start time.", "warnText"); return; }
         status("calEventMsg", "Saving event...");
-        var payload = { title: $("calTitle").value, due_date: start, duration_minutes: Number($("calDuration").value), location: $("calLocation").value, description: $("calDescription").value };
+        var payload = { title: $("calTitle").value, due_date: start, duration_minutes: Number($("calDuration").value), location: $("calLocation").value, description: $("calDescription").value, cc_email: inputVal("calCc") };
         var data = await json("/api/leads/" + encodeURIComponent(leadId) + "/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         var todo = (data.todos || []).slice().sort(function (a, b) { return Number(b.created_at) - Number(a.created_at); })[0];
         var via = $("calInviteVia").value;
         if (via !== "none" && todo) {
-          await json("/api/leads/" + encodeURIComponent(leadId) + "/calendar-invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ todoId: todo.id, via: via }) });
+          await json("/api/leads/" + encodeURIComponent(leadId) + "/calendar-invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ todoId: todo.id, via: via, cc_email: inputVal("calCc") }) });
         }
         closeModal();
         showToast("Calendar event saved.");
@@ -2769,8 +2851,10 @@
         status(statusId, "Uploading...");
         var type = $(typeId).value;
         var notes = notesId && $(notesId) ? $(notesId).value : "";
-        var folder = inputVal("docFolder") || "General";
-        var displayName = inputVal("docDisplayName") || file.name;
+        var folderId = fileId === "ldDocFile" ? "ldDocFolder" : "docFolder";
+        var displayNameId = fileId === "ldDocFile" ? "ldDocDisplayName" : "docDisplayName";
+        var folder = inputVal(folderId) || "General";
+        var displayName = inputVal(displayNameId) || file.name;
         var r = await api("/api/leads/" + encodeURIComponent(leadId) + "/documents?type=" + encodeURIComponent(type) + "&notes=" + encodeURIComponent(notes), {
           method: "POST",
           headers: { "Content-Type": file.type || "application/octet-stream", "x-filename": file.name, "x-document-type": type, "x-document-folder": folder, "x-document-name": displayName, "x-document-notes": notes },
@@ -3835,13 +3919,17 @@
         if ($("leadListWrap")) await loadLeads();
       }
 
-      function openModal(title, html) {
+      function openModal(title, html, opts) {
         $("modalTitle").textContent = title;
         $("modalBody").innerHTML = html;
+        var modal = document.querySelector("#modalShade .modal");
+        if (modal) modal.classList.toggle("fullscreen", Boolean(opts && opts.fullscreen));
         $("modalShade").classList.remove("hidden");
       }
       function closeModal() {
         $("modalShade").classList.add("hidden");
+        var modal = document.querySelector("#modalShade .modal");
+        if (modal) modal.classList.remove("fullscreen");
         $("modalBody").innerHTML = "";
       }
 
@@ -3963,6 +4051,8 @@
           else if (a === "cal-next") shiftCalendarMonth(1);
           else if (a === "cal-today") { state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(); await loadCalendar(); }
           else if (a === "cal-add-event") await openAddCalendarEvent();
+          else if (a === "cal-search-leads") await searchCalendarLeads();
+          else if (a === "cal-select-lead") selectCalendarLead(btn);
           else if (a === "cal-save-event") await saveCalendarEvent();
           else if (a === "cal-open-event") await openCalendarEvent(btn.dataset.leadId, btn.dataset.todoId);
           else if (a === "cal-send-invite") await sendCalendarInvite(btn.dataset.leadId, btn.dataset.todoId, btn.dataset.via);
@@ -4034,6 +4124,7 @@
           else if (a === "delete-lead") await deleteCurrentLead();
           else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); state.selectedLead.sms_consent = true; revealSmsConsentInline("leadSmsConsentState"); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
+          else if (a === "open-lead-dialer") await openLeadDialer();
           else if (a === "send-lead-text") await leadAction("text");
           else if (a === "send-lead-email") await leadAction("email");
           else if (a === "send-lead-whatsapp") await sendLeadWhatsApp("text");
