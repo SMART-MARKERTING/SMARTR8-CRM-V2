@@ -58,6 +58,7 @@ import {
   updateScheduledEmail,
   cancelScheduledEmail,
 } from "../services/email";
+import { storeReceivedEmail } from "../services/resendInbound";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3461,6 +3462,33 @@ crmRouter.get("/api/email/received", requirePass, async (req, res) => {
     return;
   }
   res.json(result);
+});
+
+crmRouter.post("/api/email/received/sync", requireAdmin, async (req, res) => {
+  const bodyLimit = typeof req.body?.limit === "number" ? req.body.limit : Number(req.body?.limit || 50);
+  const limit = Number.isFinite(bodyLimit) ? Math.max(1, Math.min(bodyLimit, 100)) : 50;
+  const listed = await listReceivedEmails({ limit });
+  if (!listed.ok) {
+    res.status(400).json({ ok: false, error: listed.detail || "could not list received email from Resend" });
+    return;
+  }
+  let stored = 0;
+  let duplicates = 0;
+  const failed: Array<{ emailId: string | null; error: string }> = [];
+  for (const email of listed.emails) {
+    const result = await storeReceivedEmail(email as Record<string, unknown>, { verified: false });
+    if (result.stored) stored += 1;
+    else if (result.duplicate) duplicates += 1;
+    else if (!result.ok) failed.push({ emailId: result.emailId || email.id || email.email_id || null, error: result.error || "unknown error" });
+  }
+  res.json({
+    ok: true,
+    checked: listed.emails.length,
+    stored,
+    duplicates,
+    failed,
+    has_more: listed.has_more,
+  });
 });
 
 crmRouter.get("/api/email/received/:emailId", requirePass, async (req, res) => {

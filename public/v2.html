@@ -844,7 +844,7 @@
       }
       function resendInboundSetupCard() {
         var webhookUrl = location.origin + apiPath("/api/webhooks/resend");
-        return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this backend setup area for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button></div><div id="resendDiag" class="statusLine"></div></section>';
+        return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this backend setup area for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button><button class="btn small primary" data-action="sync-resend-inbox">Sync recent inbox</button></div><div id="resendDiag" class="statusLine"></div></section>';
       }
       function loadControlPanel() {
         var groups = {};
@@ -3421,7 +3421,15 @@
         var match = hooks.find(function (h) { return h.endpoint_matches_this_app; });
         var received = Number(data.recent_received_count || 0);
         var sent = Number(data.recent_sent_count || 0);
+        var diagnosis = "Resend inbound looks connected.";
+        if (!data.resend_api_key_set) diagnosis = "RESEND_API_KEY is missing on the server.";
+        else if (!data.received_ok) diagnosis = "Resend Receiving API failed. Check the API key permissions/account.";
+        else if (!received) diagnosis = "Resend has 0 received emails. Check the receiving domain MX record, receiving address, or forwarding into Resend.";
+        else if (!match) diagnosis = "Resend has received emails, but no webhook endpoint matches this app. Add the webhook URL below in Resend.";
+        else if (!match.has_email_received) diagnosis = "Webhook exists, but email.received is not selected.";
+        else if (!match.signing_secret_matches_env) diagnosis = "Webhook exists, but RESEND_WEBHOOK_SECRET does not match the Resend signing_secret.";
         var lines = [
+          diagnosis,
           "API key: " + (data.resend_api_key_set ? "set" : "missing"),
           "Webhook secret env: " + (data.resend_webhook_secret_set ? "set" : "missing"),
           "Webhook URL: " + (match ? "matches this app" : "not found in Resend"),
@@ -3434,6 +3442,23 @@
         if (data.received_error) lines.push("Received email API error: " + data.received_error);
         if (data.sent_error) lines.push("Sent email API error: " + data.sent_error);
         $("resendDiag").innerHTML = '<div class="' + (match && match.has_email_received && match.signing_secret_matches_env ? "okText" : "warnText") + '">' + esc(lines.join(" | ")) + '</div>';
+      }
+      async function syncResendInbox() {
+        status("resendDiag", "Syncing recent Resend inbox...");
+        var data = await json("/api/email/received/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 100 })
+        });
+        var lines = [
+          "Checked " + (data.checked || 0),
+          "stored " + (data.stored || 0),
+          "duplicates " + (data.duplicates || 0),
+          "failed " + ((data.failed || []).length || 0)
+        ];
+        if (data.has_more) lines.push("more available in Resend");
+        if ((data.failed || []).length) lines.push((data.failed || []).slice(0, 3).map(function (f) { return (f.emailId || "email") + ": " + (f.error || "failed"); }).join(" / "));
+        $("resendDiag").innerHTML = '<div class="' + ((data.failed || []).length ? "warnText" : "okText") + '">' + esc(lines.join(" | ")) + '</div>';
       }
 
       async function loadAdminPage() {
@@ -3755,6 +3780,7 @@
           else if (a === "save-email-folder") await saveEmailFolder();
           else if (a === "copy-email-webhook") await copyEmailWebhook();
           else if (a === "check-resend-webhook") await checkResendWebhook();
+          else if (a === "sync-resend-inbox") await syncResendInbox();
           else if (a === "email-refresh-resend") await refreshEmailFromResend();
           else if (a === "email-load-resend") await loadResendSentEmail();
           else if (a === "email-list-attachments") await listEmailAttachments();

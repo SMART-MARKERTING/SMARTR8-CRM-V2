@@ -13,6 +13,16 @@ interface ResendWebhookEvent {
   [key: string]: unknown;
 }
 
+export interface StoreReceivedEmailResult {
+  ok: boolean;
+  stored?: boolean;
+  duplicate?: boolean;
+  leadId?: string;
+  activityId?: string;
+  emailId?: string | null;
+  error?: string;
+}
+
 function headerValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
@@ -143,6 +153,66 @@ function inboundAlreadyStored(emailId: string, messageId: string): boolean {
   return Boolean(row);
 }
 
+export async function storeReceivedEmail(
+  eventData: Record<string, unknown>,
+  opts: { eventCreatedAt?: string; verified?: boolean; fetchFull?: boolean } = {},
+): Promise<StoreReceivedEmailResult> {
+  const emailId = asString(eventData.email_id || eventData.id);
+  const fetched = emailId && opts.fetchFull !== false ? await retrieveReceivedEmail(emailId) : null;
+  const data = mergeReceived(eventData, fetched);
+  const from = addressToString(data.from);
+  const fromEmail = emailFromAddress(from);
+  const displayName = displayNameFromAddress(from);
+  const messageId = asString(data.message_id || (data.headers as Record<string, unknown> | undefined)?.["message-id"]);
+
+  if (!fromEmail) {
+    return { ok: false, emailId: emailId || null, error: "received email missing sender address" };
+  }
+  if (inboundAlreadyStored(emailId, messageId)) {
+    return { ok: true, duplicate: true, emailId: emailId || null };
+  }
+
+  const lead = findLead({ email: fromEmail }) || createLead({
+    name: displayName || fromEmail,
+    email: fromEmail,
+    source: "resend-inbound",
+    contact_only: true,
+    tags: ["email inbound"],
+  });
+  const subject = asString(data.subject) || "(no subject)";
+  const text = asString(data.text);
+  const html = asString(data.html);
+  const body = text || (html && !html.startsWith("data:") ? stripHtml(html) : "") || "Inbound email received via Resend.";
+  const receivedFor = addressList(data.received_for).length ? addressList(data.received_for) : addressList(data.to);
+  const activity = logActivity(lead.id, {
+    type: "email",
+    direction: "inbound",
+    channel: "email",
+    subject,
+    body,
+    status: "received",
+    meta: {
+      resend: true,
+      resend_email_id: emailId || null,
+      message_id: messageId || null,
+      from,
+      from_email: fromEmail,
+      to: addressList(data.to),
+      cc: addressList(data.cc),
+      bcc: addressList(data.bcc),
+      received_for: receivedFor,
+      attachments: Array.isArray(data.attachments) ? data.attachments : [],
+      raw: data.raw || null,
+      html: html || null,
+      webhook_created_at: opts.eventCreatedAt || null,
+      verified: opts.verified ?? Boolean(config.email.resendWebhookSecret),
+      sync_source: opts.eventCreatedAt ? "webhook" : "manual_sync",
+    },
+  });
+
+  return { ok: true, stored: true, leadId: lead.id, activityId: activity.id, emailId: emailId || null };
+}
+
 export async function handleResendInboundWebhook(req: Request, res: Response): Promise<void> {
   const payload = rawPayload(req);
   if (!verifySvixSignature(req, payload)) {
@@ -160,59 +230,13 @@ export async function handleResendInboundWebhook(req: Request, res: Response): P
     return;
   }
 
-  const eventData = event.data || {};
-  const emailId = asString(eventData.email_id || eventData.id);
-  const fetched = emailId ? await retrieveReceivedEmail(emailId) : null;
-  const data = mergeReceived(eventData, fetched);
-  const from = addressToString(data.from);
-  const fromEmail = emailFromAddress(from);
-  const displayName = displayNameFromAddress(from);
-  const messageId = asString(data.message_id || (data.headers as Record<string, unknown> | undefined)?.["message-id"]);
-
-  if (!fromEmail) {
-    res.status(400).json({ error: "received email missing sender address" });
+  const result = await storeReceivedEmail(event.data || {}, {
+    eventCreatedAt: event.created_at,
+    verified: Boolean(config.email.resendWebhookSecret),
+  });
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || "received email could not be stored", emailId: result.emailId || null });
     return;
   }
-  if (inboundAlreadyStored(emailId, messageId)) {
-    res.json({ ok: true, duplicate: true, emailId: emailId || null });
-    return;
-  }
-
-  const lead = findLead({ email: fromEmail }) || createLead({
-    name: displayName || fromEmail,
-    email: fromEmail,
-    source: "resend-inbound",
-    contact_only: true,
-    tags: ["email inbound"],
-  });
-  const subject = asString(data.subject) || "(no subject)";
-  const text = asString(data.text);
-  const html = asString(data.html);
-  const body = text || (html && !html.startsWith("data:") ? stripHtml(html) : "") || "Inbound email received via Resend.";
-  const activity = logActivity(lead.id, {
-    type: "email",
-    direction: "inbound",
-    channel: "email",
-    subject,
-    body,
-    status: "received",
-    meta: {
-      resend: true,
-      resend_email_id: emailId || null,
-      message_id: messageId || null,
-      from,
-      from_email: fromEmail,
-      to: addressList(data.to),
-      cc: addressList(data.cc),
-      bcc: addressList(data.bcc),
-      received_for: addressList(data.to).join(", "),
-      attachments: Array.isArray(data.attachments) ? data.attachments : [],
-      raw: data.raw || null,
-      html: html || null,
-      webhook_created_at: event.created_at || null,
-      verified: Boolean(config.email.resendWebhookSecret),
-    },
-  });
-
-  res.json({ ok: true, stored: true, leadId: lead.id, activityId: activity.id, emailId: emailId || null });
+  res.json(result);
 }
