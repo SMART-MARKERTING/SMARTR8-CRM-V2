@@ -151,6 +151,14 @@
     }
     .navBtn:hover { background: rgba(148,163,184,.12); color: #ffffff; }
     .navBtn.active { background: rgba(59,130,246,.18); border-color: rgba(96,165,250,.48); color: #ffffff; }
+    #favoritesNav:empty::after {
+      content: "Pick favorites in Control Panel";
+      display: block;
+      color: var(--navText);
+      opacity: .66;
+      font-size: 12px;
+      padding: 10px 8px;
+    }
     .navIco {
       width: 26px;
       height: 26px;
@@ -198,6 +206,23 @@
     .pageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
     .pageTitle p { margin: 6px 0 0; color: var(--muted); }
     .toolbar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .controlGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .controlTile {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      text-align: left;
+      min-height: 138px;
+    }
+    .controlTile .tileTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .starBtn[aria-pressed="true"] { border-color: rgba(245,158,11,.55); background: #fff7ed; color: #92400e; }
+    body:not(.theme-light) .starBtn[aria-pressed="true"] { background: rgba(245,158,11,.14); color: #fbbf24; }
+    .protectedGate {
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: var(--soft);
+    }
     .grid { display: grid; gap: 14px; }
     .cols2 { grid-template-columns: minmax(0, 1.55fr) minmax(340px, .9fr); }
     .cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -501,7 +526,6 @@
         <button class="navBtn active" data-nav="dashboard"><span class="navIco">DB</span>Dashboard</button>
         <button class="navBtn" data-nav="leads"><span class="navIco">LD</span>Leads</button>
         <button class="navBtn" data-nav="pipeline"><span class="navIco">PL</span>Pipeline</button>
-        <button class="navBtn" data-nav="portal"><span class="navIco">AP</span>Portal / Apps</button>
         <button class="navBtn" data-nav="messages"><span class="navIco">MS</span>Conversations</button>
         <button class="navBtn" data-nav="dialer"><span class="navIco">PH</span>Dialer</button>
         <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
@@ -511,17 +535,9 @@
         <button class="navBtn" data-nav="calendar"><span class="navIco">CA</span>Calendar</button>
       </div>
       <div class="navGroup">
-        <small>More</small>
-        <button class="navBtn" data-nav="documents"><span class="navIco">FF</span>File Folders</button>
-        <button class="navBtn" data-nav="automations"><span class="navIco">AU</span>Automations</button>
-        <button class="navBtn" data-nav="reports"><span class="navIco">RP</span>Reports</button>
-        <button class="navBtn" data-nav="contacts"><span class="navIco">CO</span>Contacts</button>
-        <button class="navBtn" data-nav="duplicates"><span class="navIco">DU</span>Duplicate Leads</button>
-        <button class="navBtn" data-nav="pastclients"><span class="navIco">PC</span>Past Clients</button>
-        <button class="navBtn" data-nav="deleted"><span class="navIco">DL</span>Deleted</button>
-        <button class="navBtn" data-nav="email"><span class="navIco">EM</span>Email</button>
-        <button class="navBtn" data-nav="admin"><span class="navIco">AD</span>Admin / Sub-Accounts</button>
-        <button class="navBtn" data-nav="settings"><span class="navIco">ST</span>Settings</button>
+        <small>Favorites</small>
+        <div id="favoritesNav"></div>
+        <button class="navBtn" data-nav="control"><span class="navIco">CP</span>Control Panel</button>
         <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
       </div>
       <div class="navGroup">
@@ -587,6 +603,7 @@
         emailFromOptions: [],
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
+        favoritePages: [],
         dialerClient: null,
         crmLineReady: false,
         activeCall: null,
@@ -714,7 +731,6 @@
         leads: "Leads",
         leadpool: "Lead Pool",
         pipeline: "Pipeline",
-        portal: "Portal / Apps",
         messages: "Conversations",
         dialer: "Dialer",
         powerdialer: "Power Dialer",
@@ -730,8 +746,87 @@
         deleted: "Deleted",
         email: "Email",
         admin: "Admin / Sub-Accounts",
-        settings: "Settings"
+        settings: "Settings",
+        control: "Control Panel"
       };
+      var controlItems = [
+        { id: "dashboard", label: "Dashboard", icon: "DB", group: "Workspace", desc: "Live counts, recent leads, and application services." },
+        { id: "leads", label: "Leads", icon: "LD", group: "Workspace", desc: "Active CRM leads and daily lead work." },
+        { id: "pipeline", label: "Pipeline", icon: "PL", group: "Workspace", desc: "Drag leads across statuses and stages." },
+        { id: "messages", label: "Conversations", icon: "MS", group: "Workspace", desc: "Text and email threads tied to contacts." },
+        { id: "dialer", label: "Dialer", icon: "PH", group: "Workspace", desc: "Make, receive, forward, and merge calls." },
+        { id: "powerdialer", label: "Power Dialer", icon: "PD", group: "Workspace", desc: "Queue lists and connect only when answered." },
+        { id: "leadpool", label: "Lead Pool", icon: "LP", group: "Workspace", desc: "Old-list contacts kept outside active Leads." },
+        { id: "campaigns", label: "Text Campaigns", icon: "TC", group: "Workspace", desc: "Successful automation and campaign sends." },
+        { id: "tasks", label: "Tasks", icon: "TS", group: "Workspace", desc: "Open task list for follow-up work." },
+        { id: "calendar", label: "Calendar", icon: "CA", group: "Workspace", desc: "Monthly appointments and reminders." },
+        { id: "documents", label: "File Folders", icon: "FF", group: "Control Panel", desc: "Borrower folders, uploads, and named files." },
+        { id: "automations", label: "Automations", icon: "AU", group: "Control Panel", desc: "Flows, triggers, and campaign steps." },
+        { id: "reports", label: "Reports", icon: "RP", group: "Control Panel", desc: "Generate, download, or email CRM reports." },
+        { id: "contacts", label: "Contacts", icon: "CO", group: "Control Panel", desc: "All visible people across Leads, Pool, and Past Clients." },
+        { id: "duplicates", label: "Duplicate Leads", icon: "DU", group: "Control Panel", desc: "Find, merge, or delete duplicate contacts." },
+        { id: "pastclients", label: "Past Clients", icon: "PC", group: "Control Panel", desc: "Closed and funded client records." },
+        { id: "deleted", label: "Deleted", icon: "DL", group: "Control Panel", desc: "Soft-deleted records and cleanup." },
+        { id: "email", label: "Email", icon: "EM", group: "Control Panel", desc: "Inbox, replies, folders, and outbound mail." },
+        { id: "admin", label: "Admin / Sub-Accounts", icon: "AD", group: "Control Panel", desc: "Users, roles, passwords, and access." },
+        { id: "settings", label: "Settings", icon: "ST", group: "Control Panel", desc: "Provider credentials, security, audit, and integrations." }
+      ];
+      var defaultFavoritePages = ["documents", "automations", "reports", "contacts", "duplicates", "pastclients", "deleted", "email", "admin"];
+      function itemByPage(page) {
+        return controlItems.find(function (item) { return item.id === page; });
+      }
+      function loadFavoritePages() {
+        try {
+          var saved = JSON.parse(localStorage.getItem("lg_favorite_pages") || "null");
+          if (Array.isArray(saved)) return saved.filter(function (page) { return itemByPage(page); });
+        } catch (e) {}
+        return defaultFavoritePages.slice();
+      }
+      function saveFavoritePages() {
+        try { localStorage.setItem("lg_favorite_pages", JSON.stringify(state.favoritePages)); } catch (e) {}
+      }
+      function isFavorite(page) {
+        return state.favoritePages.indexOf(page) >= 0;
+      }
+      function renderSidebarFavorites() {
+        var wrap = $("favoritesNav");
+        if (!wrap) return;
+        wrap.innerHTML = state.favoritePages.map(function (page) {
+          var item = itemByPage(page);
+          if (!item) return "";
+          return '<button class="navBtn" data-nav="' + esc(item.id) + '"><span class="navIco">' + esc(item.icon) + '</span>' + esc(item.label) + '</button>';
+        }).join("");
+        document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
+          b.classList.toggle("active", b.dataset.nav === state.page);
+        });
+      }
+      function toggleFavoritePage(page) {
+        if (!itemByPage(page)) return;
+        if (isFavorite(page)) state.favoritePages = state.favoritePages.filter(function (p) { return p !== page; });
+        else state.favoritePages.push(page);
+        saveFavoritePages();
+        renderSidebarFavorites();
+        if (state.page === "control") loadControlPanel();
+      }
+      function controlTile(item) {
+        var fav = isFavorite(item.id);
+        return '<section class="card pad controlTile">' +
+          '<div class="tileTop"><div><span class="navIco" style="margin-bottom:8px">' + esc(item.icon) + '</span><h3 style="margin:0">' + esc(item.label) + '</h3><p class="muted" style="margin:6px 0 0">' + esc(item.desc || "") + '</p></div><button class="btn small starBtn" data-action="toggle-favorite" data-page="' + esc(item.id) + '" aria-pressed="' + (fav ? "true" : "false") + '">' + (fav ? '&#9733;' : '&#9734;') + ' Favorite</button></div>' +
+          '<button class="btn primary" data-nav="' + esc(item.id) + '">Open</button>' +
+        '</section>';
+      }
+      function loadControlPanel() {
+        var groups = {};
+        controlItems.forEach(function (item) {
+          groups[item.group] = groups[item.group] || [];
+          groups[item.group].push(item);
+        });
+        pageShell("Control Panel", "Open any CRM section and star what should stay pinned under Favorites.",
+          '<button class="btn" data-action="refresh">Refresh</button>',
+          Object.keys(groups).map(function (group) {
+            return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">' + esc(group) + '</h2><div class="controlGrid">' + groups[group].map(controlTile).join("") + '</div></section>';
+          }).join(""));
+      }
       function pageShell(title, sub, actions, body) {
         if ($("topPageTitle")) $("topPageTitle").textContent = title;
         $("content").innerHTML =
@@ -784,6 +879,8 @@
         $("app").classList.remove("hidden");
         $("userName").textContent = (state.user && (state.user.name || state.user.username)) || "Admin";
         $("userInitials").textContent = initials($("userName").textContent);
+        state.favoritePages = loadFavoritePages();
+        renderSidebarFavorites();
         loadMessagingMode();
         var popout = new URLSearchParams(location.search).get("popout");
         if (popout === "dialer") {
@@ -811,6 +908,7 @@
       }
 
       async function route(page) {
+        if (page === "portal") page = "leads";
         setActivePage(page);
         if (page === "dashboard") return loadDashboard();
         if (page === "leads") return loadLeadsView();
@@ -822,7 +920,7 @@
         if (page === "campaigns") return loadCampaigns();
         if (page === "tasks") return loadTasksPage();
         if (page === "calendar") return loadCalendar();
-        if (page === "portal") return renderPortal();
+        if (page === "control") return loadControlPanel();
         if (page === "documents") return renderDocuments();
         if (page === "automations") return loadAutomations();
         if (page === "duplicates") return loadDuplicates();
@@ -830,7 +928,7 @@
         if (["pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
         if (page === "email") return loadEmailPage();
         if (page === "admin") return loadAdminPage();
-        if (["reports"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
+        if (page === "reports") return loadReports();
         if (page === "settings") return loadSettings();
         return placeholderPage(pageLabels[page] || page, "LG");
       }
@@ -981,13 +1079,31 @@
         $("duplicatesWrap").innerHTML =
           '<div class="sub" style="padding:0 0 10px">Found ' + Number(data.groupCount || groups.length) + ' duplicate groups covering ' + Number(data.duplicateRecordCount || 0) + ' records.</div>' +
           groups.map(function (group) {
-            return '<section class="item" style="display:block"><div class="toolbar" style="justify-content:space-between;margin-bottom:10px"><div><b>' + esc(duplicateKindLabel(group.kind)) + '</b><div class="sub">' + esc(group.label || group.key) + '</div></div><span class="badge amber">' + Number(group.count || 0) + ' records</span></div>' +
+            var ids = (group.leads || []).map(function (lead) { return lead.id; }).join(",");
+            return '<section class="item" style="display:block"><div class="toolbar" style="justify-content:space-between;margin-bottom:10px"><div><b>' + esc(duplicateKindLabel(group.kind)) + '</b><div class="sub">' + esc(group.label || group.key) + '</div></div><div class="toolbar"><span class="badge amber">' + Number(group.count || 0) + ' records</span><button class="btn small danger" data-action="dup-delete-group" data-ids="' + esc(ids) + '">Delete all in group</button></div></div>' +
               '<table class="table"><thead><tr><th>Lead</th><th>Phone</th><th>Email</th><th>Status</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
               (group.leads || []).map(function (lead) {
                 var flags = [lead.deleted_at ? "Deleted" : "", lead.past_client ? "Past" : "", lead.contact_only ? "Contact" : ""].filter(Boolean).join(" / ");
-                return '<tr><td><div class="leadCell"><span class="avatar">' + esc(initials(lead.name || "Lead")) + '</span><div><div class="leadName">' + esc(lead.name || "Lead") + '</div>' + (lead.address ? '<div class="sub">' + esc(lead.address) + '</div>' : '') + (flags ? '<div class="sub">' + esc(flags) + '</div>' : '') + '</div></div></td><td>' + esc(lead.phone || "-") + '</td><td>' + esc(lead.email || "-") + '</td><td>' + statusBadge(lead.pipeline_stage || lead.status || "Lead-In") + '</td><td>' + esc(lead.source || "manual") + '</td><td>' + esc(when(lead.updated_at || lead.created_at)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(lead.id) + '">Open</button></td></tr>';
+                var removeIds = (group.leads || []).filter(function (x) { return x.id !== lead.id; }).map(function (x) { return x.id; }).join(",");
+                return '<tr><td><div class="leadCell"><span class="avatar">' + esc(initials(lead.name || "Lead")) + '</span><div><div class="leadName">' + esc(lead.name || "Lead") + '</div>' + (lead.address ? '<div class="sub">' + esc(lead.address) + '</div>' : '') + (flags ? '<div class="sub">' + esc(flags) + '</div>' : '') + '</div></div></td><td>' + esc(lead.phone || "-") + '</td><td>' + esc(lead.email || "-") + '</td><td>' + statusBadge(lead.pipeline_stage || lead.status || "Lead-In") + '</td><td>' + esc(lead.source || "manual") + '</td><td>' + esc(when(lead.updated_at || lead.created_at)) + '</td><td><div class="toolbar"><button class="btn small" data-action="open-lead" data-id="' + esc(lead.id) + '">Open</button><button class="btn small primary" data-action="dup-merge" data-keep="' + esc(lead.id) + '" data-remove="' + esc(removeIds) + '">Merge into this</button><button class="btn small danger" data-action="dup-delete-one" data-id="' + esc(lead.id) + '">Delete</button></div></td></tr>';
               }).join("") + '</tbody></table></section>';
           }).join("");
+      }
+      async function mergeDuplicate(keepId, removeCsv) {
+        var removeIds = String(removeCsv || "").split(",").filter(Boolean);
+        if (!keepId || !removeIds.length) return;
+        if (!confirm("Merge the other duplicate records into this lead? Notes, activity, and files move to the keeper.")) return;
+        await json("/api/duplicates/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keepId: keepId, removeIds: removeIds }) });
+        showToast("Duplicates merged.");
+        await refreshDuplicates();
+      }
+      async function deleteDuplicateIds(ids) {
+        ids = (Array.isArray(ids) ? ids : String(ids || "").split(",")).filter(Boolean);
+        if (!ids.length) return;
+        if (!confirm("Delete selected duplicate record" + (ids.length === 1 ? "" : "s") + "? They can be restored from Deleted.")) return;
+        await json("/api/duplicates/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids }) });
+        showToast("Duplicate records deleted.");
+        await refreshDuplicates();
       }
       function leadImportSampleColumns() {
         return "First Name, Last Name, Phone Number, Email, Status, Source, Property Address, City, State, Zip, DOB, Credit Score, Home Value, Mortgage Balance, Loan Purpose, Tags, Notes, SMS Consent";
@@ -1104,10 +1220,53 @@
           '</div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
+          '<details class="card pad" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-lead">Save</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
           '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="toolbar"><button class="btn" data-action="sms-consent">Mark SMS consent</button>' + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
+        renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
+      }
+      function renderLeadApplicationPanel(lead) {
+        var el = $("leadAppPanel");
+        if (!el || !lead) return;
+        if (Date.now() < state.portalVerifiedUntil) {
+          el.innerHTML = '<div id="leadProtectedApp" class="grid"><div class="empty">Opening protected borrower file...</div></div>';
+          loadProtectedLeadFile(lead.id, "leadProtectedApp").catch(function (e) {
+            if ($("leadProtectedApp")) $("leadProtectedApp").innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>';
+          });
+          return;
+        }
+        var custom = lead.custom || {};
+        var appStatus = custom.application_status || "app_taken";
+        el.innerHTML =
+          '<div class="warnBox">Borrower application controls live on the lead profile. DOB, full SSN, income, employment, co-borrower data, MISMO export, and AUS preview stay locked until password verification.</div>' +
+          '<div class="fieldGrid" style="margin-top:12px"><label>Application status<select id="portalAppStatus">' + ["app_taken","processing","underwriting","approved","suspended"].map(function (s) { return '<option value="' + s + '"' + (s === appStatus ? " selected" : "") + '>' + esc(appStatusLabel(s)) + '</option>'; }).join("") + '</select></label><label>Started<input value="' + esc(custom.application_started_at ? when(custom.application_started_at) : "Not started") + '" readonly></label></div>' +
+          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="portal-status">Save status</button><button class="btn" data-action="portal-service" data-service="start">Start App</button><button class="btn" data-action="portal-service" data-service="title">Order Title</button><button class="btn" data-action="portal-service" data-service="flood">Flood Report</button></div>' +
+          '<section class="protectedGate" style="margin-top:14px"><h3 style="margin-top:0">Protected PII and loan file tools</h3><p class="muted">Re-enter your password to view or save sensitive borrower data for this lead.</p><div class="fieldGrid"><label>Password<input id="leadPortalPass" type="password" autocomplete="current-password"></label><div style="align-self:end"><button class="btn primary" data-action="lead-portal-verify">Unlock protected file</button></div></div><div id="leadPortalMsg" class="statusLine"></div></section>';
+      }
+      async function verifyLeadPortal() {
+        var pass = $("leadPortalPass") ? $("leadPortalPass").value : "";
+        status("leadPortalMsg", "Verifying...");
+        var data = await json("/api/auth/portal-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pass }) });
+        state.portalVerifiedUntil = Number(data.verifiedUntil || (Date.now() + 900000));
+        showToast("Protected borrower file unlocked.");
+        renderLeadApplicationPanel(state.selectedLead);
+      }
+      function activePortalTargetId() {
+        if ($("leadProtectedApp")) return "leadProtectedApp";
+        return "portalFile";
+      }
+      function activePortalStatusId() {
+        if ($("leadPortalMsg")) return "leadPortalMsg";
+        if ($("portalActionMsg")) return "portalActionMsg";
+        if ($("sensMsg")) return "sensMsg";
+        return "leadActionMsg";
+      }
+      async function refreshActiveApplicationPanel() {
+        if (!state.selectedLead) return;
+        if ($("leadAppPanel")) renderLeadApplicationPanel(state.selectedLead);
+        else if ($("portalFile")) await portalSelect(state.selectedLead.id);
       }
       function field(label, id, value) {
         return '<label>' + esc(label) + '<input id="' + esc(id) + '" value="' + esc(value) + '"></label>';
@@ -1167,6 +1326,7 @@
         state.selectedLead = data.lead;
         status("leadSaveMsg", "Saved.", "okText");
         if (state.page === "leads") await loadLeads();
+        else if (state.page === "leadpool") await refreshLeadPool();
         else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
         await openLead(lead.id);
       }
@@ -1303,7 +1463,7 @@
               '</div>' +
               '<section class="card"><div class="cardHead"><h2>Pool records</h2><div class="toolbar"><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
             '</div>' +
-            '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Open a Lead Pool record to work it like a normal profile.</div></aside>' +
+            '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Click Open on a Lead Pool record to use the same profile view as Leads and Past Clients.</div></aside>' +
           '</div>');
         if ($("poolSearch")) $("poolSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshLeadPool(); });
         await loadLeadPoolCampaigns();
@@ -1350,7 +1510,7 @@
               '<td>' + (l.tags || []).map(function (t) { return '<span class="badge blue">' + esc(t) + '</span>'; }).join(" ") + '</td>' +
               '<td>' + esc(l.source || "lead-pool") + '</td>' +
               '<td>' + esc(when(l.updated_at || l.created_at)) + '</td>' +
-              '<td><div class="toolbar"><button class="btn small" data-action="open-pool" data-id="' + esc(l.id) + '">Open</button><button class="btn small primary" data-action="promote-pool" data-id="' + esc(l.id) + '">Move to Leads</button><button class="btn small danger" data-action="delete-pool" data-id="' + esc(l.id) + '">Delete</button></div></td>' +
+              '<td><div class="toolbar"><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button><button class="btn small primary" data-action="promote-pool" data-id="' + esc(l.id) + '">Move to Leads</button><button class="btn small danger" data-action="delete-pool" data-id="' + esc(l.id) + '">Delete</button></div></td>' +
             '</tr>';
           }).join("") + '</tbody></table><div class="sub" style="padding:10px 12px">Showing ' + leads.length + ' of ' + Number(total || leads.length) + ' pool records.</div>';
       }
@@ -2103,11 +2263,14 @@
         return "amber";
       }
       async function portalSelect(id) {
+        await loadProtectedLeadFile(id, "portalFile");
+        if ($("portalActionMsg") && state.selectedLead) $("portalActionMsg").textContent = "Selected " + nameOf(state.selectedLead) + ".";
+      }
+      async function loadProtectedLeadFile(id, targetId) {
         var detail = await json("/api/leads/" + encodeURIComponent(id));
         var lead = detail.lead;
         state.selectedLead = lead;
-        renderPortalFile(lead);
-        if ($("portalActionMsg")) $("portalActionMsg").textContent = "Selected " + nameOf(lead) + ".";
+        renderPortalFile(lead, targetId);
         try {
           var data = await json("/api/leads/" + encodeURIComponent(id) + "/sensitive");
           var d = (data.sensitive && data.sensitive.data) || {};
@@ -2135,11 +2298,13 @@
           if (!data.configured) status("sensMsg", "Set BORROWER_DATA_KEY before saving sensitive fields.", "warnText");
         } catch (e) { status("sensMsg", e.message, "badText"); }
       }
-      function renderPortalFile(lead) {
+      function renderPortalFile(lead, targetId) {
+        var target = $(targetId || "portalFile");
+        if (!target) return;
         var custom = lead.custom || {};
         var appStatus = custom.application_status || "app_taken";
-        $("portalFile").className = "grid";
-        $("portalFile").innerHTML =
+        target.className = "grid";
+        target.innerHTML =
           '<div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">' + esc(nameOf(lead)) + '</h2><div class="sub">' + esc(lead.phone || lead.email || "") + '</div></div><span class="badge ' + appStatusClass(appStatus) + '">' + esc(appStatusLabel(appStatus)) + '</span></div>' +
           '<div class="fieldGrid"><label>Application status<select id="portalAppStatus">' + ["app_taken","processing","underwriting","approved","suspended"].map(function (s) { return '<option value="' + s + '"' + (s === appStatus ? " selected" : "") + '>' + esc(appStatusLabel(s)) + '</option>'; }).join("") + '</select></label><label>Started<input value="' + esc(custom.application_started_at ? when(custom.application_started_at) : "Not started") + '" readonly></label></div>' +
           '<div class="toolbar"><button class="btn primary" data-action="portal-status">Save status</button><button class="btn" data-action="portal-service" data-service="start">Start App</button><button class="btn" data-action="export-mismo">Export MISMO 3.4</button><button class="btn" data-action="run-aus-preview">Run AUS preview</button><button class="btn" data-action="refresh-underwriting">Refresh review</button><button class="btn" data-action="add-coborrower">Add co-borrower</button><button class="btn danger" data-action="remove-coborrower">Remove co-borrower</button></div>' +
@@ -2209,16 +2374,16 @@
       async function savePortalStatus() {
         var lead = state.selectedLead;
         if (!lead) return;
-        status("sensMsg", "Saving status...");
+        status(activePortalStatusId(), "Saving status...");
         var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/application", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: $("portalAppStatus").value })
         });
         state.selectedLead = data.lead;
-        renderPortalFile(data.lead);
-        await loadPortalApps();
-        status("sensMsg", "Application status saved.", "okText");
+        if ($("portalApps")) await loadPortalApps();
+        await refreshActiveApplicationPanel();
+        showToast("Application status saved.");
       }
       async function exportPortalMismo() {
         var lead = state.selectedLead;
@@ -2266,7 +2431,7 @@
             }
           } })
         });
-        await portalSelect(lead.id);
+        await loadProtectedLeadFile(lead.id, activePortalTargetId());
         status("sensMsg", "Saved encrypted borrower / co-borrower data.", "okText");
       }
       function serviceCards(portal) {
@@ -2870,6 +3035,51 @@
         await refreshAdminPage();
       }
 
+      async function loadReports() {
+        pageShell("Reports", "Generate CRM, lead, communication, application, and audit-ready reports.",
+          '<button class="btn" data-action="refresh-report">Preview</button><button class="btn primary" data-action="download-report-pdf">Download PDF</button><button class="btn" data-action="email-report">Email PDF</button>',
+          '<section class="card pad"><div class="fieldGrid"><label>Report type<select id="reportType"><option value="all">Everything summary</option><option value="activity">Activity / communications</option><option value="pipeline">Pipeline / lead status</option></select></label><label>From<input id="reportFrom" type="date"></label><label>To<input id="reportTo" type="date"></label><label style="align-self:end"><button class="btn primary" data-action="refresh-report">Generate preview</button></label></div><div id="reportMsg" class="statusLine"></div></section><section class="card" style="margin-top:14px"><div class="cardHead"><h2>Report preview</h2><span id="reportStamp" class="badge blue">Waiting</span></div><div id="reportPreview" class="list" style="padding:14px"><div class="empty">Choose options and generate a report.</div></div></section>');
+        var now = new Date();
+        var ago = new Date(Date.now() - 30 * 24 * 60 * 60_000);
+        if ($("reportTo")) $("reportTo").value = now.toISOString().slice(0, 10);
+        if ($("reportFrom")) $("reportFrom").value = ago.toISOString().slice(0, 10);
+        await refreshReport();
+      }
+      function reportQuery() {
+        var qs = "?type=" + encodeURIComponent(inputVal("reportType") || "all");
+        if (inputVal("reportFrom")) qs += "&from=" + encodeURIComponent(inputVal("reportFrom"));
+        if (inputVal("reportTo")) qs += "&to=" + encodeURIComponent(inputVal("reportTo") + "T23:59:59");
+        return qs;
+      }
+      async function refreshReport() {
+        if ($("reportPreview")) $("reportPreview").innerHTML = '<div class="spinner"></div>';
+        var data = await json("/api/reports/summary" + reportQuery());
+        var report = data.report || {};
+        if ($("reportStamp")) $("reportStamp").textContent = formatDateTime(report.created_at);
+        if ($("reportPreview")) {
+          $("reportPreview").innerHTML = (report.lines || []).map(function (line) {
+            if (!line) return '<div style="height:8px"></div>';
+            if (/:\s*$/.test(line)) return '<h3 style="margin:8px 0 2px">' + esc(line.replace(/:\s*$/, "")) + '</h3>';
+            return '<div class="item">' + esc(line) + '</div>';
+          }).join("");
+        }
+      }
+      function downloadReportPdf() {
+        location.href = apiHref("/api/reports/summary.pdf" + reportQuery());
+      }
+      function openEmailReport() {
+        openModal("Email report PDF", '<label>To<input id="reportEmailTo" placeholder="name@example.com"></label><label>Subject<input id="reportEmailSubject" value="LoanGenius CRM report"></label><label>Message<textarea id="reportEmailBody">Attached is the latest LoanGenius CRM report.</textarea></label><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-report-email">Send report</button></div><div id="reportEmailMsg" class="statusLine"></div>');
+      }
+      async function sendReportEmail() {
+        status("reportEmailMsg", "Sending...");
+        var data = await json("/api/reports/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: inputVal("reportEmailTo"), subject: inputVal("reportEmailSubject"), body: inputVal("reportEmailBody"), type: inputVal("reportType"), from: inputVal("reportFrom") ? new Date(inputVal("reportFrom")).getTime() : undefined, toDate: inputVal("reportTo") ? new Date(inputVal("reportTo") + "T23:59:59").getTime() : undefined })
+        });
+        status("reportEmailMsg", data.ok ? "Report emailed." : "Some emails failed.", data.ok ? "okText" : "warnText");
+      }
+
       async function loadSettings() {
         pageShell("Settings", "Messaging channel, vendor credentials, ElevenLabs voice, voicemail audio, and service readiness.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="settingsBody" class="grid cols2"></div>');
         var mode = await json("/api/messaging-mode").catch(function () { return { mode: "auto" }; });
@@ -2880,8 +3090,24 @@
           '<section class="card pad"><h2 style="margin-top:0">Outbound texting</h2><p class="muted">Auto tries BlueBubbles iMessage first, then Telnyx SMS on timeout, failure, or unreachable Mac.</p><div class="toolbar"><button class="btn ' + (mode.mode === "auto" ? "primary" : "") + '" data-action="mode" data-mode="auto">Auto</button><button class="btn ' + (mode.mode === "imessage" ? "primary" : "") + '" data-action="mode" data-mode="imessage">iMessage only</button><button class="btn ' + (mode.mode === "sms" ? "primary" : "") + '" data-action="mode" data-mode="sms">SMS only</button></div><div id="modeMsg" class="statusLine"></div></section>' +
           vendorPanel("title", vendors.title || {}) + vendorPanel("flood", vendors.flood || {}) +
           '<section class="card pad"><h2 style="margin-top:0">ElevenLabs voicemail</h2><div class="fieldGrid"><label>Enabled<select id="elEnabled"><option value="1">Enabled</option><option value="0">Disabled</option></select></label><label>Voice ID<input id="elVoice" value="' + esc(eleven.voiceId || "") + '"></label><label>API key<input id="elKey" type="password" placeholder="' + esc(eleven.apiKeySet ? "Saved: " + (eleven.apiKeyPreview || "set") : "ElevenLabs API key") + '"></label><label>Model<input id="elModel" value="' + esc(eleven.modelId || "eleven_multilingual_v2") + '"></label></div><label style="margin-top:10px">Default voicemail script<textarea id="elText">' + esc(eleven.defaultVoicemailText || "") + '</textarea></label><button class="btn primary" data-action="save-eleven" style="margin-top:10px">Save ElevenLabs</button><div id="elMsg" class="statusLine">' + esc(eleven.configured ? "Configured" : "Not configured") + '</div></section>' +
-          voicemailAudioPanel(audio);
+          voicemailAudioPanel(audio) +
+          auditPanel();
         $("elEnabled").value = eleven.enabled ? "1" : "0";
+        await refreshAuditLog();
+      }
+      function auditPanel() {
+        return '<section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Full audit log</h2><p class="muted" style="margin:4px 0 0">Every CRM write action with time, user, IP address, route, and result.</p></div><button class="btn small" data-action="refresh-audit">Refresh audit</button></div><div class="toolbar" style="margin-top:12px"><input id="auditSearch" placeholder="Search user, action, path, IP..." style="max-width:360px"><input id="auditSince" type="date"><button class="btn" data-action="refresh-audit">Apply</button></div><div id="auditWrap" class="tableWrap" style="margin-top:12px"><div class="spinner"></div></div></section>';
+      }
+      async function refreshAuditLog() {
+        if (!$("auditWrap")) return;
+        $("auditWrap").innerHTML = '<div class="spinner"></div>';
+        var qs = "?limit=250" + (inputVal("auditSearch") ? "&q=" + encodeURIComponent(inputVal("auditSearch")) : "") + (inputVal("auditSince") ? "&since=" + encodeURIComponent(inputVal("auditSince")) : "");
+        var data = await json("/api/audit-events" + qs).catch(function (e) { return { events: [], error: e.message }; });
+        if (data.error) { $("auditWrap").innerHTML = '<div class="empty badText">' + esc(data.error) + '</div>'; return; }
+        var rows = data.events || [];
+        $("auditWrap").innerHTML = rows.length ? '<table class="table"><thead><tr><th>Time</th><th>User</th><th>IP</th><th>Action</th><th>Path</th><th>Status</th><th>Detail</th></tr></thead><tbody>' + rows.map(function (e) {
+          return '<tr><td>' + esc(formatDateTime(e.created_at)) + '</td><td>' + esc(e.username || "-") + '<div class="sub">' + esc(e.role || "") + '</div></td><td>' + esc(e.ip || "-") + '</td><td><b>' + esc(e.action || "") + '</b></td><td>' + esc(e.path || "") + '</td><td><span class="badge ' + (Number(e.status_code || 0) >= 400 ? "red" : "green") + '">' + esc(e.status_code || "-") + '</span></td><td>' + esc(e.detail || "") + '</td></tr>';
+        }).join("") + '</tbody></table>' : '<div class="empty">No audit events found.</div>';
       }
       function settingsCheck(label, ok) {
         return '<div class="item"><b>' + esc(label) + '</b><span class="badge ' + (ok ? "green" : "red") + '">' + (ok ? "Ready" : "Missing") + '</span></div>';
@@ -3025,6 +3251,7 @@
         try {
           if (a === "mobile-menu") document.body.classList.toggle("navOpen");
           else if (a === "toggle-theme") toggleTheme();
+          else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
           else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); try { localStorage.removeItem("sp_token"); } catch (x) {} location.reload(); }
           else if (a === "refresh") route(state.page);
           else if (a === "close-modal") closeModal();
@@ -3051,6 +3278,13 @@
           else if (a === "refresh-leads") await loadLeads();
           else if (a === "refresh-lead-bucket") await loadLeadBucket(state.page);
           else if (a === "refresh-duplicates") await refreshDuplicates();
+          else if (a === "dup-merge") await mergeDuplicate(btn.dataset.keep, btn.dataset.remove);
+          else if (a === "dup-delete-one") await deleteDuplicateIds([btn.dataset.id]);
+          else if (a === "dup-delete-group") await deleteDuplicateIds(btn.dataset.ids);
+          else if (a === "refresh-report") await refreshReport();
+          else if (a === "download-report-pdf") downloadReportPdf();
+          else if (a === "email-report") openEmailReport();
+          else if (a === "send-report-email") await sendReportEmail();
           else if (a === "refresh-contacts") await refreshContacts();
           else if (a === "refresh-campaigns") await refreshCampaigns();
           else if (a === "refresh-email-page") await refreshEmailPage();
@@ -3158,17 +3392,18 @@
           else if (a === "send-thread") await sendThread();
           else if (a === "send-conv-email") await sendConversationEmail();
           else if (a === "refresh-thread" && state.activeThread) await openThread(state.activeThread, $("msgPhone").value);
+          else if (a === "lead-portal-verify") await verifyLeadPortal();
           else if (a === "portal-verify") await verifyPortal();
           else if (a === "refresh-portal-apps") await loadPortalApps();
           else if (a === "portal-search") await portalSearch();
           else if (a === "portal-select") await portalSelect(btn.dataset.id);
           else if (a === "portal-service") {
-            if (!state.selectedLead) { status("portalActionMsg", "Select a borrower first.", "warnText"); return; }
+            if (!state.selectedLead) { status(activePortalStatusId(), "Select a borrower first.", "warnText"); return; }
             if (btn.dataset.service === "file") { await route("leads"); await openLead(state.selectedLead.id); return; }
-            var svc = await leadAction(btn.dataset.service, "portalActionMsg");
+            var svc = await leadAction(btn.dataset.service, activePortalStatusId());
             if (svc && svc.lead) state.selectedLead = svc.lead;
-            await loadPortalApps();
-            await portalSelect(state.selectedLead.id);
+            if ($("portalApps")) await loadPortalApps();
+            await refreshActiveApplicationPanel();
           }
           else if (a === "portal-status") await savePortalStatus();
           else if (a === "export-mismo") await exportPortalMismo();
@@ -3177,7 +3412,7 @@
           else if (a === "add-coborrower") showCoBorrower(true);
           else if (a === "remove-coborrower") await removeCoBorrower();
           else if (a === "save-sensitive") await saveSensitive();
-          else if (a === "nav-portal") route("portal");
+          else if (a === "nav-portal") { showToast("Open a lead to use application services."); route("leads"); }
           else if (a === "doc-search") await docSearch();
           else if (a === "doc-select") await docSelect(btn.dataset.id);
           else if (a === "doc-upload") await uploadDocument(state.docLead && state.docLead.id, "docFile", "docType", "docNotes", "docStatus", "docList");
@@ -3185,12 +3420,13 @@
           else if (a === "save-doc-meta") await saveDocMeta(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
           else if (a === "delete-doc") await deleteDocument(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
           else if (a === "mode") { await setMessagingMode(btn.dataset.mode); await loadSettings(); }
+          else if (a === "refresh-audit") await refreshAuditLog();
           else if (a === "save-vendor") await saveVendor(btn.dataset.kind);
           else if (a === "save-eleven") await saveEleven();
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 

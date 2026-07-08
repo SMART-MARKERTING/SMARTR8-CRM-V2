@@ -110,8 +110,27 @@ import { verifyToken } from "../util/token";
 import { PIPELINE_STAGES, DEFAULT_STAGE, isPipelineStage } from "../pipeline";
 import { getContactMessages } from "../services/ghl";
 import { sendLeadEvent } from "../services/metaCapi";
+import { recordAudit, listAuditEvents } from "../services/audit";
+import { buildCrmReport, reportPdfBuffer } from "../services/reports";
 
 export const crmRouter = Router();
+
+crmRouter.use((req, res, next) => {
+  const method = req.method.toUpperCase();
+  const shouldAudit = method !== "GET" && !req.path.startsWith("/sync/legacy-crm");
+  if (shouldAudit) {
+    res.on("finish", () => {
+      if (!req.authUser) return;
+      recordAudit({
+        req,
+        action: `${method} ${req.path}`,
+        statusCode: res.statusCode,
+        detail: res.statusCode >= 400 ? "failed" : "completed",
+      });
+    });
+  }
+  next();
+});
 
 // ── Public website lead intake ───────────────────────────────────────────────
 // Point your site's form/webhook at:  POST https://<host>/webhooks/lead?key=SECRET
@@ -1254,6 +1273,155 @@ crmRouter.get("/api/duplicates", requirePass, (req, res) => {
     groupCount: groups.length,
     duplicateRecordCount: groups.reduce((sum, group) => sum + group.count, 0),
   });
+});
+
+function mergeDuplicateLeads(req: Request, keepId: string, removeIds: string[]): { merged: number; keepId: string } {
+  const keep = getLead(keepId);
+  if (!keep || keep.deleted_at) throw new Error("keeper lead not found");
+  const owner = ownerScope(req);
+  if (owner && keep.owner_user_id !== owner) throw new Error("keeper lead is assigned to another user");
+  const removes = removeIds.map((id) => getLead(id)).filter(Boolean) as Lead[];
+  if (!removes.length) throw new Error("choose at least one duplicate to merge");
+  for (const lead of removes) {
+    if (lead.id === keepId) throw new Error("keeper cannot also be removed");
+    if (owner && lead.owner_user_id !== owner) throw new Error("one duplicate is assigned to another user");
+  }
+
+  const now = Date.now();
+  const moveActivities = db.prepare(`UPDATE activities SET lead_id = ? WHERE lead_id = ?`);
+  const moveNotes = db.prepare(`UPDATE notes SET lead_id = ? WHERE lead_id = ?`);
+  const moveDocs = db.prepare(`UPDATE lead_documents SET lead_id = ? WHERE lead_id = ?`);
+  const moveJobs = db.prepare(`UPDATE automation_jobs SET lead_id = ? WHERE lead_id = ?`);
+  const moveSensitive = db.prepare(`UPDATE lead_sensitive_data SET lead_id = ? WHERE lead_id = ?`);
+  const softDelete = db.prepare(`UPDATE leads SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`);
+  const sensitiveExists = db.prepare(`SELECT 1 FROM lead_sensitive_data WHERE lead_id = ? LIMIT 1`);
+
+  const tx = db.transaction(() => {
+    const tags = new Set(keep.tags || []);
+    const custom: Record<string, unknown> = { ...(keep.custom || {}) };
+    let first = keep.first_name;
+    let last = keep.last_name;
+    let email = keep.email;
+    let phone = keep.phone;
+    let ownerUserId = keep.owner_user_id;
+    let lastActivity = keep.last_activity_at || 0;
+    for (const lead of removes) {
+      (lead.tags || []).forEach((tag) => tag && tags.add(tag));
+      for (const [key, value] of Object.entries(lead.custom || {})) {
+        if (custom[key] === undefined || custom[key] === null || String(custom[key]).trim() === "") custom[key] = value;
+      }
+      first = first || lead.first_name;
+      last = last || lead.last_name;
+      email = email || lead.email;
+      phone = phone || lead.phone;
+      ownerUserId = ownerUserId || lead.owner_user_id;
+      lastActivity = Math.max(lastActivity, lead.last_activity_at || lead.updated_at || lead.created_at || 0);
+      moveActivities.run(keepId, lead.id);
+      moveNotes.run(keepId, lead.id);
+      moveDocs.run(keepId, lead.id);
+      moveJobs.run(keepId, lead.id);
+      if (!sensitiveExists.get(keepId) && sensitiveExists.get(lead.id)) moveSensitive.run(keepId, lead.id);
+      softDelete.run(now, now, lead.id);
+    }
+    updateLead(keepId, { first_name: first || undefined, last_name: last || undefined, email: email || undefined, phone: phone || undefined, owner_user_id: ownerUserId || undefined, tags: [...tags], custom });
+    db.prepare(`UPDATE leads SET last_activity_at = COALESCE(NULLIF(?, 0), last_activity_at), updated_at = ? WHERE id = ?`).run(lastActivity, now, keepId);
+  });
+  tx();
+  logActivity(keepId, {
+    type: "duplicate_merge",
+    direction: "system",
+    channel: "system",
+    subject: "Duplicate leads merged",
+    body: `Merged ${removes.length} duplicate record${removes.length === 1 ? "" : "s"} into this lead.`,
+    status: "merged",
+    meta: { mergedIds: removes.map((lead) => lead.id), author: leadActionAuthor(req) },
+  });
+  recordAudit({ req, action: "duplicate_merge", detail: `Merged ${removes.length} leads into ${keepId}`, meta: { keepId, removeIds } });
+  return { merged: removes.length, keepId };
+}
+
+crmRouter.post("/api/duplicates/merge", requirePass, (req, res) => {
+  try {
+    const keepId = String(req.body?.keepId || "");
+    const removeIds = Array.isArray(req.body?.removeIds) ? req.body.removeIds.map(String).filter(Boolean) : [];
+    res.json({ ok: true, ...mergeDuplicateLeads(req, keepId, removeIds) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+crmRouter.post("/api/duplicates/delete", requirePass, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "pass ids: string[]" });
+    return;
+  }
+  const owner = ownerScope(req);
+  let deleted = 0;
+  for (const id of ids) {
+    const lead = getLead(id);
+    if (!lead || (owner && lead.owner_user_id !== owner)) continue;
+    if (deleteLead(id)) deleted++;
+  }
+  recordAudit({ req, action: "duplicate_delete", detail: `Deleted ${deleted} duplicate leads`, meta: { ids } });
+  res.json({ ok: true, deleted });
+});
+
+function reportOptions(req: Request): { from?: number; to?: number; type?: string } {
+  const from = typeof req.query.from === "string" ? Date.parse(req.query.from) : Number(req.body?.fromDate || req.body?.from || 0);
+  const to = typeof req.query.to === "string" ? Date.parse(req.query.to) : Number(req.body?.toDate || 0);
+  const type = (typeof req.query.type === "string" ? req.query.type : req.body?.type) || "all";
+  return {
+    from: Number.isFinite(from) && from > 0 ? from : undefined,
+    to: Number.isFinite(to) && to > 0 ? to : undefined,
+    type: String(type),
+  };
+}
+
+crmRouter.get("/api/reports/summary", requirePass, (req, res) => {
+  const report = buildCrmReport(reportOptions(req));
+  recordAudit({ req, action: "report_preview", detail: report.title });
+  res.json({ ok: true, report });
+});
+
+crmRouter.get("/api/reports/summary.pdf", requirePass, (req, res) => {
+  const report = buildCrmReport(reportOptions(req));
+  const pdf = reportPdfBuffer(report);
+  recordAudit({ req, action: "report_pdf_download", detail: report.title });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="loangenius-report-${new Date(report.created_at).toISOString().slice(0, 10)}.pdf"`);
+  res.send(pdf);
+});
+
+crmRouter.post("/api/reports/email", requirePass, async (req, res) => {
+  const to = parseEmailList(req.body?.to);
+  if (!to.length) {
+    res.status(400).json({ error: "enter at least one recipient email" });
+    return;
+  }
+  const report = buildCrmReport(reportOptions(req));
+  const pdf = reportPdfBuffer(report);
+  const subject = String(req.body?.subject || report.title);
+  const body = String(req.body?.body || `Attached is the ${report.title}.`);
+  const results = [];
+  for (const recipient of to) {
+    const result = await sendEmail({
+      to: recipient,
+      subject,
+      text: body,
+      attachments: [{ filename: `loangenius-report-${new Date(report.created_at).toISOString().slice(0, 10)}.pdf`, content: pdf.toString("base64") }],
+    });
+    results.push({ to: recipient, ...result });
+  }
+  recordAudit({ req, action: "report_email", detail: `Report emailed to ${to.join(", ")}`, meta: { count: to.length } });
+  res.json({ ok: results.every((r) => r.ok), results });
+});
+
+crmRouter.get("/api/audit-events", requireAdmin, (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 250;
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const since = typeof req.query.since === "string" ? Date.parse(req.query.since) : 0;
+  res.json({ ok: true, events: listAuditEvents({ limit, q, since: Number.isFinite(since) && since > 0 ? since : undefined }) });
 });
 
 /** Materialize a contact (e.g. a GHL contact) into an editable record so it can be opened

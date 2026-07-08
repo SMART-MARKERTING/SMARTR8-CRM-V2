@@ -205,6 +205,23 @@ db.exec(`
     status         TEXT NOT NULL DEFAULT 'open'
   );
   CREATE INDEX IF NOT EXISTS idx_aus_findings_lead ON aus_findings(lead_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS audit_events (
+    id          TEXT PRIMARY KEY,
+    created_at  INTEGER NOT NULL,
+    user_id     TEXT,
+    username    TEXT,
+    role        TEXT,
+    ip          TEXT,
+    method      TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    status_code INTEGER,
+    detail      TEXT,
+    meta        TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_audit_events_user ON audit_events(user_id, created_at DESC);
 `);
 
 // ── Multi-user accounts ──────────────────────────────────────────────────────
