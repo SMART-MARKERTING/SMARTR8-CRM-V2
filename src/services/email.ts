@@ -7,6 +7,12 @@ export interface EmailResult {
   detail?: string;
 }
 
+export interface ResendUpdateEmailResult {
+  ok: boolean;
+  id?: string;
+  detail?: string;
+}
+
 export type EmailRecipient = string | string[];
 
 export interface ResendEmailTemplate {
@@ -117,6 +123,26 @@ async function resendGet<T>(path: string): Promise<{ ok: boolean; data?: T; deta
     const res = await fetch(`https://api.resend.com${path}`, {
       method: "GET",
       headers: resendHeaders(),
+    });
+    const raw = await res.text().catch(() => "");
+    const data = raw ? JSON.parse(raw) as T : undefined;
+    if (!res.ok) return { ok: false, status: res.status, detail: raw || res.statusText, data };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, detail: String(err) };
+  }
+}
+
+async function resendPatch<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; data?: T; detail?: string; status?: number }> {
+  if (!resendApiConfigured()) return { ok: false, detail: "RESEND_API_KEY is not set" };
+  try {
+    const res = await fetch(`https://api.resend.com${path}`, {
+      method: "PATCH",
+      headers: resendHeaders(),
+      body: JSON.stringify(body),
     });
     const raw = await res.text().catch(() => "");
     const data = raw ? JSON.parse(raw) as T : undefined;
@@ -374,4 +400,21 @@ export async function retrieveSentEmail(emailId: string): Promise<ResendSentEmai
   if (!emailId) return null;
   const result = await resendGet<ResendSentEmail>(`/emails/${encodeURIComponent(emailId)}`);
   return result.ok && result.data ? result.data : null;
+}
+
+export async function updateScheduledEmail(
+  emailId: string,
+  scheduledAt: string,
+): Promise<ResendUpdateEmailResult> {
+  const id = String(emailId || "").trim();
+  const schedule = String(scheduledAt || "").trim();
+  if (!id) return { ok: false, detail: "email id is required" };
+  if (!schedule) return { ok: false, detail: "scheduled_at is required" };
+  const when = Date.parse(schedule);
+  if (!Number.isFinite(when)) return { ok: false, detail: "scheduled_at must be an ISO 8601 date" };
+  const result = await resendPatch<{ object?: string; id?: string }>(`/emails/${encodeURIComponent(id)}`, {
+    scheduled_at: new Date(when).toISOString(),
+  });
+  if (!result.ok) return { ok: false, detail: result.detail };
+  return { ok: true, id: result.data?.id || id };
 }

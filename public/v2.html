@@ -697,6 +697,11 @@
         if (isNaN(d.getTime())) return "";
         return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
       }
+      function isoFromLocalDateInput(value) {
+        if (!value) return "";
+        var d = new Date(value);
+        return isNaN(d.getTime()) ? "" : d.toISOString();
+      }
       function appBasePath() {
         return location.pathname === "/v2" || location.pathname.indexOf("/v2/") === 0 ? "/v2" : "";
       }
@@ -3076,13 +3081,15 @@
         var filedBadge = m.resend_api ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>');
         var fileButton = m.resend_api ? "" : '<button class="btn" data-action="email-file">File / folder</button>';
         var resendButton = m.resend_api ? '<button class="btn" data-action="email-load-resend">Load Resend content</button>' : ((m.direction !== "inbound" && m.resend_id) ? '<button class="btn" data-action="email-refresh-resend">Refresh Resend status</button>' : "");
+        var rescheduleButton = (m.direction !== "inbound" && (m.resend_id || m.resend_api)) ? '<button class="btn" data-action="email-reschedule">Reschedule</button>' : "";
+        var scheduledLine = m.scheduled_at ? '<div><b>Scheduled:</b> ' + esc(formatDateTime(m.scheduled_at)) + '</div>' : "";
         var resendLine = (m.resend_id || m.message_id || m.last_event)
           ? '<div><b>Resend:</b> ' + esc([m.resend_id ? "id " + m.resend_id : "", m.message_id ? "message " + m.message_id : "", m.last_event ? "event " + m.last_event : "", m.resend_refreshed_at ? "refreshed " + formatDateTime(Date.parse(m.resend_refreshed_at)) : ""].filter(Boolean).join(" | ")) + '</div>'
           : "";
         box.innerHTML =
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
-          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + resendLine + '</div>' +
-          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + resendButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
+          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + resendLine + '</div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + resendButton + rescheduleButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return '<span class="badge purple">' + esc(a.filename || a.name || "Attachment") + '</span>'; }).join("") + '</div>' : '') +
           '<div class="emailBodyText">' + esc(m.body || (m.resend_api ? "This sent email came from Resend's team sent list. Use Load Resend content to fetch the full body." : "")) + '</div>';
       }
@@ -3113,17 +3120,19 @@
           '<div class="fieldGrid"><label>From<input id="emailFrom" list="emailFromOptions" value="' + esc(from) + '" placeholder="verified@yourdomain.com"></label><label>To<input id="emailTo" list="emailContactOptions" value="' + esc(to) + '" placeholder="borrower@email.com"></label></div>' +
           '<label>Subject<input id="emailSubject" value="' + esc(subject) + '"></label>' +
           '<div class="fieldGrid"><label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label><label>BCC<input id="emailBcc" value="' + esc(bcc) + '" placeholder="hidden@email.com"></label></div>' +
+          '<label>Schedule send (optional)<input id="emailScheduledAt" type="datetime-local"></label>' +
           '<label>Email body<textarea id="emailBody" rows="12">' + esc(body) + '</textarea></label>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-email-page">Send email</button></div><div id="emailPageMsg" class="statusLine"></div>');
       }
       async function sendEmailPage() {
         status("emailPageMsg", "Sending...");
+        var scheduledAt = isoFromLocalDateInput(inputVal("emailScheduledAt"));
         var data = await json("/api/email/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: inputVal("emailFrom"), to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: inputVal("emailCc"), bcc: inputVal("emailBcc") })
+          body: JSON.stringify({ from: inputVal("emailFrom"), to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: inputVal("emailCc"), bcc: inputVal("emailBcc"), scheduled_at: scheduledAt })
         });
-        status("emailPageMsg", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+        status("emailPageMsg", data.ok ? (scheduledAt ? "Email scheduled." : "Email sent.") : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
         if (data.ok) closeModal();
         state.emailBox = "sent";
         state.activeEmailId = null;
@@ -3192,6 +3201,34 @@
         showToast("Resend email loaded.");
         renderEmailList();
         renderEmailReader();
+      }
+      function openEmailRescheduleModal() {
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (!m) return;
+        var resendId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
+        if (!resendId) { showToast("This email has no Resend id to reschedule.", true); return; }
+        var current = dateMillis(m.scheduled_at) || (Date.now() + 60 * 60_000);
+        openModal("Reschedule email",
+          '<p class="muted">Only scheduled Resend emails can be updated. Resend will reject changes to mail that has already sent.</p>' +
+          '<label>Send at<input id="emailRescheduleAt" type="datetime-local" value="' + esc(localDateInput(current)) + '"></label>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-email-reschedule">Save schedule</button></div><div id="emailRescheduleMsg" class="statusLine"></div>');
+      }
+      async function saveEmailReschedule() {
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (!m) return;
+        var scheduledAt = isoFromLocalDateInput(inputVal("emailRescheduleAt"));
+        if (!scheduledAt) { status("emailRescheduleMsg", "Choose a valid date/time.", "warnText"); return; }
+        var resendId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
+        var path = m.resend_api ? "/api/email/sent/" + encodeURIComponent(resendId) : "/api/email/activity/" + encodeURIComponent(m.id) + "/reschedule";
+        status("emailRescheduleMsg", "Updating schedule...");
+        await json(path, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduled_at: scheduledAt })
+        });
+        closeModal();
+        showToast("Email schedule updated.");
+        await refreshEmailPage();
       }
       async function copyEmailWebhook() {
         var url = $("emailWebhookUrl") ? $("emailWebhookUrl").value : (location.origin + apiPath("/api/webhooks/resend"));
@@ -3541,6 +3578,8 @@
           else if (a === "check-resend-webhook") await checkResendWebhook();
           else if (a === "email-refresh-resend") await refreshEmailFromResend();
           else if (a === "email-load-resend") await loadResendSentEmail();
+          else if (a === "email-reschedule") openEmailRescheduleModal();
+          else if (a === "save-email-reschedule") await saveEmailReschedule();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
           else if (a === "admin-create-user") await createAdminUser();

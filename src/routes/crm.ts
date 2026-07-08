@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails, updateScheduledEmail } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3206,6 +3206,15 @@ function resendSendOptions(req: Request): {
   };
 }
 
+function scheduledAtFromBody(body: unknown): string {
+  const raw = body && typeof body === "object"
+    ? cleanText((body as Record<string, unknown>).scheduled_at || (body as Record<string, unknown>).scheduledAt)
+    : "";
+  if (!raw) return "";
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : raw;
+}
+
 /** Wrap a plain-text body in the branded email shell (HTML + text variants). */
 function buildBrandedEmail(bodyText: string, unsubUrl: string): { html: string; text: string } {
   const paragraphsHtml = bodyText
@@ -3238,6 +3247,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const cc = parseCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
+  const scheduledAt = scheduledAtFromBody(req.body);
   if (!subjectTemplate) {
     res.status(400).json({ error: "pass a subject" });
     return;
@@ -3259,6 +3269,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     bcc,
     attachments: parseAttachments(req.body?.attachments),
     ...resendSendOptions(req),
+    ...(scheduledAt ? { scheduledAt } : {}),
   });
   logActivity(lead.id, {
     type: "email",
@@ -3266,8 +3277,8 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     channel: "email",
     subject,
     body: bodyText,
-    status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
-    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
+    status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
+    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
   });
   res.json({ ok: r.ok, id: r.id, detail: r.detail });
 });
@@ -3286,6 +3297,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const cc = parseCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
+  const scheduledAt = scheduledAtFromBody(req.body);
   const template = parseResendTemplate(
     req.body?.template ||
       (req.body?.template_id || req.body?.templateId
@@ -3324,6 +3336,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
     bcc,
     attachments: parseAttachments(req.body?.attachments),
     ...resendSendOptions(req),
+    ...(scheduledAt ? { scheduledAt } : {}),
   });
   if (lead) {
     logActivity(lead.id, {
@@ -3332,8 +3345,8 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
       channel: "email",
       subject: renderedSubject,
       body: renderedBody,
-      status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
-      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
+      status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
+      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
@@ -3402,6 +3415,20 @@ crmRouter.get("/api/email/sent/:emailId", requirePass, async (req, res) => {
     return;
   }
   res.json({ ok: true, email });
+});
+
+crmRouter.patch("/api/email/sent/:emailId", requirePass, async (req, res) => {
+  const scheduledAt = scheduledAtFromBody(req.body);
+  if (!scheduledAt) {
+    res.status(400).json({ error: "scheduled_at must be a valid ISO 8601 date" });
+    return;
+  }
+  const result = await updateScheduledEmail(req.params.emailId, scheduledAt);
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.detail || "could not update scheduled email" });
+    return;
+  }
+  res.json({ ok: true, id: result.id, scheduled_at: scheduledAt });
 });
 
 crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
@@ -3549,6 +3576,7 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
         message_id: typeof meta?.message_id === "string" ? meta.message_id : "",
         last_event: typeof meta?.last_event === "string" ? meta.last_event : "",
         resend_refreshed_at: typeof meta?.resend_refreshed_at === "string" ? meta.resend_refreshed_at : "",
+        scheduled_at: typeof meta?.scheduled_at === "string" ? meta.scheduled_at : "",
         file_folder: typeof meta?.file_folder === "string" ? meta.file_folder : "",
         discussion_file: typeof meta?.discussion_file === "string" ? meta.discussion_file : "",
         attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
@@ -3631,6 +3659,7 @@ crmRouter.post("/api/email/activity/:activityId/resend-refresh", requirePass, as
   meta.resend_id = sent.id || resendId;
   meta.message_id = sent.message_id || meta.message_id || null;
   meta.last_event = sent.last_event || meta.last_event || null;
+  meta.scheduled_at = sent.scheduled_at || meta.scheduled_at || null;
   meta.resend_email = sent;
   meta.resend_refreshed_at = new Date().toISOString();
   if (sent.to) meta.to = sent.to;
@@ -3648,6 +3677,59 @@ crmRouter.post("/api/email/activity/:activityId/resend-refresh", requirePass, as
     email: sent,
     meta,
   });
+});
+
+crmRouter.patch("/api/email/activity/:activityId/reschedule", requirePass, async (req, res) => {
+  const row = db.prepare(`SELECT * FROM activities WHERE id = ? AND deleted_at IS NULL`).get(req.params.activityId) as
+    | { id: string; lead_id: string; type: string; direction: string | null; subject: string | null; body: string | null; status: string | null; meta: string | null }
+    | undefined;
+  const activity = row ? { ...row, meta: safeMeta(row.meta) } : null;
+  if (!activity || activity.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return;
+  }
+  const lead = getLead(activity.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const scheduledAt = scheduledAtFromBody(req.body);
+  if (!scheduledAt) {
+    res.status(400).json({ error: "scheduled_at must be a valid ISO 8601 date" });
+    return;
+  }
+  const meta = { ...(activity.meta || {}) };
+  const resendId = cleanText(meta.id || meta.resend_id || meta.resend_email_id);
+  if (!resendId) {
+    res.status(400).json({ error: "this email activity has no Resend id to reschedule" });
+    return;
+  }
+  const result = await updateScheduledEmail(resendId, scheduledAt);
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.detail || "could not update scheduled email" });
+    return;
+  }
+  meta.resend_id = result.id || resendId;
+  meta.scheduled_at = scheduledAt;
+  meta.last_event = "scheduled";
+  meta.rescheduled_at = new Date().toISOString();
+  meta.rescheduled_by = leadActionAuthor(req);
+  db.prepare(`UPDATE activities SET status = ?, meta = ? WHERE id = ?`).run("scheduled", JSON.stringify(meta), activity.id);
+  logActivity(lead.id, {
+    type: "email_rescheduled",
+    direction: "system",
+    channel: "email",
+    subject: "Scheduled email updated",
+    body: `Email rescheduled for ${scheduledAt}`,
+    status: "scheduled",
+    meta: { sourceActivityId: activity.id, resend_id: result.id || resendId, scheduled_at: scheduledAt },
+  });
+  res.json({ ok: true, activityId: activity.id, id: result.id || resendId, scheduled_at: scheduledAt });
 });
 
 /** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.
