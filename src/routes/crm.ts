@@ -3571,7 +3571,8 @@ crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
 
 crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) => {
   const mountedBase = requestMountedBase(req);
-  const expectedWebhook = `${mountedBase}/api/webhooks/resend`;
+  const expectedWebhook = "https://loangenius-v2.onrender.com/api/webhooks/resend";
+  const mountedWebhook = `${mountedBase}/api/webhooks/resend`;
   const rootWebhook = `${req.protocol}://${req.get("host")}/api/webhooks/resend`;
   const list = await listResendWebhooks();
   const enriched = await Promise.all(
@@ -3587,7 +3588,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
         endpoint,
         events,
         has_email_received: events.includes("email.received"),
-        endpoint_matches_this_app: endpoint === expectedWebhook || endpoint === rootWebhook,
+        endpoint_matches_this_app: endpoint === expectedWebhook || endpoint === mountedWebhook || endpoint === rootWebhook,
         signing_secret_present: Boolean(signingSecret),
         signing_secret_matches_env: Boolean(config.email.resendWebhookSecret && signingSecret && signingSecret === config.email.resendWebhookSecret),
       };
@@ -3600,6 +3601,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
     resend_api_key_set: Boolean(config.email.resendApiKey),
     resend_webhook_secret_set: Boolean(config.email.resendWebhookSecret),
     expected_webhook_url: expectedWebhook,
+    alternate_webhook_urls: [mountedWebhook, rootWebhook].filter((url, index, list) => url && list.indexOf(url) === index && url !== expectedWebhook),
     root_webhook_url: rootWebhook,
     webhooks_ok: list.ok,
     webhooks_error: list.detail || null,

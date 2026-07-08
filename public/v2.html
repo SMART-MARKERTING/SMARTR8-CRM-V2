@@ -843,7 +843,7 @@
         '</section>';
       }
       function resendInboundSetupCard() {
-        var webhookUrl = location.origin + apiPath("/api/webhooks/resend");
+        var webhookUrl = state.resendWebhookUrl || "https://loangenius-v2.onrender.com/api/webhooks/resend";
         return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this backend setup area for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button><button class="btn small primary" data-action="sync-resend-inbox">Sync recent inbox</button></div><div id="resendDiag" class="statusLine"></div></section>';
       }
       function loadControlPanel() {
@@ -3417,6 +3417,10 @@
       async function checkResendWebhook() {
         status("resendDiag", "Checking Resend...");
         var data = await json("/api/email/resend-diagnostics");
+        if (data.expected_webhook_url) {
+          state.resendWebhookUrl = data.expected_webhook_url;
+          if ($("emailWebhookUrl")) $("emailWebhookUrl").value = data.expected_webhook_url;
+        }
         var hooks = data.webhooks || [];
         var match = hooks.find(function (h) { return h.endpoint_matches_this_app; });
         var received = Number(data.recent_received_count || 0);
