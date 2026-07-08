@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3339,6 +3339,55 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
 });
 
+crmRouter.post("/api/email/batch-send", requirePass, async (req, res) => {
+  if (!emailConfigured()) {
+    res.status(400).json({ error: "email not configured (set RESEND_API_KEY + EMAIL_FROM)" });
+    return;
+  }
+  const rows = Array.isArray(req.body?.emails) ? req.body.emails as Array<Record<string, unknown>> : [];
+  if (!rows.length) {
+    res.status(400).json({ error: "pass { emails: [...] }" });
+    return;
+  }
+  const defaultFrom = selectedEmailFrom(req.body?.from);
+  const emails = rows.slice(0, 100).map((row) => {
+    const bodyText = cleanText(row.body || row.text);
+    const template = parseResendTemplate(
+      row.template ||
+        (row.template_id || row.templateId
+          ? { id: row.template_id || row.templateId, variables: row.variables || row.templateVariables }
+          : undefined),
+    );
+    const unsubUrl = `mailto:${config.email.fromEmail || "unsubscribe"}?subject=${encodeURIComponent("Unsubscribe")}`;
+    const branded = template ? null : buildBrandedEmail(bodyText || cleanText(row.subject, "Email"), unsubUrl);
+    return {
+      to: parseEmailList(row.to),
+      subject: cleanText(row.subject, "Email"),
+      from: selectedEmailFrom(row.from) || defaultFrom,
+      ...(template ? { template } : { html: branded?.html, text: branded?.text }),
+      cc: parseEmailList(row.cc),
+      bcc: parseEmailList(row.bcc),
+      replyTo: parseEmailList(row.reply_to || row.replyTo),
+      topicId: cleanText(row.topic_id || row.topicId),
+      tags: parseResendTags(row.tags),
+      headers: row.headers && typeof row.headers === "object" ? row.headers as Record<string, string> : undefined,
+    };
+  });
+  const result = await sendBatchEmails(emails, {
+    idempotencyKey: cleanText(req.body?.idempotency_key || req.body?.idempotencyKey || req.get("Idempotency-Key")),
+  });
+  res.status(result.ok ? 200 : 400).json(result);
+});
+
+crmRouter.get("/api/email/sent/:emailId", requirePass, async (req, res) => {
+  const email = await retrieveSentEmail(req.params.emailId);
+  if (!email) {
+    res.status(404).json({ error: "sent email not found in Resend" });
+    return;
+  }
+  res.json({ ok: true, email });
+});
+
 crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
   res.json({
     ok: true,
@@ -3452,6 +3501,7 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
       const to = inbound
         ? toList.join(", ") || config.email.fromEmail || ""
         : toList.join(", ") || row.email || "";
+      const resendId = cleanText(meta?.resend_id || meta?.id || meta?.resend_email_id);
       return {
         id: row.id,
         created_at: row.created_at,
@@ -3467,6 +3517,10 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
         to,
         cc: ccList,
         bcc: bccList,
+        resend_id: resendId,
+        message_id: typeof meta?.message_id === "string" ? meta.message_id : "",
+        last_event: typeof meta?.last_event === "string" ? meta.last_event : "",
+        resend_refreshed_at: typeof meta?.resend_refreshed_at === "string" ? meta.resend_refreshed_at : "",
         file_folder: typeof meta?.file_folder === "string" ? meta.file_folder : "",
         discussion_file: typeof meta?.discussion_file === "string" ? meta.discussion_file : "",
         attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
@@ -3514,6 +3568,58 @@ crmRouter.patch("/api/email/activity/:activityId", requirePass, (req, res) => {
     meta: { sourceActivityId: activity.id, file_folder: fileFolder, discussion_file: discussionFile },
   });
   res.json({ ok: true, activityId: activity.id, file_folder: fileFolder, discussion_file: discussionFile });
+});
+
+crmRouter.post("/api/email/activity/:activityId/resend-refresh", requirePass, async (req, res) => {
+  const row = db.prepare(`SELECT * FROM activities WHERE id = ? AND deleted_at IS NULL`).get(req.params.activityId) as
+    | { id: string; lead_id: string; type: string; direction: string | null; subject: string | null; body: string | null; status: string | null; meta: string | null }
+    | undefined;
+  const activity = row ? { ...row, meta: safeMeta(row.meta) } : null;
+  if (!activity || activity.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return;
+  }
+  const lead = getLead(activity.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const meta = { ...(activity.meta || {}) };
+  const resendId = cleanText(meta.id || meta.resend_id || meta.resend_email_id);
+  if (!resendId) {
+    res.status(400).json({ error: "this email activity has no Resend id to refresh" });
+    return;
+  }
+  const sent = await retrieveSentEmail(resendId);
+  if (!sent) {
+    res.status(404).json({ error: "sent email not found in Resend" });
+    return;
+  }
+  meta.resend_id = sent.id || resendId;
+  meta.message_id = sent.message_id || meta.message_id || null;
+  meta.last_event = sent.last_event || meta.last_event || null;
+  meta.resend_email = sent;
+  meta.resend_refreshed_at = new Date().toISOString();
+  if (sent.to) meta.to = sent.to;
+  if (sent.from) meta.from = sent.from;
+  if (sent.cc) meta.cc = sent.cc;
+  if (sent.bcc) meta.bcc = sent.bcc;
+  if (sent.reply_to) meta.reply_to = sent.reply_to;
+  if (sent.tags) meta.tags = sent.tags;
+  const status = sent.last_event || activity.status || "sent";
+  db.prepare(`UPDATE activities SET status = ?, meta = ? WHERE id = ?`).run(status, JSON.stringify(meta), activity.id);
+  res.json({
+    ok: true,
+    activityId: activity.id,
+    status,
+    email: sent,
+    meta,
+  });
 });
 
 /** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.

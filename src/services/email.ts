@@ -19,6 +19,24 @@ export interface ResendEmailTag {
   value: string;
 }
 
+export interface SendEmailOptions {
+  to: EmailRecipient;
+  subject: string;
+  from?: string;
+  html?: string;
+  text?: string;
+  replyTo?: EmailRecipient;
+  cc?: string[];
+  bcc?: string[];
+  scheduledAt?: string;
+  topicId?: string;
+  tags?: ResendEmailTag[];
+  template?: ResendEmailTemplate;
+  idempotencyKey?: string;
+  attachments?: Array<{ filename: string; content: string }>;
+  headers?: Record<string, string>;
+}
+
 export interface ResendReceivedEmail {
   object?: string;
   id?: string;
@@ -35,6 +53,25 @@ export interface ResendReceivedEmail {
   headers?: Record<string, string>;
   message_id?: string;
   raw?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ResendSentEmail {
+  object?: string;
+  id: string;
+  message_id?: string;
+  to?: string[];
+  from?: string;
+  created_at?: string;
+  subject?: string;
+  html?: string | null;
+  text?: string | null;
+  bcc?: string[];
+  cc?: string[];
+  reply_to?: string[];
+  last_event?: string;
+  scheduled_at?: string | null;
+  tags?: ResendEmailTag[];
   [key: string]: unknown;
 }
 
@@ -209,6 +246,83 @@ function sanitizeTags(tags: ResendEmailTag[]): ResendEmailTag[] {
     .slice(0, 20);
 }
 
+function batchPayloadFromOptions(opts: SendEmailOptions): { ok: true; payload: Record<string, unknown> } | { ok: false; detail: string } {
+  if (!emailConfigured()) return { ok: false, detail: "email not configured (set RESEND_API_KEY + EMAIL_FROM)" };
+  if (opts.attachments?.length) return { ok: false, detail: "Resend batch does not support attachments yet" };
+  if (opts.scheduledAt) return { ok: false, detail: "Resend batch does not support scheduled_at yet" };
+  if (opts.template && (opts.html || opts.text)) {
+    return { ok: false, detail: "Resend template sends cannot include html or text in the same payload" };
+  }
+  let to: string[];
+  let cc: string[];
+  let bcc: string[];
+  try {
+    to = normalizeRecipients(opts.to, "to", 50);
+    cc = normalizeRecipients(opts.cc ?? [], "cc", 50);
+    bcc = normalizeRecipients(opts.bcc ?? [], "bcc", 50);
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+  if (!to.length) return { ok: false, detail: "no recipient" };
+  const payload: Record<string, unknown> = {
+    from: opts.from || config.email.fromEmail,
+    to,
+    subject: opts.subject,
+  };
+  if (cc.length) payload.cc = cc;
+  if (bcc.length) payload.bcc = bcc;
+  const replyTo = opts.replyTo || config.email.replyTo;
+  if (replyTo) payload.reply_to = replyTo;
+  if (opts.topicId) payload.topic_id = opts.topicId;
+  if (opts.tags?.length) payload.tags = sanitizeTags(opts.tags);
+  if (opts.headers && Object.keys(opts.headers).length) payload.headers = opts.headers;
+  if (opts.template) {
+    payload.template = {
+      id: opts.template.id,
+      ...(opts.template.variables ? { variables: opts.template.variables } : {}),
+    };
+  } else {
+    if (opts.html) payload.html = opts.html;
+    if (opts.text) payload.text = opts.text;
+    if (!opts.html && !opts.text) payload.text = opts.subject;
+  }
+  return { ok: true, payload };
+}
+
+export async function sendBatchEmails(
+  emails: SendEmailOptions[],
+  opts: { idempotencyKey?: string } = {},
+): Promise<{ ok: boolean; ids: string[]; data?: Array<{ id?: string }>; detail?: string }> {
+  if (!emailConfigured()) return { ok: false, ids: [], detail: "email not configured (set RESEND_API_KEY + EMAIL_FROM)" };
+  if (!emails.length) return { ok: false, ids: [], detail: "batch requires at least one email" };
+  if (emails.length > 100) return { ok: false, ids: [], detail: "Resend batch supports at most 100 emails per request" };
+  const payload: Record<string, unknown>[] = [];
+  for (const email of emails) {
+    const built = batchPayloadFromOptions(email);
+    if (!built.ok) return { ok: false, ids: [], detail: built.detail };
+    payload.push(built.payload);
+  }
+  try {
+    const headers = resendHeaders(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {});
+    const res = await fetch("https://api.resend.com/emails/batch", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const raw = await res.text().catch(() => "");
+    if (!res.ok) {
+      log.error(`Resend batch send failed ${res.status}: ${raw}`);
+      return { ok: false, ids: [], detail: `${res.status}: ${raw}` };
+    }
+    const data = raw ? (JSON.parse(raw) as { data?: Array<{ id?: string }> }) : {};
+    const rows = Array.isArray(data.data) ? data.data : [];
+    return { ok: true, ids: rows.map((row) => row.id || "").filter(Boolean), data: rows };
+  } catch (err) {
+    log.error("Resend batch send threw", { err: String(err) });
+    return { ok: false, ids: [], detail: String(err) };
+  }
+}
+
 export async function retrieveReceivedEmail(emailId: string): Promise<ResendReceivedEmail | null> {
   if (!resendApiConfigured()) return null;
   if (!emailId) return null;
@@ -228,4 +342,10 @@ export async function retrieveReceivedEmail(emailId: string): Promise<ResendRece
     log.error("Resend received email retrieve threw", { err: String(err), emailId });
     return null;
   }
+}
+
+export async function retrieveSentEmail(emailId: string): Promise<ResendSentEmail | null> {
+  if (!emailId) return null;
+  const result = await resendGet<ResendSentEmail>(`/emails/${encodeURIComponent(emailId)}`);
+  return result.ok && result.data ? result.data : null;
 }

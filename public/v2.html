@@ -2957,8 +2957,9 @@
       }
       function emailStatusHtml(m) {
         var inbound = m.direction === "inbound";
-        var failed = /failed/i.test(m.status || "");
-        return '<span class="badge ' + (failed ? "red" : inbound ? "blue" : "green") + '">' + esc(inbound ? "Received" : (m.status || "Sent")) + '</span>';
+        var label = inbound ? "Received" : (m.last_event || m.status || "Sent");
+        var failed = /failed|bounced|complained/i.test(label || "");
+        return '<span class="badge ' + (failed ? "red" : inbound ? "blue" : "green") + '">' + esc(label) + '</span>';
       }
       function renderEmailList() {
         var box = $("emailList");
@@ -3003,10 +3004,14 @@
         var attachments = Array.isArray(m.attachments) ? m.attachments : [];
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
         var filedBadge = m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>';
+        var resendButton = (m.direction !== "inbound" && m.resend_id) ? '<button class="btn" data-action="email-refresh-resend">Refresh Resend status</button>' : "";
+        var resendLine = (m.resend_id || m.message_id || m.last_event)
+          ? '<div><b>Resend:</b> ' + esc([m.resend_id ? "id " + m.resend_id : "", m.message_id ? "message " + m.message_id : "", m.last_event ? "event " + m.last_event : "", m.resend_refreshed_at ? "refreshed " + formatDateTime(Date.parse(m.resend_refreshed_at)) : ""].filter(Boolean).join(" | ")) + '</div>'
+          : "";
         box.innerHTML =
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
-          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div></div>' +
-          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button><button class="btn" data-action="email-file">File / folder</button><button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
+          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + resendLine + '</div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button><button class="btn" data-action="email-file">File / folder</button>' + resendButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return '<span class="badge purple">' + esc(a.filename || a.name || "Attachment") + '</span>'; }).join("") + '</div>' : '') +
           '<div class="emailBodyText">' + esc(m.body || "") + '</div>';
       }
@@ -3071,6 +3076,16 @@
         });
         closeModal();
         showToast("Email filed.");
+        await refreshEmailPage();
+      }
+      async function refreshEmailFromResend() {
+        if (!state.activeEmailId) return;
+        var data = await json("/api/email/activity/" + encodeURIComponent(state.activeEmailId) + "/resend-refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        showToast("Resend status: " + (data.status || "refreshed"));
         await refreshEmailPage();
       }
       async function copyEmailWebhook() {
@@ -3416,6 +3431,7 @@
           else if (a === "save-email-folder") await saveEmailFolder();
           else if (a === "copy-email-webhook") await copyEmailWebhook();
           else if (a === "check-resend-webhook") await checkResendWebhook();
+          else if (a === "email-refresh-resend") await refreshEmailFromResend();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
           else if (a === "admin-create-user") await createAdminUser();
