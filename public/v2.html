@@ -842,6 +842,10 @@
           '<button class="btn primary" data-nav="' + esc(item.id) + '">Open</button>' +
         '</section>';
       }
+      function resendInboundSetupCard() {
+        var webhookUrl = location.origin + apiPath("/api/webhooks/resend");
+        return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this backend setup area for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button></div><div id="resendDiag" class="statusLine"></div></section>';
+      }
       function loadControlPanel() {
         var groups = {};
         controlItems.forEach(function (item) {
@@ -852,7 +856,7 @@
           '<button class="btn" data-action="refresh">Refresh</button>',
           Object.keys(groups).map(function (group) {
             return '<section class="card pad" style="margin-bottom:14px"><h2 style="margin-top:0">' + esc(group) + '</h2><div class="controlGrid">' + groups[group].map(controlTile).join("") + '</div></section>';
-          }).join(""));
+          }).join("") + resendInboundSetupCard());
       }
       function pageShell(title, sub, actions, body) {
         if ($("topPageTitle")) $("topPageTitle").textContent = title;
@@ -2918,7 +2922,6 @@
       }
 
       async function loadEmailPage() {
-        var webhookUrl = location.origin + apiPath("/api/webhooks/resend");
         pageShell("Email", "Mailbox for borrower replies, sent mail, and Resend inbound email.",
           '<button class="btn primary" data-action="email-compose">Compose</button><button class="btn" data-action="refresh-email-page">Refresh</button>',
           '<div class="emailShell">' +
@@ -2928,7 +2931,7 @@
             '</section>' +
             '<section class="card pad emailReader"><div id="emailReader" class="empty">Select an email.</div></section>' +
           '</div>' +
-          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button></div><div id="resendDiag" class="statusLine"></div></section><datalist id="emailContactOptions"></datalist><datalist id="emailFromOptions"></datalist><datalist id="emailFolderOptions"></datalist>');
+          '<datalist id="emailContactOptions"></datalist><datalist id="emailFromOptions"></datalist><datalist id="emailFolderOptions"></datalist>');
         if ($("emailSearch")) $("emailSearch").addEventListener("input", renderEmailList);
         await refreshEmailPage();
       }
@@ -3116,10 +3119,8 @@
         });
         if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName() + (state.emailResendError || state.emailReceivedError ? " | Resend list error" : "");
         if (!rows.length) {
-          var help = (state.emailBox || "inbox") === "inbox"
-            ? '<div class="sub" style="margin-top:8px">Inbound email appears here from Resend received-mail history and from <b>email.received</b> webhooks to <code>' + esc(location.origin + apiPath("/api/webhooks/resend")) + '</code>.' + (state.emailReceivedError ? ' Resend received-list error: ' + esc(state.emailReceivedError) : ' Check RESEND_WEBHOOK_SECRET if webhook storage shows 401.') + '</div>'
-            : (state.emailResendError || state.emailReceivedError)
-              ? '<div class="sub badText" style="margin-top:8px">Resend list error: ' + esc(state.emailResendError || state.emailReceivedError) + '</div>'
+          var help = (state.emailResendError || state.emailReceivedError)
+            ? '<div class="sub badText" style="margin-top:8px">Resend list error: ' + esc(state.emailResendError || state.emailReceivedError) + '</div>'
             : "";
           box.innerHTML = '<div class="empty">No email found in ' + esc(emailBoxName()) + '.' + help + '</div>';
           return;
