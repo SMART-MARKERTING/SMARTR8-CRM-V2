@@ -9,7 +9,7 @@ import { checkPass, requirePass } from "../util/auth";
 import { mintWebrtcToken } from "../services/telnyxWebrtc";
 import { sendOutbound, getMessagingMode, setMessagingMode, MessagingMode } from "../services/router";
 import { lookupNumber } from "../services/telnyxLookup";
-import { listNumbers, defaultFrom, pickFromNumber } from "../services/numbers";
+import { listNumbers, defaultFrom, pickFromNumber, toOwnedNumber } from "../services/numbers";
 import { listOwnedNumbers, sendSms, getMessageStatus } from "../services/telnyx";
 import { isForwardingEnabled, setForwarding, withinForwardWindow } from "../services/inboundRouter";
 import { mimeForExt, mediaPathFor, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
@@ -373,9 +373,30 @@ appRouter.post("/api/conversations/:contactId/unhide", requirePass, (req, res) =
   res.json({ ok: true });
 });
 
-/** List sending numbers (for the dialer's from-number selector). */
-appRouter.get("/api/numbers", requirePass, (_req, res) => {
-  res.json({ numbers: listNumbers(), default: defaultFrom() });
+/** List sending numbers (for the dialer's from-number selector).
+ *  Includes configured TELNYX_NUMBERS plus live Telnyx-owned numbers when available. */
+appRouter.get("/api/numbers", requirePass, async (_req, res) => {
+  const configured = listNumbers();
+  const byNumber = new Map<string, { e164: string; areaCode?: string; state?: string; label: string; status?: string; source?: string }>();
+  for (const n of configured) byNumber.set(n.e164, { ...n, source: "configured" });
+  let liveError: string | null = null;
+  if (config.telnyx.apiKey) {
+    try {
+      const owned = await listOwnedNumbers();
+      for (const n of owned) {
+        if (!n.phone_number) continue;
+        const existing = byNumber.get(n.phone_number);
+        byNumber.set(n.phone_number, {
+          ...(existing || toOwnedNumber(n.phone_number)),
+          status: n.status,
+          source: existing ? `${existing.source || "configured"}+telnyx` : "telnyx",
+        });
+      }
+    } catch (err) {
+      liveError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  res.json({ numbers: Array.from(byNumber.values()), default: defaultFrom(), liveError });
 });
 
 /** List EVERY phone number on the Telnyx account, with a ready-to-paste TELNYX_NUMBERS

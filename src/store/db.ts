@@ -238,6 +238,19 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_contact ON whatsapp_messages(contact_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_provider_id ON whatsapp_messages(provider_message_id);
+
+  CREATE TABLE IF NOT EXISTS power_dialer_lists (
+    id            TEXT PRIMARY KEY,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    created_by    TEXT,
+    owner_user_id TEXT,
+    name          TEXT NOT NULL,
+    source        TEXT,
+    lead_ids      TEXT NOT NULL DEFAULT '[]',
+    filters       TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_power_dialer_lists_owner ON power_dialer_lists(owner_user_id, updated_at DESC);
 `);
 
 // ── Multi-user accounts ──────────────────────────────────────────────────────

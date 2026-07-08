@@ -708,6 +708,10 @@
         activeConferenceName: null,
         powerDialerLeads: [],
         powerDialerSelectedIds: new Set(),
+        powerDialerLists: [],
+        powerDialerActiveListId: "",
+        powerDialerRecent: [],
+        powerDialerNumbers: [],
         calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
       };
 
@@ -1723,7 +1727,7 @@
                 '<section class="card pad"><h2 style="margin-top:0">Upload old leads</h2><div class="sub" style="margin-bottom:10px">' + esc(leadPoolSampleColumns()) + '</div><input id="poolCsv" type="file" accept=".csv,text/csv"><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="import-leadpool">Upload CSV</button></div><div id="poolStatus" class="statusLine"></div></section>' +
                 '<section class="card pad"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>State<select id="poolState"><option value="">All states</option></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
               '</div>' +
-              '<section class="card"><div class="cardHead"><h2>Pool records</h2><div class="toolbar"><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
+              '<section class="card"><div class="cardHead"><h2>Pool records</h2><div class="toolbar"><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
             '</div>' +
             '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Click Open on a Lead Pool record to use the same profile view as Leads and Past Clients.</div></aside>' +
           '</div>');
@@ -1888,6 +1892,39 @@
         } else {
           openModal("Email Lead Pool", '<label>Subject<input id="poolBlastSubject" value="Still interested in a HELOC, {{first_name}}?"></label><label>Message<textarea id="poolBlastEmail" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit, but we never got a chance to finish reviewing your options.\n\nA HELOC may be useful if you are looking to access equity for home improvements, debt consolidation, emergency funds, investment opportunities, or large expenses without refinancing your entire first mortgage.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.\n\nBest,\nMykoal</textarea></label><button class="btn primary" data-action="send-pool-email">Send to ' + ids.length + ' selected</button><div id="poolBlastMsg" class="statusLine"></div>');
         }
+      }
+      function openPoolCallListModal() {
+        var ids = selectedPoolIds();
+        if (!ids.length) { showToast("Select Lead Pool records first.", true); return; }
+        var stateName = $("poolState") ? $("poolState").value : "";
+        var tagName = $("poolTag") ? $("poolTag").value : "";
+        var suggested = [stateName, tagName, "Lead Pool"].filter(Boolean).join(" - ") || "Lead Pool call list";
+        openModal("Create call list",
+          '<p class="muted">This saves the selected Lead Pool records as a named Power Dialer list.</p>' +
+          '<label>List name<input id="powerListName" value="' + esc(suggested) + '"></label>' +
+          '<div class="warnBox">' + ids.length + ' selected. Current filters are stored with the list for reference.</div>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-pool-call-list">Save call list</button></div><div id="powerListMsg" class="statusLine"></div>');
+      }
+      async function savePoolCallList() {
+        var ids = selectedPoolIds();
+        if (!ids.length) { status("powerListMsg", "Select Lead Pool records first.", "warnText"); return; }
+        status("powerListMsg", "Saving call list...");
+        var data = await json("/calls/power-dialer/lists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: inputVal("powerListName") || "Lead Pool call list",
+            ids: ids,
+            source: "lead-pool",
+            filters: {
+              q: $("poolSearch") ? $("poolSearch").value.trim() : "",
+              state: $("poolState") ? $("poolState").value : "",
+              tag: $("poolTag") ? $("poolTag").value : ""
+            }
+          })
+        });
+        closeModal();
+        showToast("Call list saved: " + (data.list && data.list.name ? data.list.name : "Power Dialer list"));
       }
       async function sendPoolText() {
         status("poolBlastMsg", "Sending...");
@@ -2301,8 +2338,9 @@
           var data = await json("/api/numbers");
           var sel = $(selectId);
           if (!sel) return;
-          sel.innerHTML = '<option value="">Auto</option>' + (data.numbers || []).map(function (n) {
-            return '<option value="' + esc(n.e164) + '">' + esc(n.label || n.e164) + '</option>';
+          state.powerDialerNumbers = data.numbers || [];
+          sel.innerHTML = '<option value="">Auto smart local line</option>' + (data.numbers || []).map(function (n) {
+            return '<option value="' + esc(n.e164) + '">' + esc(n.label || n.e164) + (n.status ? " (" + esc(n.status) + ")" : "") + '</option>';
           }).join("");
         } catch (e) {}
       }
@@ -2460,27 +2498,83 @@
       async function loadPowerDialer() {
         pageShell("Power Dialer", "Progressive dialing with answering-machine detection before CRM/cell bridge.", '<button class="btn" data-action="refresh-power-status">Status</button>',
           '<div class="grid cols2">' +
-            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Call list<select id="powerList"><option value="">Search / manual selection</option></select></label><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto smart local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="load-power-list">Load list</button><button class="btn danger" data-action="delete-power-list">Delete list</button><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
             '<section class="card pad"><h2 style="margin-top:0">Queue status</h2><div id="powerStatus" class="list"><div class="empty">No status loaded.</div></div></section>' +
           '</div>' +
-          '<section class="card"><div class="cardHead"><h2>Dial list</h2><div class="toolbar"><button class="btn small" data-action="refresh-power-leads">Refresh</button></div></div><div id="powerLeadWrap" class="tableWrap"></div></section>');
+          '<section class="card"><div class="cardHead"><div><h2>Dial list</h2><div id="powerListHint" class="sub">Search leads or load a call list.</div></div><div class="toolbar"><button class="btn small" data-action="save-power-selection">Save selected as list</button><button class="btn small" data-action="refresh-power-leads">Refresh</button></div></div><div id="powerLeadWrap" class="tableWrap"></div></section>' +
+          '<section class="card pad" style="margin-top:14px"><div class="toolbar" style="justify-content:space-between"><h2 style="margin:0">Live dialing activity</h2><button class="btn small" data-action="refresh-power-status">Refresh</button></div><div id="powerActivity" class="list" style="margin-top:12px"><div class="empty">No Power Dialer activity yet.</div></div></section>');
         if ($("powerSearch")) $("powerSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshPowerLeads(); });
         await loadDialerNumbers("powerFrom");
+        await loadPowerLists();
         await refreshPowerLeads();
         await refreshPowerStatus();
       }
+      async function loadPowerLists() {
+        var data = await json("/calls/power-dialer/lists").catch(function () { return { lists: [] }; });
+        state.powerDialerLists = data.lists || [];
+        if ($("powerList")) {
+          $("powerList").innerHTML = '<option value="">Search / manual selection</option>' + state.powerDialerLists.map(function (l) {
+            return '<option value="' + esc(l.id) + '">' + esc(l.name) + ' (' + Number(l.count || 0) + ')</option>';
+          }).join("");
+          $("powerList").value = state.powerDialerActiveListId || "";
+        }
+      }
       async function refreshPowerLeads() {
         var q = $("powerSearch") ? $("powerSearch").value.trim() : "";
+        state.powerDialerActiveListId = "";
+        if ($("powerList")) $("powerList").value = "";
         var data = await json("/api/leads?limit=250&includeContacts=1" + (q ? "&q=" + encodeURIComponent(q) : ""));
         state.powerDialerLeads = data.leads || [];
         if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
+        if ($("powerListHint")) $("powerListHint").textContent = "Showing search results.";
+      }
+      async function loadPowerList() {
+        var id = $("powerList") ? $("powerList").value : "";
+        if (!id) { await refreshPowerLeads(); return; }
+        var data = await json("/calls/power-dialer/lists/" + encodeURIComponent(id));
+        state.powerDialerActiveListId = id;
+        state.powerDialerLeads = data.leads || [];
+        state.powerDialerSelectedIds.clear();
+        state.powerDialerLeads.forEach(function (l) { if (l.phone) state.powerDialerSelectedIds.add(l.id); });
+        if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
+        if ($("powerListHint")) $("powerListHint").textContent = "Loaded " + (data.list && data.list.name ? data.list.name : "call list") + " with " + state.powerDialerLeads.length + " records.";
+      }
+      async function deletePowerList() {
+        var id = $("powerList") ? $("powerList").value : "";
+        if (!id) { status("powerMsg", "Choose a call list first.", "warnText"); return; }
+        if (!confirm("Delete this Power Dialer call list? Leads will not be deleted.")) return;
+        await json("/calls/power-dialer/lists/" + encodeURIComponent(id), { method: "DELETE" });
+        state.powerDialerActiveListId = "";
+        state.powerDialerSelectedIds.clear();
+        await loadPowerLists();
+        await refreshPowerLeads();
+        status("powerMsg", "Call list deleted.", "okText");
+      }
+      function openSavePowerSelectionModal() {
+        var ids = Array.from(state.powerDialerSelectedIds);
+        if (!ids.length) { status("powerMsg", "Select records first.", "warnText"); return; }
+        openModal("Save Power Dialer list",
+          '<p class="muted">Save the selected dial rows as a named call list.</p><label>List name<input id="powerListName" value="Power Dialer list"></label>' +
+          '<div class="warnBox">' + ids.length + ' selected.</div><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-power-call-list">Save list</button></div><div id="powerListMsg" class="statusLine"></div>');
+      }
+      async function savePowerCallList() {
+        var ids = Array.from(state.powerDialerSelectedIds);
+        status("powerListMsg", "Saving...");
+        await json("/calls/power-dialer/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: inputVal("powerListName") || "Power Dialer list", ids: ids, source: "power-dialer" }) });
+        closeModal();
+        showToast("Power Dialer list saved.");
+        await loadPowerLists();
+      }
+      function powerRecentForLead(id) {
+        return (state.powerDialerRecent || []).find(function (r) { return r.leadId === id; }) || null;
       }
       function powerDialerTable(leads) {
         if (!leads || !leads.length) return '<div class="empty">No leads found.</div>';
-        return '<table class="table"><thead><tr><th><input type="checkbox" data-action="power-select-all"></th><th>Contact</th><th>Stage</th><th>Consent</th><th>Phone</th></tr></thead><tbody>' +
+        return '<table class="table"><thead><tr><th><input type="checkbox" data-action="power-select-all"></th><th>Contact</th><th>Stage</th><th>Consent</th><th>Phone</th><th>Latest result</th><th>Disposition / note</th></tr></thead><tbody>' +
           leads.map(function (l) {
             var selected = state.powerDialerSelectedIds.has(l.id);
-            return '<tr><td><input type="checkbox" data-action="power-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td><td><div class="leadCell"><span class="avatar">' + esc(initials(nameOf(l))) + '</span><div><div class="leadName">' + esc(nameOf(l)) + '</div><div class="sub">' + esc(l.email || "") + '</div></div></div></td><td><span class="badge ' + stageClass(l.pipeline_stage) + '">' + esc(l.pipeline_stage || l.status || "Lead") + '</span></td><td>' + (l.sms_consent ? '<span class="badge green">consent</span>' : '<span class="badge amber">review</span>') + '</td><td>' + esc(l.phone || "") + '</td></tr>';
+            var recent = powerRecentForLead(l.id);
+            return '<tr><td><input type="checkbox" data-action="power-select" data-id="' + esc(l.id) + '"' + (selected ? " checked" : "") + '></td><td><div class="leadCell"><span class="avatar">' + esc(initials(nameOf(l))) + '</span><div><div class="leadName">' + esc(nameOf(l)) + '</div><div class="sub">' + esc(l.email || "") + '</div></div></div></td><td><span class="badge ' + stageClass(l.pipeline_stage) + '">' + esc(l.pipeline_stage || l.status || "Lead") + '</span></td><td>' + (l.sms_consent ? '<span class="badge green">consent</span>' : '<span class="badge amber">review</span>') + '</td><td>' + esc(l.phone || "") + '</td><td>' + (recent ? '<span class="badge ' + (/(answered|complete|manual)/i.test(recent.status || recent.outcome || "") ? "green" : /(machine|voicemail|no-answer|failed|skipped|dnc)/i.test(recent.status || recent.outcome || "") ? "amber" : "blue") + '">' + esc(recent.outcome || recent.status) + '</span><div class="sub">' + esc(recent.from ? "from " + recent.from : "") + '</div>' : '<span class="badge blue">not dialed</span>') + '</td><td><div class="toolbar"><select id="powerOutcome-' + esc(l.id) + '" style="min-width:135px"><option value="answered">Answered</option><option value="voicemail">Voicemail</option><option value="no-answer">No answer</option><option value="bad-number">Bad number</option><option value="wrong-number">Wrong number</option><option value="dnc-request">DNC request</option><option value="follow-up">Follow up</option></select><input id="powerNote-' + esc(l.id) + '" placeholder="Quick note..." style="min-width:180px"><button class="btn small" data-action="power-save-disposition" data-id="' + esc(l.id) + '">Save</button><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button></div></td></tr>';
           }).join("") + '</tbody></table>';
       }
       async function startPowerDialer() {
@@ -2497,7 +2591,8 @@
             ids: ids,
             connectTo: $("powerConnect").value,
             from: $("powerFrom").value || undefined,
-            concurrency: Number($("powerConcurrency").value || 1)
+            concurrency: Number($("powerConcurrency").value || 1),
+            listId: state.powerDialerActiveListId || undefined
           })
         });
         status("powerMsg", "Queued " + data.queued + ", active " + data.active + ".", "okText");
@@ -2511,8 +2606,28 @@
       async function refreshPowerStatus() {
         if (!$("powerStatus")) return;
         var data = await json("/calls/power-dialer/status");
+        state.powerDialerRecent = data.recent || [];
         $("powerStatus").innerHTML =
-          '<div class="item"><b>' + (data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>';
+          '<div class="item"><b>' + (data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>' +
+          ((data.queue || []).length ? '<div class="item"><b>Next up</b><div class="sub">' + esc((data.queue || []).slice(0, 5).map(function (q) { return q.name || q.phone || q.leadId; }).join(", ")) + '</div></div>' : '');
+        renderPowerActivity(data.recent || []);
+        if ($("powerLeadWrap") && state.powerDialerLeads.length) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
+      }
+      function renderPowerActivity(rows) {
+        if (!$("powerActivity")) return;
+        $("powerActivity").innerHTML = rows && rows.length ? rows.slice(0, 40).map(function (r) {
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between"><div><b>' + esc(r.name || r.phone || "Lead") + '</b><div class="sub">' + esc([r.phone, r.from ? "from " + r.from : "", r.outcome || r.status, r.note || ""].filter(Boolean).join(" | ")) + '</div></div><button class="btn small" data-action="open-lead" data-id="' + esc(r.leadId || "") + '">Open</button></div></div>';
+        }).join("") : '<div class="empty">No Power Dialer activity yet.</div>';
+      }
+      async function savePowerDisposition(id) {
+        var outcomeEl = $("powerOutcome-" + id);
+        var noteEl = $("powerNote-" + id);
+        var outcome = outcomeEl ? outcomeEl.value : "note";
+        var note = noteEl ? noteEl.value.trim() : "";
+        await json("/calls/power-dialer/disposition", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leadId: id, outcome: outcome, note: note }) });
+        if (noteEl) noteEl.value = "";
+        showToast("Power Dialer result saved.");
+        await refreshPowerStatus();
       }
 
       function renderPortal() {
@@ -4235,6 +4350,8 @@
           else if (a === "import-leadpool") await importLeadPoolCsv();
           else if (a === "pool-select") { btn.checked ? state.leadPoolSelectedIds.add(btn.dataset.id) : state.leadPoolSelectedIds.delete(btn.dataset.id); }
           else if (a === "pool-select-all") { state.leadPool.forEach(function (l) { btn.checked ? state.leadPoolSelectedIds.add(l.id) : state.leadPoolSelectedIds.delete(l.id); }); await refreshLeadPool(); }
+          else if (a === "pool-call-list") openPoolCallListModal();
+          else if (a === "save-pool-call-list") await savePoolCallList();
           else if (a === "pool-text") openPoolBlast("text");
           else if (a === "pool-email") openPoolBlast("email");
           else if (a === "send-pool-text") await sendPoolText();
@@ -4277,6 +4394,11 @@
           else if (a === "end-conference") await endConference(false);
           else if (a === "dial-selected-lead") await dialSelectedLead();
           else if (a === "refresh-power-leads") await refreshPowerLeads();
+          else if (a === "load-power-list") await loadPowerList();
+          else if (a === "delete-power-list") await deletePowerList();
+          else if (a === "save-power-selection") openSavePowerSelectionModal();
+          else if (a === "save-power-call-list") await savePowerCallList();
+          else if (a === "power-save-disposition") await savePowerDisposition(btn.dataset.id);
           else if (a === "power-select") { btn.checked ? state.powerDialerSelectedIds.add(btn.dataset.id) : state.powerDialerSelectedIds.delete(btn.dataset.id); }
           else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); await refreshPowerLeads(); }
           else if (a === "start-power-dialer") await startPowerDialer();

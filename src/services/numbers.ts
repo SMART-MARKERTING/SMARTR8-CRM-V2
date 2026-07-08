@@ -72,7 +72,7 @@ export function areaCodeOf(phone: string): string | undefined {
   return undefined;
 }
 
-function toOwned(e164: string): OwnedNumber {
+export function toOwnedNumber(e164: string): OwnedNumber {
   const ac = areaCodeOf(e164);
   const state = ac ? AREA_CODE_STATE[ac] : undefined;
   return { e164, areaCode: ac, state, label: `${e164}${state ? ` · ${state}` : ""}` };
@@ -86,7 +86,7 @@ export function listNumbers(): OwnedNumber[] {
   if (primary && !list.includes(primary)) list.unshift(primary);
   // de-dupe, preserve order
   const seen = new Set<string>();
-  return list.filter((n) => (seen.has(n) ? false : (seen.add(n), true))).map(toOwned);
+  return list.filter((n) => (seen.has(n) ? false : (seen.add(n), true))).map(toOwnedNumber);
 }
 
 export function defaultFrom(): string {
@@ -98,15 +98,8 @@ export interface FromPick {
   reason: "exact-area-code" | "same-state" | "default";
 }
 
-/**
- * Smart caller-ID by destination: prefer a number with the SAME area code as the
- * destination, then any number in the same STATE, else the default. Used for outbound
- * CALLS and for the SMS leg of the messaging router (iMessage has no from-number, so it
- * is unaffected). An explicit caller-supplied `from` overrides this.
- */
-export function pickFromNumber(destination: string): FromPick {
-  const nums = listNumbers();
-  const def = defaultFrom();
+export function pickFromAvailableNumbers(destination: string, nums: OwnedNumber[], fallback = defaultFrom()): FromPick {
+  const def = fallback || nums[0]?.e164 || "";
   const destAc = areaCodeOf(destination);
   if (!destAc || !nums.length) return { from: def, reason: "default" };
 
@@ -119,4 +112,14 @@ export function pickFromNumber(destination: string): FromPick {
     if (sameState) return { from: sameState.e164, reason: "same-state" };
   }
   return { from: def, reason: "default" };
+}
+
+/**
+ * Smart caller-ID by destination: prefer a number with the SAME area code as the
+ * destination, then any number in the same STATE, else the default. Used for outbound
+ * CALLS and for the SMS leg of the messaging router (iMessage has no from-number, so it
+ * is unaffected). An explicit caller-supplied `from` overrides this.
+ */
+export function pickFromNumber(destination: string): FromPick {
+  return pickFromAvailableNumbers(destination, listNumbers(), defaultFrom());
 }
