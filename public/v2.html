@@ -597,6 +597,13 @@
       function statusBadge(stage) {
         return '<span class="badge ' + stageClass(stage) + '">' + esc(stage || "Lead-In") + '</span>';
       }
+      function smsConsentInline(id, on) {
+        return '<span id="' + esc(id) + '" class="badge green' + (on ? '' : ' hidden') + '">&#10003; SMS consent</span>';
+      }
+      function revealSmsConsentInline(id) {
+        var el = $(id);
+        if (el) el.classList.remove("hidden");
+      }
       function todoTitle(todo) {
         return todo && (todo.title || todo.text) || "";
       }
@@ -1021,7 +1028,7 @@
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-lead">Save</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
-          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="toolbar"><button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
+          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="toolbar"><button class="btn" data-action="sms-consent">Mark SMS consent</button>' + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         loadLeadDocs(lead.id, "docMiniList");
       }
@@ -1291,7 +1298,7 @@
             field("Loan type", "poolLoanType", custom.loan_type || "") + field("Loan goal", "poolLoanGoal", custom.loan_goal || "") +
           '</div>' +
           '<label style="margin-top:10px">Tags<input id="poolTagsEdit" value="' + esc((lead.tags || []).join(", ")) + '"></label>' +
-          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="save-pool-record">Save pool profile</button><button class="btn" data-action="pool-sms-consent">Mark SMS consent</button><button class="btn" data-action="pool-promote-current">Move to Leads</button><button class="btn danger" data-action="pool-delete-current">Delete</button></div><div id="poolDetailMsg" class="statusLine"></div>' +
+          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="save-pool-record">Save pool profile</button><button class="btn" data-action="pool-sms-consent">Mark SMS consent</button>' + smsConsentInline("poolSmsConsentState", lead.sms_consent) + '<button class="btn" data-action="pool-promote-current">Move to Leads</button><button class="btn danger" data-action="pool-delete-current">Delete</button></div><div id="poolDetailMsg" class="statusLine"></div>' +
           '<hr style="border:0;border-top:1px solid var(--line);margin:14px 0">' +
           '<div class="grid">' +
             '<label>Send text<textarea id="poolTextOne">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? I can send updated options. Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="pool-send-one-text">Send text</button>' +
@@ -2636,7 +2643,7 @@
           else if (a === "pool-send-one-text") await poolLeadAction("text");
           else if (a === "pool-send-one-email") await poolLeadAction("email");
           else if (a === "pool-add-note-one") await poolLeadAction("note");
-          else if (a === "pool-sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true, note: "Manual Lead Pool consent" }) }); showToast("SMS consent recorded."); await openPoolRecord(state.selectedLead.id); }
+          else if (a === "pool-sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true, note: "Manual Lead Pool consent" }) }); state.selectedLead.sms_consent = true; revealSmsConsentInline("poolSmsConsentState"); showToast("SMS consent recorded."); await openPoolRecord(state.selectedLead.id); }
           else if (a === "pool-promote-current") { if (state.selectedLead) await promotePoolLead(state.selectedLead.id); if ($("poolDrawer")) $("poolDrawer").innerHTML = '<div class="empty">Moved to active Leads.</div>'; }
           else if (a === "pool-delete-current") { if (state.selectedLead && await deletePoolLead(state.selectedLead.id)) { state.selectedLead = null; if ($("poolDrawer")) $("poolDrawer").innerHTML = '<div class="empty">Lead Pool record deleted.</div>'; } }
           else if (a === "promote-pool") await promotePoolLead(btn.dataset.id);
@@ -2681,7 +2688,7 @@
           else if (a === "main-task-complete") await completeMainTask(btn.dataset.leadId, btn.dataset.todoId);
           else if (a === "main-task-delete") await deleteMainTask(btn.dataset.leadId, btn.dataset.todoId);
           else if (a === "delete-lead") await deleteCurrentLead();
-          else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
+          else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); state.selectedLead.sms_consent = true; revealSmsConsentInline("leadSmsConsentState"); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
           else if (a === "send-lead-text") await leadAction("text");
           else if (a === "send-lead-email") await leadAction("email");
