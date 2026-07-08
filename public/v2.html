@@ -197,6 +197,23 @@
     .globalSearch { max-width: 560px; flex: 1; }
     .topActions { display: flex; align-items: center; gap: 10px; }
     .iconBtn { width: 38px; min-width: 38px; padding: 0; display: grid; place-items: center; }
+    .notifyBtn { position: relative; }
+    .notifyDot {
+      position: absolute;
+      top: -7px;
+      right: -7px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--red);
+      color: #fff;
+      border: 2px solid var(--panel);
+      font-size: 10px;
+      font-weight: 950;
+    }
     .userPill { display: flex; align-items: center; gap: 9px; font-weight: 850; white-space: nowrap; }
     .avatar {
       width: 34px;
@@ -490,8 +507,9 @@
       border: 1px solid var(--line);
       border-radius: var(--radius);
       padding: 14px;
-      background: color-mix(in srgb, var(--panel) 94%, var(--bg));
-      box-shadow: 0 8px 22px rgba(15,23,42,.08);
+      background: color-mix(in srgb, var(--panel) 82%, transparent);
+      box-shadow: 0 8px 22px rgba(15,23,42,.06);
+      backdrop-filter: blur(14px);
     }
     .leadProfileTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .leadQuickBar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -505,8 +523,37 @@
       padding: 12px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      background: color-mix(in srgb, var(--panel) 95%, var(--bg));
-      box-shadow: 0 -8px 22px rgba(15,23,42,.08);
+      background: color-mix(in srgb, var(--panel) 84%, transparent);
+      box-shadow: 0 -8px 22px rgba(15,23,42,.06);
+      backdrop-filter: blur(14px);
+    }
+    .leadChromeCollapsed .leadQuickBar,
+    .leadChromeCollapsed .leadStickyFooter { display: none; }
+    .leadChromeCollapsed .leadProfileHero {
+      padding: 10px 12px;
+      background: color-mix(in srgb, var(--panel) 68%, transparent);
+      box-shadow: none;
+    }
+    .notificationList { display: grid; gap: 10px; max-height: min(70vh, 680px); overflow: auto; }
+    .notificationItem {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--item);
+    }
+    .notificationIcon {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--soft);
+      font-weight: 950;
+      color: var(--text);
     }
     .calendarLeadResults { max-height: 260px; overflow: auto; }
     .toast {
@@ -594,7 +641,7 @@
         <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
         <input id="topSearch" class="globalSearch" type="search" placeholder="Search leads, conversations, phone numbers..." />
         <div class="topActions">
-          <button class="btn iconBtn" title="Notifications" aria-label="Notifications">!</button>
+          <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Notifications" data-action="notifications">!<span id="notificationCount" class="notifyDot hidden">0</span></button>
           <span id="msgModeBadge" class="badge blue">auto</span>
           <button id="themeToggle" class="btn small" data-action="toggle-theme">Dark</button>
           <span class="badge green">Signed In</span>
@@ -648,6 +695,9 @@
         emailMessages: [],
         emailMessageState: {},
         activeEmailId: null,
+        notifications: [],
+        notificationCount: 0,
+        notificationTimer: null,
         emailFromOptions: [],
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
@@ -727,6 +777,12 @@
       function revealSmsConsentInline(id) {
         var el = $(id);
         if (el) el.classList.remove("hidden");
+      }
+      function notificationIcon(kind) {
+        if (kind === "missed_call") return "MC";
+        if (kind === "email") return "EM";
+        if (kind === "text") return "TX";
+        return "!";
       }
       function todoTitle(todo) {
         return todo && (todo.title || todo.text) || "";
@@ -979,6 +1035,10 @@
         state.favoritePages = loadFavoritePages();
         renderSidebarFavorites();
         loadMessagingMode();
+        refreshNotificationCount();
+        if (!state.notificationTimer) {
+          state.notificationTimer = setInterval(refreshNotificationCount, 30000);
+        }
         var popout = new URLSearchParams(location.search).get("popout");
         if (popout === "dialer") {
           document.body.classList.add("popoutMode");
@@ -993,6 +1053,40 @@
           var data = await json("/api/messaging-mode");
           $("msgModeBadge").textContent = data.mode || "auto";
         } catch (e) {}
+      }
+      async function refreshNotificationCount() {
+        try {
+          var data = await json("/api/notifications?limit=75");
+          state.notifications = data.notifications || [];
+          state.notificationCount = Number(data.count || state.notifications.length || 0);
+          var badge = $("notificationCount");
+          if (badge) {
+            badge.textContent = state.notificationCount > 99 ? "99+" : String(state.notificationCount);
+            badge.classList.toggle("hidden", state.notificationCount <= 0);
+          }
+        } catch (e) {}
+      }
+      async function openNotifications() {
+        var data = await json("/api/notifications?limit=100").catch(function (e) { return { notifications: [], error: e.message }; });
+        state.notifications = data.notifications || [];
+        state.notificationCount = Number(data.count || state.notifications.length || 0);
+        if ($("notificationCount")) $("notificationCount").classList.toggle("hidden", state.notificationCount <= 0);
+        var html = data.error
+          ? '<div class="empty badText">' + esc(data.error) + '</div>'
+          : renderNotifications(state.notifications);
+        openModal("Notifications", html);
+      }
+      function renderNotifications(rows) {
+        if (!rows || !rows.length) return '<div class="empty">No missed calls, inbound texts, or inbound emails right now.</div>';
+        return '<div class="notificationList">' + rows.map(function (n) {
+          var leadBtn = n.leadId ? '<button class="btn small" data-action="open-lead" data-id="' + esc(n.leadId) + '">Open lead</button>' : '<span class="badge amber">No lead match</span>';
+          return '<div class="notificationItem">' +
+            '<span class="notificationIcon">' + esc(notificationIcon(n.kind)) + '</span>' +
+            '<div><b>' + esc(n.title || "Notification") + '</b><div class="sub">' + esc([n.name, n.contact].filter(Boolean).join(" | ")) + '</div>' +
+            '<div class="sub">' + esc(when(n.at)) + (n.preview ? " | " + esc(String(n.preview).slice(0, 160)) : "") + '</div></div>' +
+            '<div class="toolbar" style="justify-content:flex-end">' + leadBtn + '</div>' +
+          '</div>';
+        }).join("") + '</div>';
       }
       async function setMessagingMode(mode) {
         await json("/api/messaging-mode", {
@@ -1306,7 +1400,7 @@
         var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
-            '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '</div></div>' +
+            '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
             '<div class="leadQuickBar">' + telButton + '<button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
@@ -1338,6 +1432,12 @@
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
+      }
+      function toggleLeadChrome() {
+        var body = $("modalBody");
+        if (!body) return;
+        var hidden = body.classList.toggle("leadChromeCollapsed");
+        if ($("leadChromeToggle")) $("leadChromeToggle").textContent = hidden ? "Show bars" : "Hide bars";
       }
       function renderLeadApplicationPanel(lead) {
         var el = $("leadAppPanel");
@@ -3984,6 +4084,7 @@
 
       function openModal(title, html, opts) {
         $("modalTitle").textContent = title;
+        $("modalBody").classList.remove("leadChromeCollapsed");
         $("modalBody").innerHTML = html;
         var modal = document.querySelector("#modalShade .modal");
         if (modal) modal.classList.toggle("fullscreen", Boolean(opts && opts.fullscreen));
@@ -3993,6 +4094,7 @@
         $("modalShade").classList.add("hidden");
         var modal = document.querySelector("#modalShade .modal");
         if (modal) modal.classList.remove("fullscreen");
+        $("modalBody").classList.remove("leadChromeCollapsed");
         $("modalBody").innerHTML = "";
       }
 
@@ -4048,6 +4150,8 @@
         try {
           if (a === "mobile-menu") document.body.classList.toggle("navOpen");
           else if (a === "toggle-theme") toggleTheme();
+          else if (a === "notifications") await openNotifications();
+          else if (a === "toggle-lead-chrome") toggleLeadChrome();
           else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
           else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); try { localStorage.removeItem("sp_token"); } catch (x) {} location.reload(); }
           else if (a === "refresh") route(state.page);

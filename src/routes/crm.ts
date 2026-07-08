@@ -716,6 +716,83 @@ crmRouter.get("/api/dashboard", requirePass, (req, res) => {
   }
 });
 
+/** Top-bar notification feed: recent missed calls, inbound texts/iMessages/WhatsApp,
+ *  and inbound Resend emails. */
+crmRouter.get("/api/notifications", requirePass, (req, res) => {
+  try {
+    const parsedLimit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 75;
+    const limit = Math.min(Math.max(parsedLimit || 75, 1), 150);
+    const owner = ownerScope(req);
+    const ownerWhere = owner ? "AND l.owner_user_id = @owner" : "";
+    const ownerCallWhere = owner ? "AND c.lead_id IN (SELECT id FROM leads WHERE owner_user_id = @owner)" : "";
+    const missedCalls = db
+      .prepare(
+        `SELECT c.id, c.created_at, c.phone, c.name, c.lead_id, l.first_name, l.last_name, l.email
+           FROM call_log c
+           LEFT JOIN leads l ON l.id = c.lead_id
+          WHERE c.deleted_at IS NULL
+            AND c.direction = 'inbound'
+            AND c.outcome = 'missed'
+            ${ownerCallWhere}
+          ORDER BY c.created_at DESC
+          LIMIT @limit`,
+      )
+      .all({ owner: owner || "", limit }) as Array<{ id: string; created_at: number; phone: string | null; name: string | null; lead_id: string | null; first_name: string | null; last_name: string | null; email: string | null }>;
+    const inboundMessages = db
+      .prepare(
+        `SELECT a.id, a.lead_id, a.type, a.channel, a.body, a.subject, a.created_at,
+                l.first_name, l.last_name, l.phone, l.email
+           FROM activities a
+           JOIN leads l ON l.id = a.lead_id
+          WHERE a.deleted_at IS NULL
+            AND l.deleted_at IS NULL
+            AND a.direction = 'inbound'
+            AND (
+              a.type IN ('sms','imessage','whatsapp')
+              OR a.channel IN ('sms','imessage','whatsapp')
+              OR a.type = 'email'
+              OR a.channel = 'email'
+            )
+            ${ownerWhere}
+          ORDER BY a.created_at DESC
+          LIMIT @limit`,
+      )
+      .all({ owner: owner || "", limit }) as Array<{ id: string; lead_id: string; type: string; channel: string | null; body: string | null; subject: string | null; created_at: number; first_name: string | null; last_name: string | null; phone: string | null; email: string | null }>;
+    const notifications = [
+      ...missedCalls.map((c) => ({
+        id: `call:${c.id}`,
+        kind: "missed_call",
+        title: "Missed call",
+        at: c.created_at,
+        leadId: c.lead_id,
+        name: c.name || [c.first_name, c.last_name].filter(Boolean).join(" ") || c.phone || "Unknown caller",
+        contact: c.phone || c.email || "",
+        preview: "Inbound call was missed.",
+      })),
+      ...inboundMessages.map((a) => {
+        const isEmail = a.type === "email" || a.channel === "email";
+        const channel = a.channel || a.type || (isEmail ? "email" : "message");
+        return {
+          id: `${isEmail ? "email" : "message"}:${a.id}`,
+          kind: isEmail ? "email" : "text",
+          title: isEmail ? "Incoming email" : `Incoming ${channel}`,
+          at: a.created_at,
+          leadId: a.lead_id,
+          name: [a.first_name, a.last_name].filter(Boolean).join(" ") || a.phone || a.email || "Lead",
+          contact: isEmail ? a.email || a.phone || "" : a.phone || a.email || "",
+          preview: isEmail ? a.subject || a.body || "" : a.body || a.subject || "",
+        };
+      }),
+    ]
+      .sort((a, b) => b.at - a.at)
+      .slice(0, limit);
+    res.json({ ok: true, count: notifications.length, notifications });
+  } catch (err) {
+    log.error("notifications error", { err: String(err) });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 /** Dismiss one dashboard item (reply/lead) from its panel — non-destructive.
  *  Body: { kind: 'reply'|'lead', id }. */
 crmRouter.post("/api/dashboard/dismiss", requirePass, (req, res) => {
@@ -3223,6 +3300,15 @@ function parseCc(raw: unknown): string[] {
   return parseEmailList(raw);
 }
 
+const MANUAL_INITIATED_EMAIL_CC = "mykoal@adaxahome.com";
+
+function withManualInitiatedCc(raw: unknown): string[] {
+  const out = parseEmailList(raw);
+  const key = MANUAL_INITIATED_EMAIL_CC.toLowerCase();
+  if (!out.some((email) => email.toLowerCase() === key)) out.push(MANUAL_INITIATED_EMAIL_CC);
+  return out;
+}
+
 function emailFromChoices(): string[] {
   const raw = [config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails].filter(Boolean).join(",");
   const seen = new Set<string>();
@@ -3423,7 +3509,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   }
   const subjectTemplate = (req.body?.subject ?? "").toString().trim();
   const bodyTemplate = (req.body?.body ?? "").toString().trim();
-  const cc = parseCc(req.body?.cc);
+  const cc = withManualInitiatedCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
   const scheduledAt = scheduledAtFromBody(req.body);
@@ -3473,7 +3559,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const to = parseEmailList(req.body?.to);
   const subject = (req.body?.subject ?? "").toString().trim();
   const bodyText = (req.body?.body ?? "").toString().trim();
-  const cc = parseCc(req.body?.cc);
+  const cc = withManualInitiatedCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
   const scheduledAt = scheduledAtFromBody(req.body);
