@@ -113,7 +113,7 @@ import {
   LoanServiceResult,
   LoanServiceRequestOptions,
 } from "../services/loanServices";
-import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocument, softDeleteLeadDocument, updateLeadDocumentMetadata } from "../services/documents";
+import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocument, softDeleteLeadDocument, updateLeadDocumentMetadata, type LeadDocument } from "../services/documents";
 import { listSettlementVendorSettings, saveSettlementVendorSettings, SettlementVendorKind } from "../services/loanServiceSettings";
 import { mimeForExt, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
 import { applyLegacyCrmSync } from "../services/legacyCrmSync";
@@ -1340,6 +1340,92 @@ crmRouter.patch("/api/documents/:docId", requirePass, (req, res) => {
     ok: true,
     document: { ...updated, downloadUrl: publicDocumentUrl(updated.id) },
     documents: listLeadDocuments(doc.lead_id).map((item) => ({ ...item, downloadUrl: publicDocumentUrl(item.id) })),
+  });
+});
+
+crmRouter.get("/api/documents/cabinet", requirePass, (req, res) => {
+  const q = cleanText(req.query.q).toLowerCase();
+  const ownerUserId = ownerScope(req);
+  const leads = listLeads({
+    limit: 20000,
+    includePastClients: true,
+    includeContactOnly: true,
+    excludeLeadPool: false,
+    ownerUserId,
+  });
+  const docsSql = `SELECT d.*
+     FROM lead_documents d
+     JOIN leads l ON l.id = d.lead_id
+    WHERE d.deleted_at IS NULL
+      AND l.deleted_at IS NULL
+      ${ownerUserId ? "AND l.owner_user_id = @owner" : ""}
+    ORDER BY d.lead_id ASC, COALESCE(d.folder_name, 'General') ASC, d.created_at DESC`;
+  const docs = ownerUserId
+    ? db.prepare(docsSql).all({ owner: ownerUserId }) as LeadDocument[]
+    : db.prepare(docsSql).all() as LeadDocument[];
+  const docsByLead = new Map<string, Array<LeadDocument & { downloadUrl: string }>>();
+  for (const doc of docs) {
+    const row = { ...doc, downloadUrl: publicDocumentUrl(doc.id) };
+    const list = docsByLead.get(doc.lead_id) || [];
+    list.push(row);
+    docsByLead.set(doc.lead_id, list);
+  }
+  const qMatchesDocs = (leadId: string): boolean => {
+    if (!q) return true;
+    return (docsByLead.get(leadId) || []).some((doc) =>
+      [
+        doc.display_name,
+        doc.original_name,
+        doc.folder_name,
+        doc.doc_type,
+        doc.notes,
+      ].join(" ").toLowerCase().includes(q),
+    );
+  };
+  const rows = leads
+    .filter((lead) => !q || qMatchesDocs(lead.id) || [
+      leadDisplayName(lead),
+      lead.email,
+      lead.phone,
+      leadContactAddress(lead),
+      lead.source,
+      lead.pipeline_stage,
+      lead.status,
+      lead.tags.join(" "),
+    ].join(" ").toLowerCase().includes(q))
+    .map((lead) => {
+      const documents = docsByLead.get(lead.id) || [];
+      return {
+        id: lead.id,
+        name: leadDisplayName(lead),
+        first_name: lead.first_name,
+        last_name: lead.last_name,
+        phone: lead.phone,
+        email: lead.email,
+        source: lead.source,
+        status: lead.status,
+        pipeline_stage: lead.pipeline_stage,
+        scope: leadContactScope(lead),
+        address: leadContactAddress(lead),
+        document_count: documents.length,
+        latest_document_at: documents.reduce((latest, doc) => Math.max(latest, Number(doc.created_at || 0)), 0),
+        documents,
+      };
+    });
+  const folders = Array.from(new Set(docs.map((doc) => doc.folder_name || "General"))).sort((a, b) => a.localeCompare(b));
+  const types = Array.from(new Set(docs.map((doc) => doc.doc_type || "other"))).sort((a, b) => a.localeCompare(b));
+  res.json({
+    ok: true,
+    summary: {
+      leads: rows.length,
+      leads_with_files: rows.filter((row) => row.document_count > 0).length,
+      files: rows.reduce((sum, row) => sum + row.document_count, 0),
+      folders: folders.length,
+      types: types.length,
+    },
+    folders,
+    types,
+    rows,
   });
 });
 

@@ -252,6 +252,8 @@
     .table th, .table td { padding: 12px 14px; border-bottom: 1px solid var(--tableLine); text-align: left; vertical-align: middle; }
     .table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--bg) 52%, var(--panel)); }
     .table tr:hover td { background: var(--hover); }
+    .docCabinetTable { min-width: 1320px; }
+    .docCabinetTable thead tr:first-child th { text-align: center; background: color-mix(in srgb, var(--blue) 9%, var(--panel)); color: var(--text); }
     .leadCell { display: flex; align-items: center; gap: 10px; min-width: 210px; }
     .leadName { font-weight: 900; }
     .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
@@ -595,6 +597,9 @@
         activeThreadContact: null,
         portalVerifiedUntil: 0,
         docLead: null,
+        docCabinetRows: [],
+        docCabinetFolders: [],
+        docCabinetTypes: [],
         portalApps: [],
         automations: [],
         editingAutomation: null,
@@ -2569,8 +2574,18 @@
         '</div>';
       }
 
-      function renderDocuments() {
-        pageShell("File Folders", "Borrower loan files, folders, named documents, and audit-safe uploads.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file folders</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Folder<input id="docFolder" list="emailFolderOptions" value="General" placeholder="Conditions"></label><label>File name<input id="docDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload to folder</button><div id="docStatus" class="statusLine"></div><datalist id="emailFolderOptions">' + (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("") + '</datalist><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section></div>');
+      async function renderDocuments() {
+        pageShell("File Folders", "Every borrower file cabinet, visible without searching first.", '<button class="btn" data-action="refresh-doc-cabinet">Refresh cabinet</button>',
+          '<div class="grid cols2">' +
+            '<section class="card pad"><h2 style="margin-top:0">Select borrower for upload</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"><div class="empty">Use search or choose from the cabinet below.</div></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Loan file folders</h2><div id="docLeadCard" class="empty">Select a borrower from search or the cabinet.</div><div class="fieldGrid" style="margin-top:12px"><label>Folder<input id="docFolder" list="emailFolderOptions" value="General" placeholder="Conditions"></label><label>File name<input id="docDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="purchase_contract">Purchase contract</option><option value="payoff_statement">Payoff statement</option><option value="rent_roll_or_lease">Rent roll / lease</option><option value="entity_documents">Entity documents</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload to folder</button><div id="docStatus" class="statusLine"></div><datalist id="emailFolderOptions">' + (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("") + '</datalist><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section>' +
+          '</div>' +
+          '<section class="card" style="margin-top:14px"><div class="cardHead"><div><h2>All borrower file cabinet</h2><div id="docCabinetSummary" class="sub">Loading files...</div></div><div class="toolbar"><input id="docCabinetSearch" type="search" placeholder="Search borrower, address, folder, file, notes..." style="width:340px"><select id="docCabinetFolder"><option value="">All folders</option></select><select id="docCabinetType"><option value="">All types</option></select><label style="display:flex;align-items:center;gap:8px;font-weight:800"><input id="docOnlyFiles" type="checkbox" style="width:auto"> Files only</label><button class="btn small" data-action="doc-cabinet-filter">Apply</button></div></div><div id="docCabinetWrap" class="tableWrap"><div class="spinner"></div></div></section>');
+        if ($("docCabinetSearch")) $("docCabinetSearch").addEventListener("input", renderDocumentCabinet);
+        if ($("docCabinetFolder")) $("docCabinetFolder").addEventListener("change", renderDocumentCabinet);
+        if ($("docCabinetType")) $("docCabinetType").addEventListener("change", renderDocumentCabinet);
+        if ($("docOnlyFiles")) $("docOnlyFiles").addEventListener("change", renderDocumentCabinet);
+        await loadDocumentCabinet();
       }
       async function docSearch() {
         var q = $("docSearch").value.trim();
@@ -2584,7 +2599,114 @@
         state.docLead = data.lead;
         $("docLeadCard").className = "item";
         $("docLeadCard").innerHTML = '<b>' + esc(nameOf(data.lead)) + '</b><div class="sub">' + esc(data.lead.phone || data.lead.email || "") + '</div>';
+        if ($("docLeadCard").scrollIntoView) $("docLeadCard").scrollIntoView({ block: "center", behavior: "smooth" });
         loadLeadDocs(id, "docList");
+      }
+      async function loadDocumentCabinet() {
+        var box = $("docCabinetWrap");
+        if (box) box.innerHTML = '<div class="spinner"></div>';
+        try {
+          var data = await json("/api/documents/cabinet");
+          state.docCabinetRows = data.rows || [];
+          state.docCabinetFolders = data.folders || [];
+          state.docCabinetTypes = data.types || [];
+          populateDocumentCabinetFilters();
+          renderDocumentCabinet();
+        } catch (e) {
+          if (box) box.innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>';
+          if ($("docCabinetSummary")) $("docCabinetSummary").textContent = "Cabinet unavailable.";
+        }
+      }
+      function populateDocumentCabinetFilters() {
+        if ($("docCabinetFolder")) {
+          var currentFolder = $("docCabinetFolder").value;
+          $("docCabinetFolder").innerHTML = '<option value="">All folders</option>' + (state.docCabinetFolders || []).map(function (folder) {
+            return '<option value="' + esc(folder) + '">' + esc(folder) + '</option>';
+          }).join("");
+          $("docCabinetFolder").value = currentFolder;
+        }
+        if ($("docCabinetType")) {
+          var currentType = $("docCabinetType").value;
+          $("docCabinetType").innerHTML = '<option value="">All types</option>' + (state.docCabinetTypes || []).map(function (type) {
+            return '<option value="' + esc(type) + '">' + esc(docTypeLabel(type)) + '</option>';
+          }).join("");
+          $("docCabinetType").value = currentType;
+        }
+      }
+      function docTypeLabel(type) {
+        return String(type || "other").replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      }
+      function docSizeLabel(bytes) {
+        var n = Number(bytes || 0);
+        if (!n) return "-";
+        if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + " KB";
+        return (n / 1024 / 1024).toFixed(1) + " MB";
+      }
+      function cabinetScopeBadge(scope) {
+        var s = String(scope || "Lead");
+        var cls = /pool/i.test(s) ? "purple" : /past/i.test(s) ? "green" : /contact/i.test(s) ? "amber" : "blue";
+        return '<span class="badge ' + cls + '">' + esc(s) + '</span>';
+      }
+      function cabinetLeadBlob(row) {
+        return [row.name, row.phone, row.email, row.address, row.source, row.status, row.pipeline_stage, row.scope].join(" ").toLowerCase();
+      }
+      function cabinetDocBlob(doc) {
+        return [doc.display_name, doc.original_name, doc.folder_name, doc.doc_type, doc.notes, doc.mime].join(" ").toLowerCase();
+      }
+      function renderDocumentCabinet() {
+        var box = $("docCabinetWrap");
+        if (!box) return;
+        var q = inputVal("docCabinetSearch").toLowerCase();
+        var folder = inputVal("docCabinetFolder");
+        var type = inputVal("docCabinetType");
+        var onlyFiles = $("docOnlyFiles") && $("docOnlyFiles").checked;
+        var renderedRows = [];
+        (state.docCabinetRows || []).forEach(function (lead) {
+          var docs = (lead.documents || []).filter(function (doc) {
+            if (folder && (doc.folder_name || "General") !== folder) return false;
+            if (type && (doc.doc_type || "other") !== type) return false;
+            if (q && cabinetDocBlob(doc).indexOf(q) < 0 && cabinetLeadBlob(lead).indexOf(q) < 0) return false;
+            return true;
+          });
+          var leadMatch = !q || cabinetLeadBlob(lead).indexOf(q) >= 0;
+          if (!docs.length && (onlyFiles || folder || type || !leadMatch)) return;
+          if (!docs.length) renderedRows.push({ lead: lead, doc: null });
+          docs.forEach(function (doc) { renderedRows.push({ lead: lead, doc: doc }); });
+        });
+        var leadCount = (state.docCabinetRows || []).length;
+        var leadsWithFiles = (state.docCabinetRows || []).filter(function (row) { return Number(row.document_count || 0) > 0; }).length;
+        var fileCount = (state.docCabinetRows || []).reduce(function (sum, row) { return sum + Number(row.document_count || 0); }, 0);
+        if ($("docCabinetSummary")) $("docCabinetSummary").textContent = leadCount + " leads loaded | " + leadsWithFiles + " with files | " + fileCount + " stored files | " + renderedRows.length + " rows shown";
+        if (!renderedRows.length) {
+          box.innerHTML = '<div class="empty">No cabinet rows match the current filters.</div>';
+          return;
+        }
+        box.innerHTML = '<table class="table docCabinetTable"><thead><tr><th colspan="4">Borrower</th><th colspan="5">File details</th><th colspan="3">Actions</th></tr><tr><th>Name</th><th>Contact</th><th>Scope / stage</th><th>Address</th><th>Folder</th><th>File name</th><th>Type</th><th>Size</th><th>Updated / notes</th><th>Open</th><th>Download</th><th>Manage</th></tr></thead><tbody>' +
+          renderedRows.map(function (row) {
+            var lead = row.lead || {};
+            var doc = row.doc;
+            var folderName = doc ? (doc.folder_name || "General") : "-";
+            var fileName = doc ? (doc.display_name || doc.original_name || "Document") : "No files stored";
+            var original = doc && doc.original_name && doc.original_name !== fileName ? '<div class="sub">' + esc(doc.original_name) + '</div>' : "";
+            var manage = doc
+              ? '<button class="btn small" data-action="edit-doc" data-id="' + esc(doc.id) + '" data-lead="' + esc(lead.id) + '" data-target="docCabinet" data-name="' + esc(fileName) + '" data-folder="' + esc(folderName) + '" data-notes="' + esc(doc.notes || "") + '">Rename</button><button class="btn small danger" data-action="delete-doc" data-id="' + esc(doc.id) + '" data-lead="' + esc(lead.id) + '" data-target="docCabinet">Delete</button>'
+              : '<button class="btn small primary" data-action="doc-select" data-id="' + esc(lead.id) + '">Upload here</button>';
+            var download = doc ? '<a class="btn small" href="' + esc(apiHref("/api/documents/" + encodeURIComponent(doc.id) + "/download")) + '">Download</a>' : '<span class="sub">-</span>';
+            return '<tr>' +
+              '<td><b>' + esc(lead.name || "Unnamed") + '</b><div class="sub">' + esc(lead.source || "") + '</div></td>' +
+              '<td>' + esc([lead.phone, lead.email].filter(Boolean).join(" | ") || "-") + '</td>' +
+              '<td>' + cabinetScopeBadge(lead.scope) + '<div class="sub">' + esc(lead.pipeline_stage || lead.status || "") + '</div></td>' +
+              '<td>' + esc(lead.address || "-") + '</td>' +
+              '<td><span class="badge blue">' + esc(folderName) + '</span></td>' +
+              '<td><b>' + esc(fileName) + '</b>' + original + '</td>' +
+              '<td>' + (doc ? esc(docTypeLabel(doc.doc_type)) : '<span class="sub">-</span>') + '</td>' +
+              '<td>' + esc(doc ? docSizeLabel(doc.size) : "-") + '</td>' +
+              '<td>' + (doc ? esc(formatDateTime(doc.created_at)) + (doc.notes ? '<div class="sub">' + esc(doc.notes) + '</div>' : '') : '<span class="sub">Select lead to upload.</span>') + '</td>' +
+              '<td><button class="btn small" data-action="open-lead" data-id="' + esc(lead.id) + '">Lead</button><button class="btn small" data-action="doc-select" data-id="' + esc(lead.id) + '">Use</button></td>' +
+              '<td>' + download + '</td>' +
+              '<td><div class="toolbar">' + manage + '</div></td>' +
+            '</tr>';
+          }).join("") + '</tbody></table>';
       }
       async function loadLeadDocs(id, target) {
         var box = $(target);
@@ -2611,11 +2733,12 @@
       }
       async function deleteDocument(docId, leadId, target) {
         if (!docId || !confirm("Remove this uploaded document from the borrower file?")) return;
-        var msgId = target === "docList" ? "docStatus" : "leadActionMsg";
+        var msgId = target === "docList" || target === "docCabinet" ? "docStatus" : "leadActionMsg";
         status(msgId, "Removing document...");
         await json("/api/documents/" + encodeURIComponent(docId), { method: "DELETE" });
         status(msgId, "Document removed.", "okText");
-        if (leadId && target) await loadLeadDocs(leadId, target);
+        if (target === "docCabinet") await loadDocumentCabinet();
+        else if (leadId && target) await loadLeadDocs(leadId, target);
         if (state.selectedLead && state.selectedLead.id === leadId && target !== "docMiniList" && $("docMiniList")) await loadLeadDocs(leadId, "docMiniList");
         if (state.docLead && state.docLead.id === leadId && target !== "docList" && $("docList")) await loadLeadDocs(leadId, "docList");
       }
@@ -2635,7 +2758,8 @@
         });
         closeModal();
         showToast("File updated.");
-        if (leadId && target) await loadLeadDocs(leadId, target);
+        if (target === "docCabinet") await loadDocumentCabinet();
+        else if (leadId && target) await loadLeadDocs(leadId, target);
         if (state.selectedLead && state.selectedLead.id === leadId && target !== "docMiniList" && $("docMiniList")) await loadLeadDocs(leadId, "docMiniList");
         if (state.docLead && state.docLead.id === leadId && target !== "docList" && $("docList")) await loadLeadDocs(leadId, "docList");
       }
@@ -2655,7 +2779,8 @@
         var data = await r.json().catch(function () { return {}; });
         if (!r.ok) throw new Error(data.error || ("upload failed " + r.status));
         status(statusId, "Uploaded.", "okText");
-        loadLeadDocs(leadId, listId);
+        await loadLeadDocs(leadId, listId);
+        if ($("docCabinetWrap")) await loadDocumentCabinet();
       }
 
       async function loadAutomations() {
@@ -3952,6 +4077,8 @@
           else if (a === "save-sensitive") await saveSensitive();
           else if (a === "nav-portal") { showToast("Open a lead to use application services."); route("leads"); }
           else if (a === "doc-search") await docSearch();
+          else if (a === "refresh-doc-cabinet") await loadDocumentCabinet();
+          else if (a === "doc-cabinet-filter") renderDocumentCabinet();
           else if (a === "doc-select") await docSelect(btn.dataset.id);
           else if (a === "doc-upload") await uploadDocument(state.docLead && state.docLead.id, "docFile", "docType", "docNotes", "docStatus", "docList");
           else if (a === "edit-doc") openDocEdit(btn);
