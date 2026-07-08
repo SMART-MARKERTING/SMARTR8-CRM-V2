@@ -1204,7 +1204,7 @@
         var q = $("poolSearch") ? $("poolSearch").value.trim() : "";
         var st = $("poolState") ? $("poolState").value : "";
         var tag = $("poolTag") ? $("poolTag").value : "";
-        var qs = "?limit=1000" + (q ? "&q=" + encodeURIComponent(q) : "") + (st ? "&state=" + encodeURIComponent(st) : "") + (tag ? "&tag=" + encodeURIComponent(tag) : "");
+        var qs = "?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : "") + (st ? "&state=" + encodeURIComponent(st) : "") + (tag ? "&tag=" + encodeURIComponent(tag) : "");
         var data = await json("/api/lead-pool" + qs);
         state.leadPool = data.leads || [];
         setSelectOptions("poolState", data.states || [], "All states", st);
@@ -1219,7 +1219,7 @@
       }
       function leadPoolTable(leads, total) {
         if (!leads || !leads.length) return '<div class="empty">No Lead Pool records found.</div>';
-        return '<table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
+        return '<div class="sub" style="padding:10px 14px">Showing ' + Number(leads.length || 0) + ' of ' + Number(total || leads.length || 0) + ' Lead Pool records.</div><table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
           leads.map(function (l) {
             var name = nameOf(l), selected = state.leadPoolSelectedIds.has(l.id);
             var addr = leadAddressLine(l);
