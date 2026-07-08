@@ -3160,6 +3160,52 @@ function parseAttachments(raw: unknown): Array<{ filename: string; content: stri
   return out;
 }
 
+function parseResendTags(raw: unknown): Array<{ name: string; value: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((tag) => tag && typeof tag === "object" ? tag as Record<string, unknown> : null)
+    .filter((tag): tag is Record<string, unknown> => Boolean(tag))
+    .map((tag) => ({ name: String(tag.name || "").trim(), value: String(tag.value || "").trim() }))
+    .filter((tag) => tag.name && tag.value);
+}
+
+function parseResendTemplate(raw: unknown): { id: string; variables?: Record<string, string | number> } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const id = String(row.id || "").trim();
+  if (!id) return undefined;
+  const variables: Record<string, string | number> = {};
+  if (row.variables && typeof row.variables === "object") {
+    for (const [key, value] of Object.entries(row.variables as Record<string, unknown>)) {
+      if (!/^[A-Za-z0-9_]{1,50}$/.test(key)) continue;
+      if (typeof value === "number" && Number.isFinite(value)) variables[key] = value;
+      else if (typeof value === "string" && value.length <= 2000) variables[key] = value;
+    }
+  }
+  return { id, ...(Object.keys(variables).length ? { variables } : {}) };
+}
+
+function resendSendOptions(req: Request): {
+  scheduledAt?: string;
+  topicId?: string;
+  tags?: Array<{ name: string; value: string }>;
+  idempotencyKey?: string;
+  replyTo?: string[];
+} {
+  const scheduledAt = cleanText(req.body?.scheduled_at || req.body?.scheduledAt);
+  const topicId = cleanText(req.body?.topic_id || req.body?.topicId);
+  const idempotencyKey = cleanText(req.body?.idempotency_key || req.body?.idempotencyKey || req.get("Idempotency-Key"));
+  const replyTo = parseEmailList(req.body?.reply_to || req.body?.replyTo);
+  const tags = parseResendTags(req.body?.tags);
+  return {
+    ...(scheduledAt ? { scheduledAt } : {}),
+    ...(topicId ? { topicId } : {}),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+    ...(replyTo.length ? { replyTo } : {}),
+    ...(tags.length ? { tags } : {}),
+  };
+}
+
 /** Wrap a plain-text body in the branded email shell (HTML + text variants). */
 function buildBrandedEmail(bodyText: string, unsubUrl: string): { html: string; text: string } {
   const paragraphsHtml = bodyText
@@ -3203,7 +3249,17 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const subject = renderLeadMergeTemplate(subjectTemplate, lead);
   const bodyText = renderLeadMergeTemplate(bodyTemplate, lead);
   const { html, text } = buildBrandedEmail(bodyText, unsubscribeUrl(lead.id));
-  const r = await sendEmail({ to: lead.email, subject, from, html, text, cc, bcc, attachments: parseAttachments(req.body?.attachments) });
+  const r = await sendEmail({
+    to: lead.email,
+    subject,
+    from,
+    html,
+    text,
+    cc,
+    bcc,
+    attachments: parseAttachments(req.body?.attachments),
+    ...resendSendOptions(req),
+  });
   logActivity(lead.id, {
     type: "email",
     direction: "outbound",
@@ -3224,13 +3280,19 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
     res.status(400).json({ error: "email not configured (set RESEND_API_KEY + EMAIL_FROM)" });
     return;
   }
-  const to = (req.body?.to ?? "").toString().trim();
+  const to = parseEmailList(req.body?.to);
   const subject = (req.body?.subject ?? "").toString().trim();
   const bodyText = (req.body?.body ?? "").toString().trim();
   const cc = parseCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
-  if (!to) {
+  const template = parseResendTemplate(
+    req.body?.template ||
+      (req.body?.template_id || req.body?.templateId
+        ? { id: req.body.template_id || req.body.templateId, variables: req.body?.variables || req.body?.templateVariables }
+        : undefined),
+  );
+  if (!to.length) {
     res.status(400).json({ error: "pass a recipient (to)" });
     return;
   }
@@ -3238,11 +3300,11 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
     res.status(400).json({ error: "pass a subject" });
     return;
   }
-  if (!bodyText) {
+  if (!bodyText && !template) {
     res.status(400).json({ error: "pass a body" });
     return;
   }
-  const lead = findLead({ email: to });
+  const lead = to.length === 1 ? findLead({ email: to[0] }) : null;
   if (lead && isEmailUnsubscribed(lead)) {
     res.status(400).json({ error: "this address unsubscribed from email" });
     return;
@@ -3253,7 +3315,16 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const renderedSubject = lead ? renderLeadMergeTemplate(subject, lead) : subject;
   const renderedBody = lead ? renderLeadMergeTemplate(bodyText, lead) : bodyText;
   const { html, text } = buildBrandedEmail(renderedBody, unsubUrl);
-  const r = await sendEmail({ to, subject: renderedSubject, from, html, text, cc, bcc, attachments: parseAttachments(req.body?.attachments) });
+  const r = await sendEmail({
+    to,
+    subject: renderedSubject,
+    from,
+    ...(template ? { template } : { html, text }),
+    cc,
+    bcc,
+    attachments: parseAttachments(req.body?.attachments),
+    ...resendSendOptions(req),
+  });
   if (lead) {
     logActivity(lead.id, {
       type: "email",
@@ -3262,7 +3333,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
       subject: renderedSubject,
       body: renderedBody,
       status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
-      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to: [to], cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
+      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
