@@ -1409,17 +1409,37 @@
 
       async function loadTasksPage() {
         pageShell("Tasks", "Workspace task list across active leads.", '<button class="btn" data-action="refresh">Refresh</button>', '<section class="card"><div class="cardHead"><h2>All tasks</h2></div><div id="tasksWrap" class="list" style="padding:14px"><div class="spinner"></div></div></section>');
-        var data = await json("/api/todos?done=1");
-        var todos = data.todos || [];
+        var data = await json("/api/todos");
+        var todos = (data.todos || []).filter(function (t) { return !t.done && !t.deleted_at; });
         $("tasksWrap").innerHTML = todos.length ? todos.map(function (t) {
-          return '<div class="item taskRow ' + (t.done ? 'done' : '') + '"><span>' + (t.done ? '✓' : '○') + '</span><div><b class="taskTitle">' + esc(todoTitle(t)) + '</b><div class="taskMeta"><span>' + esc(t.lead_name || "Lead") + '</span>' + (t.due_date ? '<span>' + esc(formatDateTime(t.due_date)) + '</span>' : '') + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div><button class="btn small" data-action="open-lead" data-id="' + esc(t.lead_id) + '">Open</button></div>';
+          return '<div class="item taskRow"><input type="checkbox" data-action="main-task-complete" data-lead-id="' + esc(t.lead_id) + '" data-todo-id="' + esc(t.id) + '" style="width:auto;margin-top:3px"><div><b class="taskTitle">' + esc(todoTitle(t)) + '</b><div class="taskMeta"><span>' + esc(t.lead_name || "Lead") + '</span>' + (t.due_date ? '<span>' + esc(formatDateTime(t.due_date)) + '</span>' : '') + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div><div class="toolbar"><button class="btn small" data-action="open-lead" data-id="' + esc(t.lead_id) + '">Open</button><button class="btn small danger" data-action="main-task-delete" data-lead-id="' + esc(t.lead_id) + '" data-todo-id="' + esc(t.id) + '">Delete</button></div></div>';
         }).join("") : '<div class="empty">No tasks yet.</div>';
+      }
+
+      async function completeMainTask(leadId, todoId) {
+        if (!leadId || !todoId) return;
+        await json("/api/leads/" + encodeURIComponent(leadId) + "/todos/" + encodeURIComponent(todoId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: true })
+        });
+        showToast("Task completed.");
+        if (state.page === "calendar") await loadCalendar();
+        else await loadTasksPage();
+      }
+
+      async function deleteMainTask(leadId, todoId) {
+        if (!leadId || !todoId) return;
+        await json("/api/leads/" + encodeURIComponent(leadId) + "/todos/" + encodeURIComponent(todoId), { method: "DELETE" });
+        showToast("Task deleted.");
+        if (state.page === "calendar") await loadCalendar();
+        else await loadTasksPage();
       }
 
       async function loadCalendar() {
         pageShell("Calendar", "Scheduled lead tasks grouped by day.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="calendarWrap" class="grid"><div class="spinner"></div></div>');
-        var data = await json("/api/todos?done=1");
-        var todos = (data.todos || []).filter(function (t) { return t.due_date; }).sort(function (a, b) { return Number(a.due_date) - Number(b.due_date); });
+        var data = await json("/api/todos");
+        var todos = (data.todos || []).filter(function (t) { return t.due_date && !t.done && !t.deleted_at; }).sort(function (a, b) { return Number(a.due_date) - Number(b.due_date); });
         if (!todos.length) {
           $("calendarWrap").innerHTML = '<div class="empty">No scheduled events yet...</div>';
           return;
@@ -2621,6 +2641,8 @@
           else if (a === "add-task") await addTaskToLead();
           else if (a === "toggle-task") await toggleTask(btn.dataset.id, btn.checked);
           else if (a === "delete-task") await deleteTask(btn.dataset.id);
+          else if (a === "main-task-complete") await completeMainTask(btn.dataset.leadId, btn.dataset.todoId);
+          else if (a === "main-task-delete") await deleteMainTask(btn.dataset.leadId, btn.dataset.todoId);
           else if (a === "delete-lead") await deleteCurrentLead();
           else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
