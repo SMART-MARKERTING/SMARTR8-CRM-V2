@@ -87,6 +87,19 @@ export interface ResendSentEmail {
   [key: string]: unknown;
 }
 
+export interface ResendSentAttachment {
+  object?: string;
+  id: string;
+  filename?: string;
+  size?: number;
+  content_type?: string;
+  content_disposition?: string;
+  content_id?: string;
+  download_url?: string;
+  expires_at?: string;
+  [key: string]: unknown;
+}
+
 export interface ListSentEmailsOptions {
   limit?: number;
   after?: string;
@@ -425,6 +438,19 @@ export async function retrieveReceivedEmail(emailId: string): Promise<ResendRece
 export async function retrieveSentEmail(emailId: string): Promise<ResendSentEmail | null> {
   if (!emailId) return null;
   const result = await resendGet<ResendSentEmail>(`/emails/${encodeURIComponent(emailId)}`);
+  return result.ok && result.data ? result.data : null;
+}
+
+export async function retrieveSentEmailAttachment(
+  emailId: string,
+  attachmentId: string,
+): Promise<ResendSentAttachment | null> {
+  const eid = String(emailId || "").trim();
+  const aid = String(attachmentId || "").trim();
+  if (!eid || !aid) return null;
+  const result = await resendGet<ResendSentAttachment>(
+    `/emails/${encodeURIComponent(eid)}/attachments/${encodeURIComponent(aid)}`,
+  );
   return result.ok && result.data ? result.data : null;
 }
 

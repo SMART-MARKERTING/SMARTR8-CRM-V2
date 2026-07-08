@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails, updateScheduledEmail, cancelScheduledEmail } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, retrieveSentEmailAttachment, sendBatchEmails, listSentEmails, updateScheduledEmail, cancelScheduledEmail } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3408,6 +3408,15 @@ crmRouter.get("/api/email/sent", requirePass, async (req, res) => {
   res.json(result);
 });
 
+crmRouter.get("/api/email/sent/:emailId/attachments/:attachmentId", requirePass, async (req, res) => {
+  const attachment = await retrieveSentEmailAttachment(req.params.emailId, req.params.attachmentId);
+  if (!attachment) {
+    res.status(404).json({ error: "sent email attachment not found in Resend" });
+    return;
+  }
+  res.json({ ok: true, attachment });
+});
+
 crmRouter.get("/api/email/sent/:emailId", requirePass, async (req, res) => {
   const email = await retrieveSentEmail(req.params.emailId);
   if (!email) {
@@ -3739,6 +3748,39 @@ crmRouter.patch("/api/email/activity/:activityId/reschedule", requirePass, async
     meta: { sourceActivityId: activity.id, resend_id: result.id || resendId, scheduled_at: scheduledAt },
   });
   res.json({ ok: true, activityId: activity.id, id: result.id || resendId, scheduled_at: scheduledAt });
+});
+
+crmRouter.get("/api/email/activity/:activityId/attachments/:attachmentId", requirePass, async (req, res) => {
+  const row = db.prepare(`SELECT * FROM activities WHERE id = ? AND deleted_at IS NULL`).get(req.params.activityId) as
+    | { id: string; lead_id: string; type: string; direction: string | null; subject: string | null; body: string | null; status: string | null; meta: string | null }
+    | undefined;
+  const activity = row ? { ...row, meta: safeMeta(row.meta) } : null;
+  if (!activity || activity.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return;
+  }
+  const lead = getLead(activity.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const meta = { ...(activity.meta || {}) };
+  const resendId = cleanText(meta.id || meta.resend_id || meta.resend_email_id);
+  if (!resendId) {
+    res.status(400).json({ error: "this email activity has no Resend id for attachments" });
+    return;
+  }
+  const attachment = await retrieveSentEmailAttachment(resendId, req.params.attachmentId);
+  if (!attachment) {
+    res.status(404).json({ error: "sent email attachment not found in Resend" });
+    return;
+  }
+  res.json({ ok: true, attachment });
 });
 
 crmRouter.post("/api/email/activity/:activityId/cancel", requirePass, async (req, res) => {
