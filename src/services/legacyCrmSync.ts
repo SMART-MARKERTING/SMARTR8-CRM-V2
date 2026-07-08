@@ -5,6 +5,11 @@ import { LeadStatus } from "./leads";
 
 type JsonObject = Record<string, unknown>;
 type SyncLeadRow = JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null };
+const LEAD_POOL_MARKER_SQL = `(custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')`;
+const LEGACY_OLD_LIST_SQL =
+  `(LOWER(COALESCE(source, '')) IN ('lead-pool', 'lead pool', 'leadpool', 'old lead', 'old leads', 'open lead') ` +
+  `OR (LOWER(COALESCE(source, '')) = 'lead' AND (LOWER(COALESCE(tags, '')) LIKE '%open lead%' OR LOWER(COALESCE(custom, '')) LIKE '%open lead%' OR contact_only = 1)))`;
+const NOT_LEAD_POOL_CANDIDATE_SQL = `NOT (${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL})`;
 
 export interface LegacyCrmSyncPayload {
   eventId?: string;
@@ -91,10 +96,23 @@ function readCustom(row: { custom?: string | null } | null | undefined): JsonObj
   return normalizeObject(row?.custom || "{}");
 }
 
+function containsOpenLead(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some((item) => containsOpenLead(item));
+  if (value && typeof value === "object") return Object.values(value as JsonObject).some((item) => containsOpenLead(item));
+  return String(value || "").toLowerCase().includes("open lead");
+}
+
+function isLegacyLeadPoolCandidate(source: unknown, tags: unknown, custom: JsonObject, contactOnly: unknown): boolean {
+  const src = String(source || "").trim().toLowerCase();
+  if (["lead-pool", "lead pool", "leadpool", "old lead", "old leads", "open lead"].includes(src)) return true;
+  if (src === "lead" && (containsOpenLead(tags) || containsOpenLead(custom) || boolInt(contactOnly) === 1)) return true;
+  return false;
+}
+
 function isLeadPoolRow(row: SyncLeadRow | null | undefined): boolean {
   if (!row) return false;
   const custom = readCustom(row);
-  return custom.lead_pool === true || custom.lead_pool === "true" || asString(row.source) === "lead-pool";
+  return custom.lead_pool === true || custom.lead_pool === "true" || isLegacyLeadPoolCandidate(row.source, row.tags, custom, row.contact_only);
 }
 
 function getLeadRow(id: string): SyncLeadRow | null {
@@ -106,7 +124,7 @@ function findByLegacyId(legacyLeadId: string): SyncLeadRow | null {
     db
       .prepare(
         `SELECT * FROM leads
-         WHERE custom LIKE ? AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         WHERE custom LIKE ? AND ${NOT_LEAD_POOL_CANDIDATE_SQL}
          ORDER BY updated_at DESC LIMIT 1`,
       )
       .get(`%"legacy_crm_id":"${legacyLeadId}"%`) as SyncLeadRow | undefined
@@ -122,7 +140,7 @@ function findTargetLead(legacyLeadId: string, phone: string | null, email: strin
     const byPhone = db
       .prepare(
         `SELECT * FROM leads
-         WHERE phone = ? AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         WHERE phone = ? AND ${NOT_LEAD_POOL_CANDIDATE_SQL}
          ORDER BY updated_at DESC LIMIT 1`,
       )
       .get(phone) as SyncLeadRow | undefined;
@@ -132,7 +150,7 @@ function findTargetLead(legacyLeadId: string, phone: string | null, email: strin
     const byEmail = db
       .prepare(
         `SELECT * FROM leads
-         WHERE email = ? COLLATE NOCASE AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         WHERE email = ? COLLATE NOCASE AND ${NOT_LEAD_POOL_CANDIDATE_SQL}
          ORDER BY updated_at DESC LIMIT 1`,
       )
       .get(email) as SyncLeadRow | undefined;
@@ -154,7 +172,11 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
   const existingCustom = readCustom(existing);
   const existingIsLeadPool = isLeadPoolRow(existing);
   const incomingCustom = normalizeObject(lead.custom);
-  const custom = {
+  const incomingTags = normalizeTags(lead.tags);
+  const source = asString(lead.source) || "legacy-crm-sync";
+  const incomingIsLeadPool = isLegacyLeadPoolCandidate(source, incomingTags, incomingCustom, lead.contact_only);
+  const shouldBeLeadPool = existingIsLeadPool || incomingIsLeadPool;
+  const custom: JsonObject = {
     ...existingCustom,
     ...incomingCustom,
     legacy_crm_id: legacyLeadId,
@@ -163,6 +185,11 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     legacy_crm_sync_reason: payload.reason || null,
     legacy_crm_owner_user_id: asString(lead.owner_user_id),
   };
+  if (shouldBeLeadPool) {
+    custom.lead_pool = true;
+    custom.lead_pool_synced_at = new Date(now).toISOString();
+    custom.lead_pool_sync_reason = incomingIsLeadPool ? "legacy-open-lead" : "existing-lead-pool";
+  }
   const row = {
     id,
     created_at: asNumber(lead.created_at, now),
@@ -171,7 +198,7 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     last_name: asString(lead.last_name),
     email,
     phone,
-    source: asString(lead.source) || "legacy-crm-sync",
+    source,
     status: normalizeStatus(lead.status),
     pipeline_stage: normalizeStage(lead.pipeline_stage || lead.stage),
     owner: asString(lead.owner),
@@ -179,7 +206,7 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     timezone: asString(lead.timezone),
     consent: boolInt(lead.consent),
     ghl_contact_id: asString(lead.ghl_contact_id),
-    tags: JSON.stringify(normalizeTags(lead.tags)),
+    tags: JSON.stringify(incomingTags),
     custom: JSON.stringify(custom),
     last_activity_at: nullableNumber(lead.last_activity_at),
     category: asString(lead.category),
@@ -189,8 +216,8 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     email_unsubscribed: boolInt(lead.email_unsubscribed),
     consent_at: nullableNumber(lead.consent_at),
     deleted_at: nullableNumber(lead.deleted_at),
-    past_client: existingIsLeadPool ? 0 : boolInt(lead.past_client),
-    contact_only: existingIsLeadPool ? 1 : boolInt(lead.contact_only),
+    past_client: shouldBeLeadPool ? 0 : boolInt(lead.past_client),
+    contact_only: shouldBeLeadPool ? 1 : boolInt(lead.contact_only),
     owner_user_id: existing?.owner_user_id || null,
     todos: JSON.stringify(normalizeTodos(lead.todos)),
   };

@@ -130,6 +130,13 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+const LEAD_POOL_MARKER_SQL = `(custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')`;
+const LEGACY_OLD_LIST_SQL =
+  `(LOWER(COALESCE(source, '')) IN ('lead-pool', 'lead pool', 'leadpool', 'old lead', 'old leads', 'open lead') ` +
+  `OR (LOWER(COALESCE(source, '')) = 'lead' AND (LOWER(COALESCE(tags, '')) LIKE '%open lead%' OR LOWER(COALESCE(custom, '')) LIKE '%open lead%' OR contact_only = 1)))`;
+const LEAD_POOL_CANDIDATE_SQL = `(${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL})`;
+const NOT_LEAD_POOL_CANDIDATE_SQL = `NOT ${LEAD_POOL_CANDIDATE_SQL}`;
+
 export interface LeadInput {
   first_name?: string;
   last_name?: string;
@@ -329,7 +336,7 @@ export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
   // Contact-only records live in the Contacts tab, not the active Leads pipeline.
   if (opts.contactOnly === true) where.push(`contact_only = 1`);
   else if (opts.contactOnly === false || !opts.includeContactOnly) where.push(`contact_only = 0`);
-  if (opts.excludeLeadPool) where.push(`custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`);
+  if (opts.excludeLeadPool) where.push(NOT_LEAD_POOL_CANDIDATE_SQL);
   // Non-admins see only the leads assigned to them.
   if (opts.ownerUserId) {
     where.push(`owner_user_id = @ownerUserId`);
@@ -360,7 +367,7 @@ export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
 }
 
 export function listLeadPoolLeads(opts: { limit?: number; ownerUserId?: string } = {}): Lead[] {
-  const where = [`deleted_at IS NULL`, `(custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')`];
+  const where = [`deleted_at IS NULL`, LEAD_POOL_CANDIDATE_SQL];
   const params: Record<string, unknown> = { limit: Math.min(opts.limit ?? 20000, 20000) };
   if (opts.ownerUserId) {
     where.push(`owner_user_id = @ownerUserId`);
@@ -378,16 +385,33 @@ export function listLeadPoolLeads(opts: { limit?: number; ownerUserId?: string }
 }
 
 export function repairLeadPoolVisibility(): { repaired: number } {
-  const result = db
+  const now = Date.now();
+  const rows = db
     .prepare(
-      `UPDATE leads
-       SET contact_only = 1, past_client = 0, updated_at = @now
+      `SELECT id, custom, contact_only, past_client
+       FROM leads
        WHERE deleted_at IS NULL
-         AND (custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')
-         AND (contact_only != 1 OR past_client != 0)`,
+         AND ${LEAD_POOL_CANDIDATE_SQL}
+         AND (contact_only != 1 OR past_client != 0 OR custom NOT LIKE '%"lead_pool":true%')`,
     )
-    .run({ now: Date.now() });
-  return { repaired: result.changes || 0 };
+    .all() as Array<Pick<LeadRow, "id" | "custom" | "contact_only" | "past_client">>;
+  const update = db.prepare(
+    `UPDATE leads
+     SET custom = @custom, contact_only = 1, past_client = 0, updated_at = @now
+     WHERE id = @id`,
+  );
+  let repaired = 0;
+  for (const row of rows) {
+    const custom = safeParse<Record<string, unknown>>(row.custom, {});
+    if (custom.lead_pool !== true || row.contact_only !== 1 || row.past_client !== 0) {
+      custom.lead_pool = true;
+      custom.lead_pool_repaired_at = new Date(now).toISOString();
+      custom.lead_pool_repair_reason = "legacy-open-lead";
+      update.run({ id: row.id, custom: JSON.stringify(custom), now });
+      repaired++;
+    }
+  }
+  return { repaired };
 }
 
 const UPDATABLE = [
@@ -1016,7 +1040,7 @@ export function leadStats(ownerUserId?: string): Record<string, number> {
   };
   const statusStmt = db.prepare(
     `SELECT status, COUNT(*) AS n FROM leads
-     WHERE deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%' ${ownerWhere}
+     WHERE deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND ${NOT_LEAD_POOL_CANDIDATE_SQL} ${ownerWhere}
      GROUP BY status`,
   );
   const rows = (ownerUserId ? statusStmt.all(params) : statusStmt.all()) as Array<{
@@ -1024,9 +1048,9 @@ export function leadStats(ownerUserId?: string): Record<string, number> {
     n: number;
   }>;
   const out: Record<string, number> = {
-    active: count(`deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
-    contacts: count(`deleted_at IS NULL AND contact_only = 1 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
-    past: count(`deleted_at IS NULL AND past_client = 1 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
+    active: count(`deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND ${NOT_LEAD_POOL_CANDIDATE_SQL}`),
+    contacts: count(`deleted_at IS NULL AND contact_only = 1 AND ${NOT_LEAD_POOL_CANDIDATE_SQL}`),
+    past: count(`deleted_at IS NULL AND past_client = 1 AND ${NOT_LEAD_POOL_CANDIDATE_SQL}`),
     deleted: count("deleted_at IS NOT NULL"),
     all: count("1 = 1"),
     total: 0,
