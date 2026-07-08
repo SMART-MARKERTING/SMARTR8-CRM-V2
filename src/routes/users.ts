@@ -22,12 +22,13 @@ import {
 
 export const usersRouter = Router();
 
-// Brute-force guard on the unauthenticated login, plus a looser guard on the credential-
-// changing endpoints (already auth-gated, but rate-limited too for defense in depth).
+// Brute-force guard on unauthenticated login, plus targeted guards on sensitive account
+// routes. Session refreshes get a very generous bucket so normal page reloads cannot
+// strand a signed-in user behind a "too many attempts" response.
 const loginLimiter = rateLimit({ name: "login", max: 10, windowMs: 5 * 60_000 });
-// Every auth/user route is rate-limited (defense in depth; also satisfies CodeQL's
-// "authorization without rate limiting" rule). Login gets an extra, stricter brute-force cap.
-usersRouter.use(rateLimit({ name: "users", max: 120, windowMs: 5 * 60_000 }));
+const sessionLimiter = rateLimit({ name: "auth-session", max: 1200, windowMs: 5 * 60_000 });
+const accountLimiter = rateLimit({ name: "auth-account", max: 60, windowMs: 5 * 60_000 });
+const adminUserLimiter = rateLimit({ name: "admin-users", max: 240, windowMs: 5 * 60_000 });
 
 /** Sign in with username + password → returns a session token + the user. */
 usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
@@ -51,13 +52,13 @@ usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
 });
 
 /** Who am I (validates the current session). */
-usersRouter.get("/api/auth/me", requirePass, (req, res) => {
+usersRouter.get("/api/auth/me", sessionLimiter, requirePass, (req, res) => {
   res.json({ user: req.authUser });
 });
 
 /** Step-up verification for Portal / Apps. Re-checks the signed-in user's password before
  * showing document-sensitive borrower application fields in the console. */
-usersRouter.post("/api/auth/portal-verify", requirePass, (req, res) => {
+usersRouter.post("/api/auth/portal-verify", accountLimiter, requirePass, (req, res) => {
   const me = req.authUser!;
   const password = (req.body?.password ?? "").toString();
   const ok = Boolean(verifyLogin(me.username, password)) || Boolean(config.app.passcode && password === config.app.passcode);
@@ -77,7 +78,7 @@ usersRouter.post("/api/auth/portal-verify", requirePass, (req, res) => {
 });
 
 /** Sign out (invalidate the current session token). */
-usersRouter.post("/api/auth/logout", requirePass, (req, res) => {
+usersRouter.post("/api/auth/logout", sessionLimiter, requirePass, (req, res) => {
   const token =
     req.get("x-session-token") ||
     (req.get("authorization")?.toLowerCase().startsWith("bearer ") ? req.get("authorization")!.slice(7).trim() : "") ||
@@ -87,7 +88,7 @@ usersRouter.post("/api/auth/logout", requirePass, (req, res) => {
 });
 
 /** Change MY OWN password (any signed-in user). Requires the current password. */
-usersRouter.post("/api/auth/change-password", requirePass, (req, res) => {
+usersRouter.post("/api/auth/change-password", accountLimiter, requirePass, (req, res) => {
   const me = req.authUser!;
   const current = (req.body?.current ?? "").toString();
   const next = (req.body?.password ?? "").toString();
@@ -105,11 +106,11 @@ usersRouter.post("/api/auth/change-password", requirePass, (req, res) => {
 
 // ── Admin-only user management ───────────────────────────────────────────────
 
-usersRouter.get("/api/users", requireAdmin, (_req, res) => {
+usersRouter.get("/api/users", adminUserLimiter, requireAdmin, (_req, res) => {
   res.json({ users: listUsers() });
 });
 
-usersRouter.post("/api/users", requireAdmin, (req, res) => {
+usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
   const username = (req.body?.username ?? "").toString();
   const password = (req.body?.password ?? "").toString();
   const name = (req.body?.name ?? "").toString();
@@ -123,7 +124,7 @@ usersRouter.post("/api/users", requireAdmin, (req, res) => {
 });
 
 /** Admin: reset another user's password (no current-password needed). */
-usersRouter.post("/api/users/:id/password", requireAdmin, (req, res) => {
+usersRouter.post("/api/users/:id/password", adminUserLimiter, requireAdmin, (req, res) => {
   const target = getUser(req.params.id);
   if (!target) {
     res.status(404).json({ error: "user not found" });
@@ -138,7 +139,7 @@ usersRouter.post("/api/users/:id/password", requireAdmin, (req, res) => {
 });
 
 /** Admin: enable/disable a user, or change their role. */
-usersRouter.patch("/api/users/:id", requireAdmin, (req, res) => {
+usersRouter.patch("/api/users/:id", adminUserLimiter, requireAdmin, (req, res) => {
   const me = req.authUser!;
   const target = getUser(req.params.id);
   if (!target) {

@@ -728,7 +728,12 @@
         var text = await r.text();
         var data = {};
         try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text }; }
-        if (!r.ok) throw new Error(data.error || data.detail || text || ("HTTP " + r.status));
+        if (!r.ok) {
+          var err = new Error(data.error || data.detail || text || ("HTTP " + r.status));
+          err.status = r.status;
+          err.data = data;
+          throw err;
+        }
         return data;
       }
       function showToast(message, bad) {
@@ -901,8 +906,17 @@
           state.user = data.user;
           enterApp();
         } catch (e) {
-          try { localStorage.removeItem("sp_token"); } catch (x) {}
-          state.token = "";
+          if (e.status === 401 || e.status === 403) {
+            try { localStorage.removeItem("sp_token"); } catch (x) {}
+            state.token = "";
+            status("loginMsg", "Session expired. Sign in again.", "warnText");
+            return;
+          }
+          state.user = state.user || { username: "Admin", name: "Admin" };
+          enterApp();
+          setTimeout(function () {
+            showToast("Session check hit a temporary limit. Your login was kept; refresh again in a moment.", true);
+          }, 50);
         }
       }
       function enterApp() {
