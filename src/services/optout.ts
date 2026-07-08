@@ -22,7 +22,7 @@ const OPTOUT_CONFIRM =
   `${brand.smsName} (${brand.sender}): You're unsubscribed and will receive no more messages. Reply HELP for help.`;
 const HELP_REPLY =
   `${brand.smsName} (${brand.sender}): mortgage account/customer-care & marketing texts. ` +
-  `Help: call ${brand.voiceNumber}. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.`;
+  `Help: call ${brand.officeNumber} or ${brand.cellNumber}. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.`;
 const START_CONFIRM =
   `${brand.smsName} (${brand.sender}): You're subscribed to mortgage account/customer-care & marketing/promotional texts. ` +
   `Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.`;

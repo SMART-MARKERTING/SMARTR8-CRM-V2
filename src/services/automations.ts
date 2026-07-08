@@ -12,7 +12,7 @@ import { generateVoicemailAudio } from "./elevenLabs";
 import { withinCallingHours } from "./compliance";
 import { smsWindowForTz } from "../util/areaCodeTz";
 import { signToken } from "../util/token";
-import { emailSignatureText, emailFooterText, renderBrandedEmailHtml } from "../brand";
+import { brand, emailSignatureText, emailFooterText, renderBrandedEmailHtml } from "../brand";
 import { CAMPAIGNS, REMARKETING, campaignToSteps } from "./campaigns";
 import { logMessage } from "./ghl";
 
@@ -915,10 +915,42 @@ const AUTO_ENABLE_DRIPS_MARKER = "migration:auto_enable_website_drips:v1";
 const ADD_DAY0_EMAIL_MARKER = "migration:add_day0_email:v1";
 /** One-time migration marker: add HELOC quote-detail confirmation SMS to existing installs. */
 const ADD_HELOC_CONFIRM_SMS_MARKER = "migration:add_heloc_confirm_sms:v1";
+/** One-time migration marker: replace legacy phone/contact details in saved automation copy. */
+const UPDATE_CONTACT_INFO_MARKER = "migration:update_contact_info:v1";
 
 const HELOC_INITIAL_SMS_PREFIX = "Hi {{first_name}}, Mykoal DeShazo with Adaxa Home (NMLS 1912347). You asked about a HELOC";
 const HELOC_CONFIRM_SMS =
   "{{first_name}}, I just wanted to confirm the information I received is correct. The current mortgage balance we have is {{mortgage_balance}}, and the estimated home value we have is {{home_value}}. Is that correct? I also just sent an email with the quote based on that information, but I want to make sure we have the right details so you receive the correct quote.";
+const CONTACT_NUMBERS = `${brand.officeNumber} or ${brand.cellNumber}`;
+const LEGACY_CONTACT_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\(480\)\s*206\s*9290/g, CONTACT_NUMBERS],
+  [/480[\s.-]*206[\s.-]*9290/g, CONTACT_NUMBERS],
+  [/\(619\)\s*782\s*6916/g, brand.cellNumber],
+  [/619[\s.-]*782[\s.-]*6916/g, brand.cellNumber],
+  [/mike@adaxahomeloans\.com/gi, brand.fromEmailDefault],
+  [/hello@mykoal\.com/gi, brand.fromEmailDefault],
+  [/noreply@mykoal\.com/gi, brand.fromEmailDefault],
+];
+
+function replaceLegacyContactInfo(value: string | undefined): { value: string | undefined; changed: boolean } {
+  if (!value) return { value, changed: false };
+  let next = value;
+  for (const [pattern, replacement] of LEGACY_CONTACT_REPLACEMENTS) next = next.replace(pattern, replacement);
+  return { value: next, changed: next !== value };
+}
+
+function replaceStepContactInfo(step: Step): { step: Step; changed: boolean } {
+  const next: Step = { ...step };
+  let changed = false;
+  for (const key of ["subject", "preheader", "html", "text", "ctaLabel", "ctaUrl", "message", "voicemailText", "followupText"] as const) {
+    const result = replaceLegacyContactInfo(next[key]);
+    if (result.changed) {
+      next[key] = result.value;
+      changed = true;
+    }
+  }
+  return { step: next, changed };
+}
 
 /**
  * Seed the 6 category campaigns (Purchase Path, Cash Out Refi, HELOC, Rate and Term Refi,
@@ -1030,5 +1062,26 @@ export function seedCampaigns(): void {
     }
     setMeta(ADD_HELOC_CONFIRM_SMS_MARKER, String(Date.now()));
     if (added) log.info("HELOC confirmation SMS heal complete");
+  }
+
+  // One-time heal: update already-saved automation copy with the current office, cell,
+  // and sending email defaults. New installs get these from campaigns.ts, but live flows
+  // are stored in the database and need a deliberate pass.
+  if (!getMeta(UPDATE_CONTACT_INFO_MARKER)) {
+    let updated = 0;
+    for (const a of listAutomations()) {
+      let changed = false;
+      const steps = a.steps.map((step) => {
+        const result = replaceStepContactInfo(step);
+        if (result.changed) changed = true;
+        return result.step;
+      });
+      if (!changed) continue;
+      updateAutomation(a.id, { steps });
+      updated++;
+      log.info("updated automation contact info", { name: a.name });
+    }
+    setMeta(UPDATE_CONTACT_INFO_MARKER, String(Date.now()));
+    if (updated > 0) log.info("automation contact info heal complete", { updated });
   }
 }

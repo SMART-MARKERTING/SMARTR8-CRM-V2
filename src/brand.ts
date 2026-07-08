@@ -1,7 +1,7 @@
 /**
  * Business facts for Adaxa Home LLC (loan officer Mykoal DeShazo). Used in SMS/email
- * copy and compliance footers. NOTE: customer-facing copy must contain NO dashes (hyphen,
- * en, or em) and phone numbers are formatted with spaces, e.g. "(619) 782 6916".
+ * copy and compliance footers. Keep these contact details aligned with Resend sender
+ * choices, automation copy, and the Control Panel diagnostics.
  */
 export const brand = {
   sender: "Mykoal DeShazo",
@@ -13,16 +13,26 @@ export const brand = {
   nmlsCompany: "2380533",
   website: "https://smartr8.com",
   privacy: "https://smartr8.com/privacy",
-  smsNumber: "(619) 782 6916",
-  voiceNumber: "(480) 206 9290",
+  cellNumber: "623-280-8351",
+  officeNumber: "4802069290",
+  smsNumber: "623-280-8351",
+  voiceNumber: "4802069290",
   address: "16767 N Perimeter Dr, Ste 150, Scottsdale, AZ 85260",
   states: ["AZ", "CO", "CT", "FL", "MI", "MN", "OR", "PA", "TX", "VA", "WA"],
-  fromEmailDefault: "hello@mykoal.com",
+  fromEmailDefault: "MDESHAZO@mykoal.com",
+  sendingEmails: ["MDESHAZO@mykoal.com", "info@mykoal.com"],
 };
 
 export const statesLine = brand.states.join(", ");
 
-/** CAN-SPAM email signature block (HTML), no dashes in customer-facing text. */
+function phoneHref(num: string): string {
+  const digits = num.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return digits ? `+${digits}` : "";
+}
+
+/** CAN-SPAM email signature block (HTML). */
 export function emailSignatureHtml(): string {
   return (
     `<p style="margin-top:18px">${brand.sender}<br>` +
@@ -30,7 +40,8 @@ export function emailSignatureHtml(): string {
     `${brand.companyName} NMLS ${brand.nmlsCompany}<br>` +
     `Equal Housing Opportunity<br>` +
     `Licensed in ${statesLine}<br>` +
-    `${brand.voiceNumber}</p>`
+    `Cell ${brand.cellNumber}<br>` +
+    `Office ${brand.officeNumber}</p>`
   );
 }
 
@@ -42,7 +53,8 @@ export function emailSignatureText(): string {
     `${brand.companyName} NMLS ${brand.nmlsCompany}\n` +
     `Equal Housing Opportunity\n` +
     `Licensed in ${statesLine}\n` +
-    `${brand.voiceNumber}`
+    `Cell ${brand.cellNumber}\n` +
+    `Office ${brand.officeNumber}`
   );
 }
 
@@ -84,9 +96,8 @@ export function renderBrandedEmailHtml(opts: {
   unsubUrl: string;
 }): string {
   const { preheaderHtml = "", bodyHtml, ctaHtml = "", unsubUrl } = opts;
-  // Phone hrefs use raw digits; the visible numbers keep the brand's space formatting.
-  const voiceDigits = brand.voiceNumber.replace(/\D/g, "");
-  const smsDigits = brand.smsNumber.replace(/\D/g, "");
+  const officeHref = phoneHref(brand.officeNumber);
+  const cellHref = phoneHref(brand.cellNumber);
   return (
     `<!DOCTYPE html><html lang="en"><head>` +
     `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">` +
@@ -106,8 +117,8 @@ export function renderBrandedEmailHtml(opts: {
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fdf2f2;border-left:4px solid #E31B23;border-radius:4px;">` +
     `<tr><td style="padding:14px 18px;font-size:15px;line-height:1.8;color:#333333;">` +
     `<strong style="color:#E31B23;">Reach me directly:</strong><br>` +
-    `Call: <a href="tel:+${voiceDigits}" style="color:#E31B23;text-decoration:none;">${brand.voiceNumber}</a><br>` +
-    `Text: <a href="sms:+${smsDigits}" style="color:#E31B23;text-decoration:none;">${brand.smsNumber}</a>` +
+    `Cell: <a href="tel:${cellHref}" style="color:#E31B23;text-decoration:none;">${brand.cellNumber}</a><br>` +
+    `Office: <a href="tel:${officeHref}" style="color:#E31B23;text-decoration:none;">${brand.officeNumber}</a>` +
     `</td></tr></table></td></tr>` +
     `<tr><td style="padding:18px 32px 6px;color:#16243a;font-size:15px;line-height:1.6;">` +
     `<p style="margin:0;color:#13485A;font-weight:bold;font-size:16px;">${brand.sender}</p>` +

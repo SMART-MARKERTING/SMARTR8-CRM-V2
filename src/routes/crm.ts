@@ -60,7 +60,7 @@ import {
   cancelScheduledEmail,
 } from "../services/email";
 import { getRecentResendInboundWebhookHits, selfTestResendWebhookSignature, storeReceivedEmail } from "../services/resendInbound";
-import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
+import { brand, renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
 import { db } from "../store/db";
@@ -3224,7 +3224,7 @@ function parseCc(raw: unknown): string[] {
 }
 
 function emailFromChoices(): string[] {
-  const raw = [config.email.fromEmail, config.email.fromAliases].filter(Boolean).join(",");
+  const raw = [config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails].filter(Boolean).join(",");
   const seen = new Set<string>();
   const out: string[] = [];
   for (const part of raw.split(/[,\n;]+/)) {
@@ -3256,7 +3256,7 @@ function emailDomainsFromText(raw: unknown): string[] {
 function configuredEmailDomains(): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const source of [config.email.fromEmail, config.email.fromAliases, config.email.replyTo]) {
+  for (const source of [config.email.fromEmail, config.email.fromAliases, config.email.replyTo, ...brand.sendingEmails]) {
     for (const domain of emailDomainsFromText(source)) {
       if (!seen.has(domain)) {
         seen.add(domain);

@@ -14,7 +14,7 @@
  *  - "Reply STOP to opt out" also appears mid-sequence (message 5) and on the final message.
  *  - No rate, APR, or monthly-payment figures (Reg Z / MAP trigger terms); no approval
  *    guarantees. We say "let us run your numbers" / "see your options".
- *  - Customer-facing copy contains NO dashes (hyphen, en, or em). Phone is (480) 206 9290.
+ *  - Customer-facing copy avoids rate/APR trigger terms. Contact numbers are pulled from brand.ts.
  *  - The email signature + CAN-SPAM footer (physical address + a working unsubscribe link
  *    and List-Unsubscribe headers) are appended by the send_email executor (automations.ts
  *    + brand.ts), so they are not repeated in each email body here.
@@ -25,6 +25,7 @@
 
 import type { Category } from "./tagging";
 import type { Step } from "./automations";
+import { brand } from "../brand";
 
 export interface SmsMsg {
   day: number;
@@ -56,6 +57,9 @@ const F = {
   HOME: "https://smartr8.com",
 };
 
+const CONTACT_NUMBERS = `${brand.officeNumber} or ${brand.cellNumber}`;
+const CONTACT_SENTENCE = `Call my office at ${brand.officeNumber} or my cell at ${brand.cellNumber}.`;
+
 export const CAMPAIGNS: Campaign[] = [
   {
     key: "PURCHASE",
@@ -66,7 +70,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 3, text: "Tell me where you are looking and your rough budget, {{first_name}}, and let us run your numbers for a pre approval." },
       { day: 6, text: "{{first_name}}, first time buyer or moving up, I walk you through every step in plain language. Happy to answer any questions." },
       { day: 12, text: "Still getting ready, {{first_name}}? When you are set I can size up your pre approval fast. Reply STOP to opt out." },
-      { day: 21, text: "{{first_name}}, I will keep your purchase request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 21, text: `{{first_name}}, I will keep your purchase request on file. Reach me anytime at ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Let us get you pre approved, {{first_name}}", preheader: "A strong pre approval helps you shop with confidence and make offers that stand out.", cta: { label: "Get pre approved", url: F.PURCHASE },
@@ -74,7 +78,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 4, subject: "Buying your first home or your next one", preheader: "We guide first time buyers and move up buyers through every step.", cta: { label: "Start my pre approval", url: F.PURCHASE },
         body: "However you are buying, I am here to make it simple. First time buyers get clear guidance and programs that fit. Move up buyers get help lining up the timing so it works. And every offer is backed by a clean, well prepared file.\n\nReply and tell me your goal and let us run your numbers." },
       { day: 14, subject: "Ready when you are, {{first_name}}", preheader: "Your pre approval is a quick conversation away.", cta: { label: "Get pre approved", url: F.PURCHASE },
-        body: "House hunting takes time. Whenever you want to get pre approved or refresh your numbers, I can turn it around quickly.\n\nCall or text me anytime at (480) 206 9290." },
+        body: `House hunting takes time. Whenever you want to get pre approved or refresh your numbers, I can turn it around quickly.\n\n${CONTACT_SENTENCE}` },
     ],
   },
 
@@ -87,7 +91,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 3, text: "Many people use cash out to consolidate higher interest debt into one payment, {{first_name}}. Tell me your goal and let us run your numbers." },
       { day: 6, text: "{{first_name}}, cash out can also fund a project or build reserves you can lean on. Happy to walk through what makes sense." },
       { day: 12, text: "Still thinking it through, {{first_name}}? When you are ready I can pull your cash out options fast. Reply STOP to opt out." },
-      { day: 21, text: "{{first_name}}, I will keep your cash out request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 21, text: `{{first_name}}, I will keep your cash out request on file. Reach me anytime at ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Turn your equity into cash, {{first_name}}", preheader: "A cash out refinance replaces your mortgage and gives you the difference.", cta: { label: "See my cash out options", url: F.CASHOUT },
@@ -95,7 +99,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 4, subject: "Ways people put cash out to work", preheader: "Consolidate debt, fund a project, or build a cushion.", cta: { label: "Talk through my options", url: F.CASHOUT },
         body: "Cash out gives you flexibility. Some consolidate higher interest balances into one payment. Some fund a renovation, tuition, or a business move. Others build reserves for peace of mind.\n\nReply and tell me your goal and let us run your numbers." },
       { day: 14, subject: "Still here when you are ready, {{first_name}}", preheader: "Your cash out options are a quick conversation away.", cta: { label: "See my options", url: F.CASHOUT },
-        body: "No rush. When you want to see how much equity you could put to work, I can pull your cash out options quickly with no credit pull to start.\n\nCall or text me anytime at (480) 206 9290." },
+        body: `No rush. When you want to see how much equity you could put to work, I can pull your cash out options quickly with no credit pull to start.\n\n${CONTACT_SENTENCE}` },
     ],
   },
 
@@ -109,7 +113,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 3, text: "Lots of folks use a HELOC for renovations or to pay off higher interest debt, {{first_name}}. Tell me your goal and let us run your numbers." },
       { day: 6, text: "{{first_name}}, a HELOC can also sit as a standby safety net you only tap if you need it. Happy to walk you through how it works." },
       { day: 12, text: "Still thinking it over, {{first_name}}? No pressure. When you are ready I can show your HELOC options in minutes. Reply STOP to opt out." },
-      { day: 21, text: "{{first_name}}, I will keep your HELOC request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 21, text: `{{first_name}}, I will keep your HELOC request on file. Reach me anytime at ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Your HELOC options, {{first_name}}", preheader: "A quick look at tapping your equity without refinancing your first mortgage.", cta: { label: "See my HELOC options", url: F.HELOC },
@@ -117,7 +121,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 4, subject: "Smart ways people use a HELOC", preheader: "Renovations, debt payoff, and a flexible safety net.", cta: { label: "Talk through my options", url: F.HELOC },
         body: "A HELOC is flexible, so people put it to work in different ways. Some fund a renovation or addition. Others pay off higher interest balances to simplify. Many keep a standby line ready for emergencies.\n\nNot sure which fits? That is what I am here for. Reply and tell me your goal." },
       { day: 14, subject: "Still here when you are ready, {{first_name}}", preheader: "Your HELOC options are a quick conversation away.", cta: { label: "See my options", url: F.HELOC },
-        body: "No rush at all. When you want to see what your equity could do, I can put your HELOC options together quickly with no credit pull to start.\n\nCall or text me anytime at (480) 206 9290." },
+        body: `No rush at all. When you want to see what your equity could do, I can put your HELOC options together quickly with no credit pull to start.\n\n${CONTACT_SENTENCE}` },
     ],
   },
 
@@ -130,7 +134,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 3, text: "If the market or your credit has moved, refinancing may help your payment, {{first_name}}. Send your goal and let us run your numbers." },
       { day: 6, text: "{{first_name}}, a refinance can also shorten your term or drop mortgage insurance once you have the equity. Happy to explain the tradeoffs." },
       { day: 12, text: "Still weighing it, {{first_name}}? When you are ready I can show your refinance options fast. Reply STOP to opt out." },
-      { day: 21, text: "{{first_name}}, I will keep your refinance request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 21, text: `{{first_name}}, I will keep your refinance request on file. Reach me anytime at ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Reset your mortgage to fit today, {{first_name}}", preheader: "Lower your payment, shorten your term, or drop mortgage insurance. No cash out.", cta: { label: "See my refinance options", url: F.RT },
@@ -138,7 +142,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 4, subject: "Three reasons people refinance", preheader: "Payment, term, and mortgage insurance.", cta: { label: "Talk through my options", url: F.RT },
         body: "A rate and term refinance can help in a few ways. It can ease your monthly payment. It can shorten your term so you own your home sooner. And it can drop mortgage insurance once you have the equity.\n\nReply with your goal and let us run your numbers." },
       { day: 14, subject: "Here when the timing is right, {{first_name}}", preheader: "Your refinance options are a quick conversation away.", cta: { label: "See my options", url: F.RT },
-        body: "No pressure on timing. When you want to check whether a refinance helps, I can put your options together quickly.\n\nCall or text me anytime at (480) 206 9290." },
+        body: `No pressure on timing. When you want to check whether a refinance helps, I can put your options together quickly.\n\n${CONTACT_SENTENCE}` },
     ],
   },
 
@@ -151,7 +155,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 3, text: "Tell me the property and the rough rent, {{first_name}}, and let us run your numbers to see how it pencils out." },
       { day: 6, text: "{{first_name}}, DSCR is built to help investors keep buying without hitting income walls. Happy to map out your next purchase." },
       { day: 12, text: "Still weighing it, {{first_name}}? When you are ready I can show your DSCR options fast. Reply STOP to opt out." },
-      { day: 21, text: "{{first_name}}, I will keep your DSCR request on file. Reach me anytime at (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 21, text: `{{first_name}}, I will keep your DSCR request on file. Reach me anytime at ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Financing that qualifies on the rent, {{first_name}}", preheader: "DSCR loans look at the property cash flow, not your personal income docs.", cta: { label: "See my DSCR options", url: F.DSCR },
@@ -159,7 +163,7 @@ export const CAMPAIGNS: Campaign[] = [
       { day: 4, subject: "Built for investors who want to keep buying", preheader: "Scale your portfolio without income walls.", cta: { label: "Talk through a scenario", url: F.DSCR },
         body: "DSCR loans are designed for real estate investors. They qualify on the rental cash flow, not your returns. They work for single family homes, condos, two to four units, and many short term rentals. And they leave you room to keep growing your portfolio.\n\nTell me what you are looking at next and let us run your numbers." },
       { day: 14, subject: "Ready when your next deal is, {{first_name}}", preheader: "Your DSCR options are a quick conversation away.", cta: { label: "See my options", url: F.DSCR },
-        body: "Whenever you spot your next rental, I can move quickly on DSCR financing so you do not lose the deal to paperwork.\n\nCall or text me anytime at (480) 206 9290." },
+        body: `Whenever you spot your next rental, I can move quickly on DSCR financing so you do not lose the deal to paperwork.\n\n${CONTACT_SENTENCE}` },
     ],
   },
 
@@ -169,18 +173,18 @@ export const CAMPAIGNS: Campaign[] = [
     sms: [
       { day: 0, text: "Hi {{first_name}}, this is Mykoal DeShazo with Adaxa Home (NMLS 1912347). Thanks for reaching out at smartr8.com. Reply STOP to opt out, HELP for help." },
       { day: 3, text: "{{first_name}}, whatever your goal, buying, refinancing, or an investment property, I can help you find the right path. Want a quick call?" },
-      { day: 7, text: "Happy to answer any mortgage questions you have, no obligation. Reply here or call (480) 206 9290 any time. Mykoal." },
+      { day: 7, text: `Happy to answer any mortgage questions you have, no obligation. Reply here or call ${CONTACT_NUMBERS} any time. Mykoal.` },
       { day: 12, text: "Even if you are just exploring, a short conversation can clarify your options. What time works this week? Mykoal." },
-      { day: 16, text: "{{first_name}}, I am glad to be a resource whenever you need one. Call (480) 206 9290 with any questions. Reply STOP to opt out. Mykoal." },
-      { day: 21, text: "{{first_name}}, reach out any time and I will point you in the right direction. Call (480) 206 9290. Reply STOP to opt out. Mykoal." },
+      { day: 16, text: `{{first_name}}, I am glad to be a resource whenever you need one. Call ${CONTACT_NUMBERS} with any questions. Reply STOP to opt out. Mykoal.` },
+      { day: 21, text: `{{first_name}}, reach out any time and I will point you in the right direction. Call ${CONTACT_NUMBERS}. Reply STOP to opt out. Mykoal.` },
     ],
     emails: [
       { day: 0, subject: "Thanks for reaching out", preheader: "However I can help, I am glad to be your resource.", cta: { label: "See my options", url: F.HOME },
         body: "Thanks for getting in touch. Whether you are buying, refinancing, exploring an investment property, or simply have questions, my job is to make it clear and easy.\n\nWhen is a good time for a short call? There is no obligation, just helpful answers." },
       { day: 6, subject: "A quick question for you, {{first_name}}", preheader: "Knowing your goal helps me point you the right way.", cta: { label: "Tell me your goal", url: F.HOME },
         body: "Everyone comes to us with a different goal. Knowing yours helps me share the most useful next steps, whether that is a purchase, a refinance, or financing an investment property.\n\nReply and tell me what you are thinking about, and I will guide you from there." },
-      { day: 14, subject: "Here to help whenever you need it", preheader: "A short conversation can clarify your options.", cta: { label: "Call (480) 206 9290", url: F.HOME },
-        body: "Even if you are early in the process, a quick conversation often brings clarity and saves time later.\n\nReply to this email or call (480) 206 9290 whenever you are ready, and I will help you find the right path." },
+      { day: 14, subject: "Here to help whenever you need it", preheader: "A short conversation can clarify your options.", cta: { label: `Call ${brand.officeNumber}`, url: F.HOME },
+        body: `Even if you are early in the process, a quick conversation often brings clarity and saves time later.\n\nReply to this email or call ${CONTACT_NUMBERS} whenever you are ready, and I will help you find the right path.` },
     ],
   },
 ];
