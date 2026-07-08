@@ -2967,12 +2967,12 @@
       function emailAttachmentName(a) {
         return String((a && (a.filename || a.name || a.id || a.attachment_id)) || "Attachment");
       }
-      function renderEmailAttachment(a) {
+      function renderEmailAttachment(a, allowFetch) {
         var id = emailAttachmentId(a);
         var name = emailAttachmentName(a);
         var url = String((a && (a.download_url || a.downloadUrl || a.url)) || "");
-        if (id) return '<button class="btn small" data-action="email-open-attachment" data-attachment-id="' + esc(id) + '">' + esc(name) + '</button>';
         if (url) return '<button class="btn small" data-action="email-open-attachment" data-attachment-url="' + esc(url) + '">' + esc(name) + '</button>';
+        if (id && allowFetch !== false) return '<button class="btn small" data-action="email-open-attachment" data-attachment-id="' + esc(id) + '">' + esc(name) + '</button>';
         return '<span class="badge purple">' + esc(name) + '</span>';
       }
       function resendSentMessage(row) {
@@ -3094,21 +3094,32 @@
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
         var filedBadge = m.resend_api ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>');
         var fileButton = m.resend_api ? "" : '<button class="btn" data-action="email-file">File / folder</button>';
-        var resendButton = m.resend_api ? '<button class="btn" data-action="email-load-resend">Load Resend content</button>' : ((m.direction !== "inbound" && m.resend_id) ? '<button class="btn" data-action="email-refresh-resend">Refresh Resend status</button>' : "");
+        var resendButton = m.resend_api
+          ? '<button class="btn" data-action="email-load-resend">Load Resend content</button>'
+          : (m.direction === "inbound" && m.resend_id)
+            ? '<button class="btn" data-action="email-refresh-resend">Load received content</button>'
+            : ((m.direction !== "inbound" && m.resend_id) ? '<button class="btn" data-action="email-refresh-resend">Refresh Resend status</button>' : "");
         var attachmentListButton = (m.direction !== "inbound" && (m.resend_id || m.resend_api)) ? '<button class="btn" data-action="email-list-attachments">List attachments</button>' : "";
         var rescheduleButton = (m.direction !== "inbound" && (m.resend_id || m.resend_api)) ? '<button class="btn" data-action="email-reschedule">Reschedule</button>' : "";
         var canCancel = m.direction !== "inbound" && (m.resend_id || m.resend_api) && (m.scheduled_at || /scheduled/i.test([m.status, m.last_event].join(" ")));
         var cancelButton = canCancel ? '<button class="btn danger" data-action="email-cancel-scheduled">Cancel send</button>' : "";
+        var rawInfo = (m.meta && m.meta.raw) || m.raw || null;
+        var rawUrl = rawInfo && (rawInfo.download_url || rawInfo.downloadUrl) ? String(rawInfo.download_url || rawInfo.downloadUrl) : "";
+        var rawButton = rawUrl ? '<button class="btn" data-action="email-open-raw" data-raw-url="' + esc(rawUrl) + '">Raw email</button>' : "";
+        var receivedFor = emailArray((m.meta && m.meta.received_for) || m.received_for || "");
+        var receivedForLine = m.direction === "inbound" && receivedFor.length ? '<div><b>Received for:</b> ' + esc(receivedFor.join(", ")) + '</div>' : "";
+        var htmlFormat = (m.meta && m.meta.html_format) || m.html_format || "";
+        var htmlFormatLine = htmlFormat ? '<div><b>HTML format:</b> ' + esc(htmlFormat) + '</div>' : "";
         var scheduledLine = m.scheduled_at ? '<div><b>Scheduled:</b> ' + esc(formatDateTime(m.scheduled_at)) + '</div>' : "";
         var resendLine = (m.resend_id || m.message_id || m.last_event)
           ? '<div><b>Resend:</b> ' + esc([m.resend_id ? "id " + m.resend_id : "", m.message_id ? "message " + m.message_id : "", m.last_event ? "event " + m.last_event : "", m.resend_refreshed_at ? "refreshed " + formatDateTime(Date.parse(m.resend_refreshed_at)) : ""].filter(Boolean).join(" | ")) + '</div>'
           : "";
         box.innerHTML =
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
-          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + resendLine + '</div>' +
-          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + resendButton + attachmentListButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
-          (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(renderEmailAttachment).join("") + '</div>' : '') +
-          '<div class="emailBodyText">' + esc(m.body || (m.resend_api ? "This sent email came from Resend's team sent list. Use Load Resend content to fetch the full body." : "")) + '</div>';
+          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + receivedForLine + htmlFormatLine + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + resendLine + '</div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
+          (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a, m.direction !== "inbound"); }).join("") + '</div>' : '') +
+          '<div class="emailBodyText">' + esc(m.body || (m.direction === "inbound" ? "Use Load received content to fetch the full inbound body from Resend." : m.resend_api ? "This sent email came from Resend's team sent list. Use Load Resend content to fetch the full body." : "")) + '</div>';
       }
       function openEmailComposer(mode) {
         mode = mode || "compose";
@@ -3252,6 +3263,11 @@
         var attachment = data.attachment || {};
         var url = attachment.download_url || attachment.downloadUrl || "";
         if (!url) { showToast("Resend did not return a download URL.", true); return; }
+        window.open(url, "_blank", "noopener");
+      }
+      function openRawEmail(btn) {
+        var url = btn.dataset.rawUrl || "";
+        if (!url) { showToast("Raw email download URL is missing.", true); return; }
         window.open(url, "_blank", "noopener");
       }
       function openEmailRescheduleModal() {
@@ -3647,6 +3663,7 @@
           else if (a === "email-load-resend") await loadResendSentEmail();
           else if (a === "email-list-attachments") await listEmailAttachments();
           else if (a === "email-open-attachment") await openEmailAttachment(btn);
+          else if (a === "email-open-raw") openRawEmail(btn);
           else if (a === "email-reschedule") openEmailRescheduleModal();
           else if (a === "save-email-reschedule") await saveEmailReschedule();
           else if (a === "email-cancel-scheduled") await cancelScheduledEmail();

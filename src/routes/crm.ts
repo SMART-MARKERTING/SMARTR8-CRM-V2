@@ -49,6 +49,7 @@ import {
   listReceivedEmails,
   listResendWebhooks,
   retrieveResendWebhook,
+  retrieveReceivedEmail,
   retrieveSentEmail,
   retrieveSentEmailAttachment,
   sendBatchEmails,
@@ -3240,6 +3241,26 @@ function resendListQuery(req: Request): { limit: number; after?: string; before?
   };
 }
 
+function resendReceivedHtmlFormat(req: Request): "data_uri" | "cid" {
+  return cleanText(req.query.html_format || req.query.htmlFormat) === "cid" ? "cid" : "data_uri";
+}
+
+function textFromHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 /** Wrap a plain-text body in the branded email shell (HTML + text variants). */
 function buildBrandedEmail(bodyText: string, unsubUrl: string): { html: string; text: string } {
   const paragraphsHtml = bodyText
@@ -3431,6 +3452,15 @@ crmRouter.get("/api/email/sent", requirePass, async (req, res) => {
     return;
   }
   res.json(result);
+});
+
+crmRouter.get("/api/email/received/:emailId", requirePass, async (req, res) => {
+  const email = await retrieveReceivedEmail(req.params.emailId, resendReceivedHtmlFormat(req));
+  if (!email) {
+    res.status(404).json({ error: "received email not found in Resend" });
+    return;
+  }
+  res.json({ ok: true, email });
 });
 
 crmRouter.get("/api/email/sent/:emailId/attachments", requirePass, async (req, res) => {
@@ -3701,6 +3731,47 @@ crmRouter.post("/api/email/activity/:activityId/resend-refresh", requirePass, as
   const resendId = cleanText(meta.id || meta.resend_id || meta.resend_email_id);
   if (!resendId) {
     res.status(400).json({ error: "this email activity has no Resend id to refresh" });
+    return;
+  }
+  if (activity.direction === "inbound") {
+    const received = await retrieveReceivedEmail(resendId, resendReceivedHtmlFormat(req));
+    if (!received) {
+      res.status(404).json({ error: "received email not found in Resend" });
+      return;
+    }
+    const body = received.text || (received.html ? textFromHtml(received.html) : "") || activity.body || "Inbound email received via Resend.";
+    const subject = received.subject || activity.subject || "(no subject)";
+    meta.resend_email_id = received.id || received.email_id || resendId;
+    meta.message_id = received.message_id || meta.message_id || null;
+    meta.received_email = received;
+    meta.resend_refreshed_at = new Date().toISOString();
+    meta.html = received.html || meta.html || null;
+    meta.html_format = received.html_format || meta.html_format || null;
+    meta.raw = received.raw || meta.raw || null;
+    if (received.from) meta.from = received.from;
+    if (received.to) meta.to = received.to;
+    if (received.cc) meta.cc = received.cc;
+    if (received.bcc) meta.bcc = received.bcc;
+    if (received.reply_to) meta.reply_to = received.reply_to;
+    if (received.received_for) meta.received_for = received.received_for;
+    if (received.headers) meta.headers = received.headers;
+    if (received.attachments) meta.attachments = received.attachments;
+    db.prepare(`UPDATE activities SET subject = ?, body = ?, status = ?, meta = ? WHERE id = ?`).run(
+      subject,
+      body,
+      "received",
+      JSON.stringify(meta),
+      activity.id,
+    );
+    res.json({
+      ok: true,
+      activityId: activity.id,
+      status: "received",
+      email: received,
+      meta,
+      subject,
+      body,
+    });
     return;
   }
   const sent = await retrieveSentEmail(resendId);

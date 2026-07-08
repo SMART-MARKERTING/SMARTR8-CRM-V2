@@ -57,14 +57,17 @@ export interface ResendReceivedEmail {
   to?: string[];
   cc?: string[];
   bcc?: string[];
+  reply_to?: string[];
   subject?: string;
   created_at?: string;
+  html_format?: "data_uri" | "cid";
   html?: string | null;
   text?: string | null;
   attachments?: Array<Record<string, unknown>>;
   headers?: Record<string, string>;
   message_id?: string;
-  raw?: Record<string, unknown>;
+  received_for?: string[];
+  raw?: { download_url?: string; expires_at?: string } | null;
   [key: string]: unknown;
 }
 
@@ -439,25 +442,21 @@ export async function sendBatchEmails(
   }
 }
 
-export async function retrieveReceivedEmail(emailId: string): Promise<ResendReceivedEmail | null> {
-  if (!resendApiConfigured()) return null;
-  if (!emailId) return null;
-
-  try {
-    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}?html_format=data_uri`, {
-      method: "GET",
-      headers: resendHeaders(),
-    });
-    const raw = await res.text().catch(() => "");
-    if (!res.ok) {
-      log.error(`Resend received email retrieve failed ${res.status}: ${raw}`);
-      return null;
-    }
-    return raw ? (JSON.parse(raw) as ResendReceivedEmail) : null;
-  } catch (err) {
-    log.error("Resend received email retrieve threw", { err: String(err), emailId });
+export async function retrieveReceivedEmail(
+  emailId: string,
+  htmlFormat: "data_uri" | "cid" = "data_uri",
+): Promise<ResendReceivedEmail | null> {
+  const id = String(emailId || "").trim();
+  if (!id) return null;
+  const format = htmlFormat === "cid" ? "cid" : "data_uri";
+  const result = await resendGet<ResendReceivedEmail>(
+    `/emails/receiving/${encodeURIComponent(id)}?html_format=${encodeURIComponent(format)}`,
+  );
+  if (!result.ok) {
+    log.error(`Resend received email retrieve failed ${result.status || "no-status"}: ${result.detail || ""}`);
     return null;
   }
+  return result.data || null;
 }
 
 export async function retrieveSentEmail(emailId: string): Promise<ResendSentEmail | null> {
