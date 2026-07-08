@@ -79,6 +79,30 @@ export interface Activity {
   deleted_at?: number | null;
 }
 
+export interface DuplicateLeadItem {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  status: string;
+  pipeline_stage: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+  past_client: number;
+  contact_only: number;
+  address: string | null;
+}
+
+export interface DuplicateLeadGroup {
+  kind: "phone" | "email" | "name_address";
+  key: string;
+  label: string;
+  count: number;
+  leads: DuplicateLeadItem[];
+}
+
 interface LeadRow {
   id: string;
   created_at: number;
@@ -960,6 +984,91 @@ export function contactsDiag(): Record<string, unknown> {
     top_duplicate_emails: dupEmails,
     by_source: bySource,
   };
+}
+
+function normalizedText(value: unknown): string {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function duplicatePhoneKey(phone: string | null | undefined): string {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length >= 10) return digits.slice(-10);
+  return digits.length >= 7 ? digits : "";
+}
+
+function duplicateAddress(lead: Lead): string {
+  return (
+    customStr(lead, ["property_address", "address", "street", "street_address", "address1"]) ||
+    [
+      customStr(lead, ["city", "property_city"]),
+      customStr(lead, ["state", "property_state", "lead_pool_state"]),
+      customStr(lead, ["zip", "zipcode", "postal_code", "property_zip"]),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function duplicateLeadItem(lead: Lead): DuplicateLeadItem {
+  const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || lead.email || lead.phone || "Unnamed lead";
+  const address = duplicateAddress(lead);
+  return {
+    id: lead.id,
+    name,
+    phone: lead.phone,
+    email: lead.email,
+    source: lead.source,
+    status: lead.status,
+    pipeline_stage: lead.pipeline_stage,
+    created_at: lead.created_at,
+    updated_at: lead.updated_at,
+    deleted_at: lead.deleted_at,
+    past_client: lead.past_client,
+    contact_only: lead.contact_only,
+    address: address || null,
+  };
+}
+
+export function listDuplicateLeadGroups(opts: { limit?: number; includeDeleted?: boolean; ownerUserId?: string } = {}): DuplicateLeadGroup[] {
+  const where = opts.includeDeleted ? [`1 = 1`] : [`deleted_at IS NULL`];
+  const params: Record<string, unknown> = {};
+  if (opts.ownerUserId) {
+    where.push(`owner_user_id = @ownerUserId`);
+    params.ownerUserId = opts.ownerUserId;
+  }
+  const rows = db
+    .prepare(`SELECT * FROM leads WHERE ${where.join(" AND ")} ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 50000`)
+    .all(params) as LeadRow[];
+  const leads = rows.map(rowToLead);
+  const groups = new Map<string, DuplicateLeadGroup>();
+
+  const add = (kind: DuplicateLeadGroup["kind"], key: string, label: string, lead: Lead) => {
+    if (!key) return;
+    const groupKey = `${kind}:${key}`;
+    const existing = groups.get(groupKey);
+    if (existing) {
+      existing.leads.push(duplicateLeadItem(lead));
+      existing.count = existing.leads.length;
+    } else {
+      groups.set(groupKey, { kind, key, label, count: 1, leads: [duplicateLeadItem(lead)] });
+    }
+  };
+
+  for (const lead of leads) {
+    const phone = duplicatePhoneKey(lead.phone);
+    if (phone) add("phone", phone, lead.phone || phone, lead);
+    const email = normalizedText(lead.email);
+    if (email && email.includes("@")) add("email", email, lead.email || email, lead);
+    const name = normalizedText([lead.first_name, lead.last_name].filter(Boolean).join(" "));
+    const address = normalizedText(duplicateAddress(lead));
+    if (name && address) add("name_address", `${name}|${address}`, `${name} / ${address}`, lead);
+  }
+
+  const limit = Math.max(1, Math.min(opts.limit || 100, 500));
+  return Array.from(groups.values())
+    .filter((group) => group.count > 1)
+    .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind) || a.label.localeCompare(b.label))
+    .slice(0, limit);
 }
 
 /** Read a custom field by any of several key spellings. */

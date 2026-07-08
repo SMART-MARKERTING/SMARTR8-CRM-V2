@@ -474,6 +474,7 @@
         <button class="navBtn" data-nav="automations"><span class="navIco">AU</span>Automations</button>
         <button class="navBtn" data-nav="reports"><span class="navIco">RP</span>Reports</button>
         <button class="navBtn" data-nav="contacts"><span class="navIco">CO</span>Contacts</button>
+        <button class="navBtn" data-nav="duplicates"><span class="navIco">DU</span>Duplicate Leads</button>
         <button class="navBtn" data-nav="pastclients"><span class="navIco">PC</span>Past Clients</button>
         <button class="navBtn" data-nav="deleted"><span class="navIco">DL</span>Deleted</button>
         <button class="navBtn" data-nav="email"><span class="navIco">EM</span>Email</button>
@@ -669,6 +670,7 @@
         automations: "Automations",
         reports: "Reports",
         contacts: "Contacts",
+        duplicates: "Duplicate Leads",
         pastclients: "Past Clients",
         deleted: "Deleted",
         email: "Email",
@@ -768,6 +770,7 @@
         if (page === "portal") return renderPortal();
         if (page === "documents") return renderDocuments();
         if (page === "automations") return loadAutomations();
+        if (page === "duplicates") return loadDuplicates();
         if (["contacts","pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
         if (["reports","email","admin"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
         if (page === "settings") return loadSettings();
@@ -866,6 +869,39 @@
         state.leads = data.leads || [];
         if (!$("bucketListWrap")) return;
         $("bucketListWrap").innerHTML = state.leads.length ? leadsTable(state.leads, false, data.stats || {}) : '<div class="empty">' + esc(cfg.empty) + '</div>';
+      }
+      function duplicateKindLabel(kind) {
+        if (kind === "phone") return "Same phone";
+        if (kind === "email") return "Same email";
+        if (kind === "name_address") return "Same name/address";
+        return "Duplicate";
+      }
+      async function loadDuplicates() {
+        pageShell("Duplicate Leads", "Likely duplicate records grouped by phone, email, and name/address.",
+          '<button class="btn" data-action="refresh-duplicates">Refresh</button>',
+          '<section class="card"><div class="cardHead"><h2>Duplicate detection</h2><label style="display:flex;align-items:center;gap:8px;font-weight:800"><input id="dupIncludeDeleted" type="checkbox" style="width:auto"> Include deleted</label></div><div id="duplicatesWrap" class="list" style="padding:14px"><div class="spinner"></div></div></section>');
+        if ($("dupIncludeDeleted")) $("dupIncludeDeleted").onchange = refreshDuplicates;
+        await refreshDuplicates();
+      }
+      async function refreshDuplicates() {
+        var includeDeleted = $("dupIncludeDeleted") && $("dupIncludeDeleted").checked;
+        var data = await json("/api/duplicates?limit=150" + (includeDeleted ? "&includeDeleted=1" : ""));
+        var groups = data.groups || [];
+        if (!$("duplicatesWrap")) return;
+        if (!groups.length) {
+          $("duplicatesWrap").innerHTML = '<div class="empty">No duplicate groups found.</div>';
+          return;
+        }
+        $("duplicatesWrap").innerHTML =
+          '<div class="sub" style="padding:0 0 10px">Found ' + Number(data.groupCount || groups.length) + ' duplicate groups covering ' + Number(data.duplicateRecordCount || 0) + ' records.</div>' +
+          groups.map(function (group) {
+            return '<section class="item" style="display:block"><div class="toolbar" style="justify-content:space-between;margin-bottom:10px"><div><b>' + esc(duplicateKindLabel(group.kind)) + '</b><div class="sub">' + esc(group.label || group.key) + '</div></div><span class="badge amber">' + Number(group.count || 0) + ' records</span></div>' +
+              '<table class="table"><thead><tr><th>Lead</th><th>Phone</th><th>Email</th><th>Status</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
+              (group.leads || []).map(function (lead) {
+                var flags = [lead.deleted_at ? "Deleted" : "", lead.past_client ? "Past" : "", lead.contact_only ? "Contact" : ""].filter(Boolean).join(" / ");
+                return '<tr><td><div class="leadCell"><span class="avatar">' + esc(initials(lead.name || "Lead")) + '</span><div><div class="leadName">' + esc(lead.name || "Lead") + '</div>' + (lead.address ? '<div class="sub">' + esc(lead.address) + '</div>' : '') + (flags ? '<div class="sub">' + esc(flags) + '</div>' : '') + '</div></div></td><td>' + esc(lead.phone || "-") + '</td><td>' + esc(lead.email || "-") + '</td><td>' + statusBadge(lead.pipeline_stage || lead.status || "Lead-In") + '</td><td>' + esc(lead.source || "manual") + '</td><td>' + esc(when(lead.updated_at || lead.created_at)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(lead.id) + '">Open</button></td></tr>';
+              }).join("") + '</tbody></table></section>';
+          }).join("");
       }
       function leadImportSampleColumns() {
         return "First Name, Last Name, Phone Number, Email, Status, Source, Property Address, City, State, Zip, DOB, Credit Score, Home Value, Mortgage Balance, Loan Purpose, Tags, Notes, SMS Consent";
@@ -2579,6 +2615,7 @@
           else if (a === "run-lead-import") await importLeadCsv();
           else if (a === "refresh-leads") await loadLeads();
           else if (a === "refresh-lead-bucket") await loadLeadBucket(state.page);
+          else if (a === "refresh-duplicates") await refreshDuplicates();
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
           else if (a === "repair-leadpool") await repairLeadPool();

@@ -34,6 +34,7 @@ import {
   listPipeline,
   listLeadPoolLeads,
   repairLeadPoolVisibility,
+  listDuplicateLeadGroups,
   bulkCreateContacts,
   contactsDiag,
   LeadInput,
@@ -1024,6 +1025,19 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
       ownerUserId,
     }),
     stats: leadStats(ownerUserId),
+  });
+});
+
+crmRouter.get("/api/duplicates", requirePass, (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
+  const includeDeleted = req.query.includeDeleted === "1" || req.query.includeDeleted === "true";
+  const ownerUserId = ownerScope(req);
+  const groups = listDuplicateLeadGroups({ limit, includeDeleted, ownerUserId });
+  res.json({
+    ok: true,
+    groups,
+    groupCount: groups.length,
+    duplicateRecordCount: groups.reduce((sum, group) => sum + group.count, 0),
   });
 });
 
