@@ -206,6 +206,7 @@
       border: 1px solid var(--line);
       border-radius: var(--radius);
       box-shadow: 0 1px 2px rgba(0,0,0,.16);
+      min-width: 0;
     }
     .card.pad { padding: 16px; }
     .cardHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
@@ -214,6 +215,7 @@
     .metric b { display: block; font-size: 28px; letter-spacing: 0; margin-top: 4px; }
     .metric span { color: var(--muted); font-size: 13px; font-weight: 800; }
     .table { width: 100%; border-collapse: collapse; }
+    .tableWrap { max-width: 100%; overflow-x: auto; }
     .table th, .table td { padding: 12px 14px; border-bottom: 1px solid var(--tableLine); text-align: left; vertical-align: middle; }
     .table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--bg) 52%, var(--panel)); }
     .table tr:hover td { background: var(--hover); }
@@ -856,7 +858,7 @@
             metric("Commission MTD", money(commission.thisMonth), "Funded deals") +
           '</div>' +
           '<div class="grid cols2">' +
-            '<section class="card"><div class="cardHead"><h2>Recent leads</h2><button class="btn small" data-nav="leads">Open Leads</button></div><div class="tableWrap">' + leadsTable(leads.slice(0, 8), false) + '</div></section>' +
+            '<section class="card"><div class="cardHead"><h2>Recent leads</h2><button class="btn small" data-nav="leads">Open Leads</button></div><div class="tableWrap">' + leadsTable(leads.slice(0, 8), false, null, true) + '</div></section>' +
             '<section class="card pad"><h2 style="margin-top:0">Application services</h2>' + serviceCards() + '</section>' +
           '</div>';
       }
@@ -1052,14 +1054,14 @@
           return '<button class="statusTab' + (state.leadStageFilter === s ? ' active' : '') + '" data-action="lead-status-tab" data-stage="' + esc(s) + '">' + esc(s) + ' <span class="badge">' + Number(counts[s] || 0) + '</span></button>';
         })).join("");
       }
-      function leadsTable(leads, selectable, stats) {
+      function leadsTable(leads, selectable, stats, compact) {
         if (!leads || !leads.length) {
           var hidden = stats && (Number(stats.contacts || 0) + Number(stats.past || 0) + Number(stats.deleted || 0));
           return '<div class="empty">No active leads found.' + (hidden ? ' Check Contacts, Past Clients, or Deleted above for hidden records.' : '') + '</div>';
         }
         return '<table class="table"><thead><tr>' +
           (selectable ? '<th><input type="checkbox" data-action="select-all"></th>' : '') +
-          '<th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Owner</th><th>Source</th><th>Last contact</th><th></th></tr></thead><tbody>' +
+          '<th>Name</th><th>Phone</th><th>Email</th><th>Status</th>' + (compact ? '' : '<th>Owner</th><th>Source</th><th>Last contact</th>') + '<th></th></tr></thead><tbody>' +
           leads.map(function (l) {
             var name = nameOf(l), selected = state.selectedIds.has(l.id);
             var addr = leadAddressLine(l);
@@ -1069,9 +1071,7 @@
               '<td>' + esc(l.phone || "-") + '</td>' +
               '<td>' + esc(l.email || "-") + '</td>' +
               '<td>' + statusBadge(l.pipeline_stage || "Lead-In") + '</td>' +
-              '<td>' + esc(l.owner || l.owner_name || "Admin") + '</td>' +
-              '<td>' + esc(l.source || "manual") + '</td>' +
-              '<td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>' +
+              (compact ? '' : '<td>' + esc(l.owner || l.owner_name || "Admin") + '</td><td>' + esc(l.source || "manual") + '</td><td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>') +
               '<td><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button></td>' +
             '</tr>';
           }).join("") + '</tbody></table>';
