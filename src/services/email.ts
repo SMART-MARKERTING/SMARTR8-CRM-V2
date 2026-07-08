@@ -26,12 +26,60 @@ export interface ResendReceivedEmail {
   [key: string]: unknown;
 }
 
+export interface ResendWebhook {
+  object?: string;
+  id: string;
+  created_at?: string;
+  status?: string;
+  endpoint?: string;
+  events?: string[];
+  signing_secret?: string;
+  [key: string]: unknown;
+}
+
 export function emailConfigured(): boolean {
   return Boolean(config.email.resendApiKey && config.email.fromEmail);
 }
 
 export function resendApiConfigured(): boolean {
   return Boolean(config.email.resendApiKey);
+}
+
+async function resendGet<T>(path: string): Promise<{ ok: boolean; data?: T; detail?: string; status?: number }> {
+  if (!resendApiConfigured()) return { ok: false, detail: "RESEND_API_KEY is not set" };
+  try {
+    const res = await fetch(`https://api.resend.com${path}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.email.resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const raw = await res.text().catch(() => "");
+    const data = raw ? JSON.parse(raw) as T : undefined;
+    if (!res.ok) return { ok: false, status: res.status, detail: raw || res.statusText, data };
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, detail: String(err) };
+  }
+}
+
+export async function listResendWebhooks(): Promise<{ ok: boolean; webhooks: ResendWebhook[]; detail?: string }> {
+  const result = await resendGet<{ object?: string; data?: ResendWebhook[] }>("/webhooks");
+  if (!result.ok) return { ok: false, webhooks: [], detail: result.detail };
+  return { ok: true, webhooks: Array.isArray(result.data?.data) ? result.data.data : [] };
+}
+
+export async function retrieveResendWebhook(webhookId: string): Promise<ResendWebhook | null> {
+  if (!webhookId) return null;
+  const result = await resendGet<ResendWebhook>(`/webhooks/${encodeURIComponent(webhookId)}`);
+  return result.ok && result.data ? result.data : null;
+}
+
+export async function listReceivedEmails(limit = 10): Promise<{ ok: boolean; emails: ResendReceivedEmail[]; detail?: string }> {
+  const result = await resendGet<{ object?: string; data?: ResendReceivedEmail[] }>(`/emails/receiving?limit=${Math.max(1, Math.min(limit, 100))}`);
+  if (!result.ok) return { ok: false, emails: [], detail: result.detail };
+  return { ok: true, emails: Array.isArray(result.data?.data) ? result.data.data : [] };
 }
 
 /**

@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3284,6 +3284,53 @@ crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
       "Conditions",
       "Closing",
     ],
+  });
+});
+
+crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) => {
+  const mountedBase = requestMountedBase(req);
+  const expectedWebhook = `${mountedBase}/api/webhooks/resend`;
+  const rootWebhook = `${req.protocol}://${req.get("host")}/api/webhooks/resend`;
+  const list = await listResendWebhooks();
+  const enriched = await Promise.all(
+    list.webhooks.slice(0, 25).map(async (hook) => {
+      const detail = await retrieveResendWebhook(hook.id);
+      const row = detail || hook;
+      const signingSecret = typeof row.signing_secret === "string" ? row.signing_secret : "";
+      const endpoint = typeof row.endpoint === "string" ? row.endpoint : "";
+      const events = Array.isArray(row.events) ? row.events : [];
+      return {
+        id: row.id,
+        status: row.status || "",
+        endpoint,
+        events,
+        has_email_received: events.includes("email.received"),
+        endpoint_matches_this_app: endpoint === expectedWebhook || endpoint === rootWebhook,
+        signing_secret_present: Boolean(signingSecret),
+        signing_secret_matches_env: Boolean(config.email.resendWebhookSecret && signingSecret && signingSecret === config.email.resendWebhookSecret),
+      };
+    }),
+  );
+  const received = await listReceivedEmails(10);
+  res.json({
+    ok: true,
+    resend_api_key_set: Boolean(config.email.resendApiKey),
+    resend_webhook_secret_set: Boolean(config.email.resendWebhookSecret),
+    expected_webhook_url: expectedWebhook,
+    root_webhook_url: rootWebhook,
+    webhooks_ok: list.ok,
+    webhooks_error: list.detail || null,
+    webhooks: enriched,
+    received_ok: received.ok,
+    received_error: received.detail || null,
+    recent_received_count: received.emails.length,
+    recent_received: received.emails.map((email) => ({
+      id: email.id || email.email_id || "",
+      from: email.from || "",
+      to: email.to || [],
+      subject: email.subject || "",
+      created_at: email.created_at || "",
+    })),
   });
 });
 

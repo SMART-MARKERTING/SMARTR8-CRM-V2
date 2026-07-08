@@ -2902,7 +2902,7 @@
             '</section>' +
             '<section class="card pad emailReader"><div id="emailReader" class="empty">Select an email.</div></section>' +
           '</div>' +
-          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Add RESEND_WEBHOOK_SECRET in Render and Cloudflare after creating the webhook.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button></div></section><datalist id="emailContactOptions"></datalist><datalist id="emailFromOptions"></datalist><datalist id="emailFolderOptions"></datalist>');
+          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Set RESEND_WEBHOOK_SECRET to the webhook signing_secret from Resend.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button><button class="btn small" data-action="check-resend-webhook">Check Resend</button></div><div id="resendDiag" class="statusLine"></div></section><datalist id="emailContactOptions"></datalist><datalist id="emailFromOptions"></datalist><datalist id="emailFolderOptions"></datalist>');
         if ($("emailSearch")) $("emailSearch").addEventListener("input", renderEmailList);
         await refreshEmailPage();
       }
@@ -3077,6 +3077,24 @@
         var url = $("emailWebhookUrl") ? $("emailWebhookUrl").value : (location.origin + apiPath("/api/webhooks/resend"));
         if (navigator.clipboard) await navigator.clipboard.writeText(url);
         showToast("Resend inbound webhook copied.");
+      }
+      async function checkResendWebhook() {
+        status("resendDiag", "Checking Resend...");
+        var data = await json("/api/email/resend-diagnostics");
+        var hooks = data.webhooks || [];
+        var match = hooks.find(function (h) { return h.endpoint_matches_this_app; });
+        var received = Number(data.recent_received_count || 0);
+        var lines = [
+          "API key: " + (data.resend_api_key_set ? "set" : "missing"),
+          "Webhook secret env: " + (data.resend_webhook_secret_set ? "set" : "missing"),
+          "Webhook URL: " + (match ? "matches this app" : "not found in Resend"),
+          "email.received event: " + (match && match.has_email_received ? "subscribed" : "missing"),
+          "Signing secret match: " + (match && match.signing_secret_matches_env ? "yes" : "no"),
+          "Recent received emails in Resend: " + received
+        ];
+        if (!hooks.length && data.webhooks_error) lines.push("Webhook API error: " + data.webhooks_error);
+        if (data.received_error) lines.push("Received email API error: " + data.received_error);
+        $("resendDiag").innerHTML = '<div class="' + (match && match.has_email_received && match.signing_secret_matches_env ? "okText" : "warnText") + '">' + esc(lines.join(" | ")) + '</div>';
       }
 
       async function loadAdminPage() {
@@ -3397,6 +3415,7 @@
           else if (a === "email-file") openEmailFileModal();
           else if (a === "save-email-folder") await saveEmailFolder();
           else if (a === "copy-email-webhook") await copyEmailWebhook();
+          else if (a === "check-resend-webhook") await checkResendWebhook();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
           else if (a === "admin-create-user") await createAdminUser();
