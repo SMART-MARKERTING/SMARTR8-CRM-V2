@@ -54,6 +54,8 @@ export interface LeadDocument {
   created_at: number;
   uploaded_by: string | null;
   original_name: string;
+  display_name: string | null;
+  folder_name: string | null;
   stored_name: string;
   mime: string;
   size: number;
@@ -64,6 +66,11 @@ export interface LeadDocument {
 
 function cleanFilename(name: string): string {
   return path.basename(name || "document").replace(/[^\w.\-() ]+/g, "_").slice(0, 160) || "document";
+}
+
+function cleanLabel(value: string | undefined | null, fallback: string): string {
+  const cleaned = String(value || "").replace(/[<>:"\\|?*\x00-\x1F]+/g, " ").replace(/\s+/g, " ").trim();
+  return (cleaned || fallback).slice(0, 120);
 }
 
 function docTypeLabel(docType: string): string {
@@ -93,7 +100,7 @@ function documentPath(storedName: string): string | null {
 
 export function listLeadDocuments(leadId: string): LeadDocument[] {
   return db
-    .prepare(`SELECT * FROM lead_documents WHERE lead_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`)
+    .prepare(`SELECT * FROM lead_documents WHERE lead_id = ? AND deleted_at IS NULL ORDER BY COALESCE(folder_name, 'General') ASC, created_at DESC`)
     .all(leadId) as LeadDocument[];
 }
 
@@ -113,6 +120,8 @@ export function saveLeadDocument(opts: {
   filename: string;
   docType?: string;
   notes?: string;
+  displayName?: string;
+  folderName?: string;
   uploadedBy?: string;
 }): LeadDocument {
   if (!opts.buffer.length) throw new Error("empty upload");
@@ -132,18 +141,22 @@ export function saveLeadDocument(opts: {
 
   const docType = classifyDocumentType(originalName, opts.docType);
   const notes = opts.notes?.trim() || null;
+  const displayName = cleanLabel(opts.displayName, originalName);
+  const folderName = cleanLabel(opts.folderName, "General");
 
   db.prepare(
     `INSERT INTO lead_documents
-      (id, lead_id, created_at, uploaded_by, original_name, stored_name, mime, size, doc_type, notes, deleted_at)
+      (id, lead_id, created_at, uploaded_by, original_name, display_name, folder_name, stored_name, mime, size, doc_type, notes, deleted_at)
      VALUES
-      (@id, @lead_id, @created_at, @uploaded_by, @original_name, @stored_name, @mime, @size, @doc_type, @notes, NULL)`,
+      (@id, @lead_id, @created_at, @uploaded_by, @original_name, @display_name, @folder_name, @stored_name, @mime, @size, @doc_type, @notes, NULL)`,
   ).run({
     id,
     lead_id: opts.lead.id,
     created_at: now,
     uploaded_by: opts.uploadedBy ?? null,
     original_name: originalName,
+    display_name: displayName,
+    folder_name: folderName,
     stored_name: storedName,
     mime,
     size: opts.buffer.length,
@@ -171,6 +184,8 @@ export function saveLeadDocument(opts: {
     meta: {
       documentId: id,
       docType,
+      displayName,
+      folderName,
       notes,
       uploadedBy: opts.uploadedBy ?? null,
       losMarker: markerKey ?? null,
@@ -178,6 +193,23 @@ export function saveLeadDocument(opts: {
   });
 
   return getLeadDocument(id)!;
+}
+
+export function updateLeadDocumentMetadata(doc: LeadDocument, opts: { displayName?: string; folderName?: string; notes?: string; author?: string }): LeadDocument {
+  const displayName = cleanLabel(opts.displayName, doc.display_name || doc.original_name);
+  const folderName = cleanLabel(opts.folderName, doc.folder_name || "General");
+  const notes = opts.notes === undefined ? doc.notes : opts.notes.trim() || null;
+  db.prepare(`UPDATE lead_documents SET display_name = ?, folder_name = ?, notes = ? WHERE id = ?`).run(displayName, folderName, notes, doc.id);
+  logActivity(doc.lead_id, {
+    type: "document",
+    direction: "system",
+    channel: "system",
+    subject: "File folder updated",
+    body: `Document filed: ${displayName} in ${folderName}`,
+    status: "updated",
+    meta: { documentId: doc.id, displayName, folderName, author: opts.author ?? null },
+  });
+  return getLeadDocument(doc.id)!;
 }
 
 export function softDeleteLeadDocument(doc: LeadDocument, author?: string): void {

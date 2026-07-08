@@ -171,6 +171,7 @@ export const config = {
   email: {
     resendApiKey: env("RESEND_API_KEY"),
     fromEmail: env("EMAIL_FROM"), // e.g. "Adaxa Home Loans <mike@adaxahomeloans.com>"
+    fromAliases: env("EMAIL_FROM_ALIASES"),
     replyTo: env("EMAIL_REPLY_TO"),
     resendWebhookSecret: env("RESEND_WEBHOOK_SECRET"),
   },

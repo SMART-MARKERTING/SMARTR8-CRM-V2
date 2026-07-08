@@ -97,7 +97,7 @@ import {
   LoanServiceResult,
   LoanServiceRequestOptions,
 } from "../services/loanServices";
-import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocument, softDeleteLeadDocument } from "../services/documents";
+import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocument, softDeleteLeadDocument, updateLeadDocumentMetadata } from "../services/documents";
 import { listSettlementVendorSettings, saveSettlementVendorSettings, SettlementVendorKind } from "../services/loanServiceSettings";
 import { mimeForExt, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
 import { applyLegacyCrmSync } from "../services/legacyCrmSync";
@@ -1059,6 +1059,14 @@ crmRouter.post("/api/leads/:id/documents", requirePass, raw({ type: () => true, 
     (typeof req.query.notes === "string" && req.query.notes) ||
     req.get("x-document-notes") ||
     "";
+  const displayName =
+    (typeof req.query.name === "string" && req.query.name) ||
+    req.get("x-document-name") ||
+    filename;
+  const folderName =
+    (typeof req.query.folder === "string" && req.query.folder) ||
+    req.get("x-document-folder") ||
+    "General";
   try {
     const doc = saveLeadDocument({
       lead,
@@ -1066,6 +1074,8 @@ crmRouter.post("/api/leads/:id/documents", requirePass, raw({ type: () => true, 
       filename,
       docType,
       notes,
+      displayName,
+      folderName,
       uploadedBy: leadActionAuthor(req),
     });
     res.json({
@@ -1122,6 +1132,35 @@ crmRouter.delete("/api/documents/:docId", requirePass, (req, res) => {
   }
   softDeleteLeadDocument(doc, leadActionAuthor(req));
   res.json({ ok: true, documents: listLeadDocuments(doc.lead_id).map((item) => ({ ...item, downloadUrl: publicDocumentUrl(item.id) })) });
+});
+
+crmRouter.patch("/api/documents/:docId", requirePass, (req, res) => {
+  const doc = getLeadDocument(req.params.docId);
+  if (!doc) {
+    res.status(404).json({ error: "document not found" });
+    return;
+  }
+  const lead = getLead(doc.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const updated = updateLeadDocumentMetadata(doc, {
+    displayName: typeof req.body?.display_name === "string" ? req.body.display_name : undefined,
+    folderName: typeof req.body?.folder_name === "string" ? req.body.folder_name : undefined,
+    notes: typeof req.body?.notes === "string" ? req.body.notes : undefined,
+    author: leadActionAuthor(req),
+  });
+  res.json({
+    ok: true,
+    document: { ...updated, downloadUrl: publicDocumentUrl(updated.id) },
+    documents: listLeadDocuments(doc.lead_id).map((item) => ({ ...item, downloadUrl: publicDocumentUrl(item.id) })),
+  });
 });
 
 crmRouter.get("/api/applications", requirePass, (req, res) => {
@@ -2750,7 +2789,7 @@ function looksLikeEmail(s: string): boolean {
 /** Accept CC as a string ("a@x.com, b@y.com" — also space/newline separated) or an array;
  *  return a clean, de-duped list of things that look like email addresses. Dropping junk
  *  entries matters because one malformed CC makes Resend reject the whole send. */
-function parseCc(raw: unknown): string[] {
+function parseEmailList(raw: unknown): string[] {
   const parts = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,;\s]+/) : [];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -2761,6 +2800,33 @@ function parseCc(raw: unknown): string[] {
     if (!seen.has(key)) { seen.add(key); out.push(s); }
   }
   return out;
+}
+
+function parseCc(raw: unknown): string[] {
+  return parseEmailList(raw);
+}
+
+function emailFromChoices(): string[] {
+  const raw = [config.email.fromEmail, config.email.fromAliases].filter(Boolean).join(",");
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,\n;]+/)) {
+    const value = part.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+function selectedEmailFrom(raw: unknown): string | undefined {
+  const requested = String(raw || "").trim();
+  if (!requested) return undefined;
+  const allowed = emailFromChoices();
+  return allowed.some((item) => item.toLowerCase() === requested.toLowerCase()) ? requested : undefined;
 }
 
 /** Validate attachments: [{ filename, content(base64) }]. Caps total size (~10MB base64). */
@@ -2809,6 +2875,8 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const subjectTemplate = (req.body?.subject ?? "").toString().trim();
   const bodyTemplate = (req.body?.body ?? "").toString().trim();
   const cc = parseCc(req.body?.cc);
+  const bcc = parseEmailList(req.body?.bcc);
+  const from = selectedEmailFrom(req.body?.from);
   if (!subjectTemplate) {
     res.status(400).json({ error: "pass a subject" });
     return;
@@ -2820,7 +2888,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const subject = renderLeadMergeTemplate(subjectTemplate, lead);
   const bodyText = renderLeadMergeTemplate(bodyTemplate, lead);
   const { html, text } = buildBrandedEmail(bodyText, unsubscribeUrl(lead.id));
-  const r = await sendEmail({ to: lead.email, subject, html, text, cc, attachments: parseAttachments(req.body?.attachments) });
+  const r = await sendEmail({ to: lead.email, subject, from, html, text, cc, bcc, attachments: parseAttachments(req.body?.attachments) });
   logActivity(lead.id, {
     type: "email",
     direction: "outbound",
@@ -2828,7 +2896,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     subject,
     body: bodyText,
     status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
-    meta: { id: r.id, detail: r.detail, cc: cc.length ? cc : undefined, author: req.body?.author },
+    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
   });
   res.json({ ok: r.ok, id: r.id, detail: r.detail });
 });
@@ -2845,6 +2913,8 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const subject = (req.body?.subject ?? "").toString().trim();
   const bodyText = (req.body?.body ?? "").toString().trim();
   const cc = parseCc(req.body?.cc);
+  const bcc = parseEmailList(req.body?.bcc);
+  const from = selectedEmailFrom(req.body?.from);
   if (!to) {
     res.status(400).json({ error: "pass a recipient (to)" });
     return;
@@ -2868,7 +2938,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const renderedSubject = lead ? renderLeadMergeTemplate(subject, lead) : subject;
   const renderedBody = lead ? renderLeadMergeTemplate(bodyText, lead) : bodyText;
   const { html, text } = buildBrandedEmail(renderedBody, unsubUrl);
-  const r = await sendEmail({ to, subject: renderedSubject, html, text, cc, attachments: parseAttachments(req.body?.attachments) });
+  const r = await sendEmail({ to, subject: renderedSubject, from, html, text, cc, bcc, attachments: parseAttachments(req.body?.attachments) });
   if (lead) {
     logActivity(lead.id, {
       type: "email",
@@ -2877,10 +2947,29 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
       subject: renderedSubject,
       body: renderedBody,
       status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
-      meta: { id: r.id, detail: r.detail, cc: cc.length ? cc : undefined, author: req.body?.author },
+      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to: [to], cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
+});
+
+crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
+  res.json({
+    ok: true,
+    from: emailFromChoices(),
+    defaultFrom: config.email.fromEmail || "",
+    defaultReplyTo: config.email.replyTo || "",
+    folders: [
+      "General",
+      "Borrower discussion",
+      "Loan application",
+      "Credit",
+      "Title",
+      "Flood",
+      "Conditions",
+      "Closing",
+    ],
+  });
 });
 
 crmRouter.get("/api/email/activity", requirePass, (req, res) => {
@@ -2923,12 +3012,13 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
       const inbound = row.direction === "inbound";
       const toList = Array.isArray(meta?.to) ? meta.to.map((v) => String(v)).filter(Boolean) : [];
       const ccList = Array.isArray(meta?.cc) ? meta.cc.map((v) => String(v)).filter(Boolean) : [];
+      const bccList = Array.isArray(meta?.bcc) ? meta.bcc.map((v) => String(v)).filter(Boolean) : [];
       const from = inbound
         ? String(meta?.from || meta?.from_email || row.email || "")
-        : config.email.fromEmail || "CRM";
+        : String(meta?.from || config.email.fromEmail || "CRM");
       const to = inbound
         ? toList.join(", ") || config.email.fromEmail || ""
-        : row.email || "";
+        : toList.join(", ") || row.email || "";
       return {
         id: row.id,
         created_at: row.created_at,
@@ -2943,12 +3033,54 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
         from,
         to,
         cc: ccList,
+        bcc: bccList,
+        file_folder: typeof meta?.file_folder === "string" ? meta.file_folder : "",
+        discussion_file: typeof meta?.discussion_file === "string" ? meta.discussion_file : "",
         attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
         html: typeof meta?.html === "string" ? meta.html : null,
         meta,
       };
     }),
   });
+});
+
+crmRouter.patch("/api/email/activity/:activityId", requirePass, (req, res) => {
+  const row = db.prepare(`SELECT * FROM activities WHERE id = ? AND deleted_at IS NULL`).get(req.params.activityId) as
+    | { id: string; lead_id: string; type: string; meta: string | null }
+    | undefined;
+  const activity = row ? { ...row, meta: safeMeta(row.meta) } : null;
+  if (!activity || activity.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return;
+  }
+  const lead = getLead(activity.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return;
+  }
+  const fileFolder = cleanText(req.body?.file_folder, "General").slice(0, 120);
+  const discussionFile = cleanText(req.body?.discussion_file, "").slice(0, 120);
+  const meta = { ...(activity.meta || {}) };
+  meta.file_folder = fileFolder;
+  meta.discussion_file = discussionFile;
+  meta.filed_by = leadActionAuthor(req);
+  meta.filed_at = new Date().toISOString();
+  db.prepare(`UPDATE activities SET meta = ? WHERE id = ?`).run(JSON.stringify(meta), activity.id);
+  logActivity(lead.id, {
+    type: "email_filed",
+    direction: "system",
+    channel: "email",
+    subject: "Email filed",
+    body: `Email filed in ${fileFolder}${discussionFile ? ` / ${discussionFile}` : ""}`,
+    status: "filed",
+    meta: { sourceActivityId: activity.id, file_folder: fileFolder, discussion_file: discussionFile },
+  });
+  res.json({ ok: true, activityId: activity.id, file_folder: fileFolder, discussion_file: discussionFile });
 });
 
 /** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.

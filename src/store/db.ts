@@ -251,6 +251,8 @@ db.exec(`
     created_at    INTEGER NOT NULL,
     uploaded_by   TEXT,
     original_name TEXT NOT NULL,
+    display_name  TEXT,
+    folder_name   TEXT NOT NULL DEFAULT 'General',
     stored_name   TEXT NOT NULL,
     mime          TEXT NOT NULL,
     size          INTEGER NOT NULL,
@@ -294,6 +296,8 @@ ensureColumn("leads", "todos", "todos TEXT NOT NULL DEFAULT '[]'");
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal
 // activity feed but keeps them available in the Deleted workspace.
 ensureColumn("activities", "deleted_at", "deleted_at INTEGER");
+ensureColumn("lead_documents", "display_name", "display_name TEXT");
+ensureColumn("lead_documents", "folder_name", "folder_name TEXT NOT NULL DEFAULT 'General'");
 // Call-log deletes/clears are recoverable too.
 ensureColumn("call_log", "deleted_at", "deleted_at INTEGER");
 // Server-side Portal / Apps step-up state. Sensitive borrower APIs require this.

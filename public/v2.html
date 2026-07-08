@@ -512,7 +512,7 @@
       </div>
       <div class="navGroup">
         <small>More</small>
-        <button class="navBtn" data-nav="documents"><span class="navIco">DC</span>Documents</button>
+        <button class="navBtn" data-nav="documents"><span class="navIco">FF</span>File Folders</button>
         <button class="navBtn" data-nav="automations"><span class="navIco">AU</span>Automations</button>
         <button class="navBtn" data-nav="reports"><span class="navIco">RP</span>Reports</button>
         <button class="navBtn" data-nav="contacts"><span class="navIco">CO</span>Contacts</button>
@@ -584,6 +584,8 @@
         emailBox: "inbox",
         emailMessages: [],
         activeEmailId: null,
+        emailFromOptions: [],
+        emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
         dialerClient: null,
         crmLineReady: false,
@@ -719,7 +721,7 @@
         campaigns: "Text Campaigns",
         tasks: "Tasks",
         calendar: "Calendar",
-        documents: "Documents",
+        documents: "File Folders",
         automations: "Automations",
         reports: "Reports",
         contacts: "Contacts",
@@ -2283,7 +2285,7 @@
       }
 
       function renderDocuments() {
-        pageShell("Documents", "Upload borrower documents into the loan file with type and audit metadata.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload</button><div id="docStatus" class="statusLine"></div><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section></div>');
+        pageShell("File Folders", "Borrower loan files, folders, named documents, and audit-safe uploads.", '', '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Find borrower</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Loan file folders</h2><div id="docLeadCard" class="empty">Select a borrower.</div><div class="fieldGrid" style="margin-top:12px"><label>Folder<input id="docFolder" list="emailFolderOptions" value="General" placeholder="Conditions"></label><label>File name<input id="docDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload to folder</button><div id="docStatus" class="statusLine"></div><datalist id="emailFolderOptions">' + (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("") + '</datalist><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section></div>');
       }
       async function docSearch() {
         var q = $("docSearch").value.trim();
@@ -2304,10 +2306,23 @@
         if (!box) return;
         try {
           var data = await json("/api/leads/" + encodeURIComponent(id) + "/documents");
-          box.innerHTML = (data.documents || []).length ? (data.documents || []).map(function (d) {
-            return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(d.original_name) + '</b><div class="sub">' + esc(d.doc_type) + ' | ' + Math.round((d.size || 0) / 1024) + ' KB</div></div><div class="toolbar"><a class="btn small" href="' + esc(apiHref("/api/documents/" + encodeURIComponent(d.id) + "/download")) + '">Download</a><button class="btn small danger" data-action="delete-doc" data-id="' + esc(d.id) + '" data-lead="' + esc(id) + '" data-target="' + esc(target) + '">Delete</button></div></div></div>';
-          }).join("") : '<div class="empty">No documents uploaded yet.</div>';
+          box.innerHTML = renderDocumentFolders(data.documents || [], id, target);
         } catch (e) { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+      }
+      function renderDocumentFolders(docs, leadId, target) {
+        if (!docs.length) return '<div class="empty">No documents uploaded yet.</div>';
+        var grouped = {};
+        docs.forEach(function (d) {
+          var folder = d.folder_name || "General";
+          (grouped[folder] = grouped[folder] || []).push(d);
+        });
+        return Object.keys(grouped).sort().map(function (folder) {
+          return '<section class="item" style="display:block"><div class="toolbar" style="justify-content:space-between;margin-bottom:8px"><b>' + esc(folder) + '</b><span class="badge blue">' + grouped[folder].length + ' files</span></div><div class="list">' +
+            grouped[folder].map(function (d) {
+              var name = d.display_name || d.original_name;
+              return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(name) + '</b><div class="sub">' + esc(d.original_name) + ' | ' + esc(d.doc_type) + ' | ' + Math.round((d.size || 0) / 1024) + ' KB</div>' + (d.notes ? '<div class="sub">' + esc(d.notes) + '</div>' : '') + '</div><div class="toolbar"><button class="btn small" data-action="edit-doc" data-id="' + esc(d.id) + '" data-lead="' + esc(leadId) + '" data-target="' + esc(target) + '" data-name="' + esc(name) + '" data-folder="' + esc(folder) + '" data-notes="' + esc(d.notes || "") + '">Rename / move</button><a class="btn small" href="' + esc(apiHref("/api/documents/" + encodeURIComponent(d.id) + "/download")) + '">Download</a><button class="btn small danger" data-action="delete-doc" data-id="' + esc(d.id) + '" data-lead="' + esc(leadId) + '" data-target="' + esc(target) + '">Delete</button></div></div></div>';
+            }).join("") + '</div></section>';
+        }).join("");
       }
       async function deleteDocument(docId, leadId, target) {
         if (!docId || !confirm("Remove this uploaded document from the borrower file?")) return;
@@ -2319,15 +2334,37 @@
         if (state.selectedLead && state.selectedLead.id === leadId && target !== "docMiniList" && $("docMiniList")) await loadLeadDocs(leadId, "docMiniList");
         if (state.docLead && state.docLead.id === leadId && target !== "docList" && $("docList")) await loadLeadDocs(leadId, "docList");
       }
+      function openDocEdit(btn) {
+        openModal("Rename / move file",
+          '<label>Folder<input id="editDocFolder" list="emailFolderOptions" value="' + esc(btn.dataset.folder || "General") + '"></label>' +
+          '<label>File name<input id="editDocName" value="' + esc(btn.dataset.name || "") + '"></label>' +
+          '<label>Notes<input id="editDocNotes" value="' + esc(btn.dataset.notes || "") + '"></label>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-doc-meta" data-id="' + esc(btn.dataset.id || "") + '" data-lead="' + esc(btn.dataset.lead || "") + '" data-target="' + esc(btn.dataset.target || "") + '">Save</button></div><div id="editDocMsg" class="statusLine"></div>');
+      }
+      async function saveDocMeta(docId, leadId, target) {
+        status("editDocMsg", "Saving...");
+        await json("/api/documents/" + encodeURIComponent(docId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ display_name: inputVal("editDocName"), folder_name: inputVal("editDocFolder"), notes: inputVal("editDocNotes") })
+        });
+        closeModal();
+        showToast("File updated.");
+        if (leadId && target) await loadLeadDocs(leadId, target);
+        if (state.selectedLead && state.selectedLead.id === leadId && target !== "docMiniList" && $("docMiniList")) await loadLeadDocs(leadId, "docMiniList");
+        if (state.docLead && state.docLead.id === leadId && target !== "docList" && $("docList")) await loadLeadDocs(leadId, "docList");
+      }
       async function uploadDocument(leadId, fileId, typeId, notesId, statusId, listId) {
         var file = $(fileId).files && $(fileId).files[0];
         if (!leadId || !file) { status(statusId, "Select a lead and choose a file.", "warnText"); return; }
         status(statusId, "Uploading...");
         var type = $(typeId).value;
         var notes = notesId && $(notesId) ? $(notesId).value : "";
+        var folder = inputVal("docFolder") || "General";
+        var displayName = inputVal("docDisplayName") || file.name;
         var r = await api("/api/leads/" + encodeURIComponent(leadId) + "/documents?type=" + encodeURIComponent(type) + "&notes=" + encodeURIComponent(notes), {
           method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream", "x-filename": file.name, "x-document-type": type },
+          headers: { "Content-Type": file.type || "application/octet-stream", "x-filename": file.name, "x-document-type": type, "x-document-folder": folder, "x-document-name": displayName, "x-document-notes": notes },
           body: await file.arrayBuffer()
         });
         var data = await r.json().catch(function () { return {}; });
@@ -2624,11 +2661,16 @@
             '</section>' +
             '<section class="card pad emailReader"><div id="emailReader" class="empty">Select an email.</div></section>' +
           '</div>' +
-          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Add RESEND_WEBHOOK_SECRET in Render and Cloudflare after creating the webhook.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button></div></section><datalist id="emailContactOptions"></datalist>');
+          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Add RESEND_WEBHOOK_SECRET in Render and Cloudflare after creating the webhook.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button></div></section><datalist id="emailContactOptions"></datalist><datalist id="emailFromOptions"></datalist><datalist id="emailFolderOptions"></datalist>');
         if ($("emailSearch")) $("emailSearch").addEventListener("input", renderEmailList);
         await refreshEmailPage();
       }
       async function refreshEmailPage() {
+        var settings = await json("/api/email/settings").catch(function () { return { from: [], folders: [] }; });
+        state.emailFromOptions = settings.from || [];
+        state.emailFolderOptions = settings.folders || state.emailFolderOptions || [];
+        if ($("emailFromOptions")) $("emailFromOptions").innerHTML = (state.emailFromOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
+        if ($("emailFolderOptions")) $("emailFolderOptions").innerHTML = (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
         var contacts = await json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
         if ($("emailContactOptions")) {
           $("emailContactOptions").innerHTML = (contacts.contacts || []).filter(function (c) { return c.email; }).slice(0, 5000).map(function (c) {
@@ -2656,6 +2698,19 @@
         var bare = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
         return bare ? bare[0] : s;
       }
+      function emailListFromText(value) {
+        var found = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig) || [];
+        var seen = {};
+        return found.filter(function (email) {
+          var key = email.toLowerCase();
+          if (seen[key]) return false;
+          seen[key] = true;
+          return true;
+        });
+      }
+      function ownEmailList() {
+        return (state.emailFromOptions || []).map(emailFromText).filter(Boolean).map(function (x) { return x.toLowerCase(); });
+      }
       function emailBoxName() {
         return ({ inbox: "Inbox", sent: "Sent", all: "All mail" })[state.emailBox || "inbox"] || "Inbox";
       }
@@ -2672,7 +2727,7 @@
         });
         var q = inputVal("emailSearch").toLowerCase();
         var rows = (state.emailMessages || []).filter(function (m) {
-          var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to].join(" ").toLowerCase();
+          var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to, m.file_folder, m.discussion_file].join(" ").toLowerCase();
           return !q || hay.indexOf(q) >= 0;
         });
         if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName();
@@ -2686,6 +2741,7 @@
           return '<button class="emailRow ' + (m.id === state.activeEmailId ? 'active' : '') + '" data-action="email-open" data-id="' + esc(m.id) + '">' +
             '<div class="emailRowTop"><span class="emailSubject">' + esc(m.subject || "(no subject)") + '</span>' + emailStatusHtml(m) + '</div>' +
             '<div class="emailMeta">' + esc(contact) + ' | ' + esc(formatDateTime(m.created_at)) + '</div>' +
+            (m.file_folder ? '<div><span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span></div>' : '') +
             '<div class="emailPreview">' + esc(String(m.body || "").slice(0, 220)) + '</div>' +
           '</button>';
         }).join("");
@@ -2702,10 +2758,11 @@
         box.className = "";
         var attachments = Array.isArray(m.attachments) ? m.attachments : [];
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
+        var filedBadge = m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>';
         box.innerHTML =
-          '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div>' + emailStatusHtml(m) + '</div>' +
-          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div></div>' +
-          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-forward">Forward</button>' + leadButton + '</div>' +
+          '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
+          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div></div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button><button class="btn" data-action="email-file">File / folder</button><button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return '<span class="badge purple">' + esc(a.filename || a.name || "Attachment") + '</span>'; }).join("") + '</div>' : '') +
           '<div class="emailBodyText">' + esc(m.body || "") + '</div>';
       }
@@ -2714,21 +2771,29 @@
         var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
         var to = "";
         var cc = "";
+        var bcc = "";
+        var from = (state.emailFromOptions && state.emailFromOptions[0]) || "";
         var subject = "Quick follow-up";
         var body = "Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal";
-        if (mode === "reply" && m) {
+        if ((mode === "reply" || mode === "reply-all") && m) {
           to = m.direction === "inbound" ? emailFromText(m.from || "") : (m.email || m.to || "");
+          if (mode === "reply-all") {
+            var own = ownEmailList();
+            cc = emailListFromText([m.to || "", (m.cc || []).join(" ")].join(" "))
+              .filter(function (email) { return own.indexOf(email.toLowerCase()) < 0 && email.toLowerCase() !== String(to).toLowerCase(); })
+              .join(", ");
+          }
           subject = /^re:/i.test(m.subject || "") ? (m.subject || "") : "Re: " + (m.subject || "");
           body = "\n\n--- Original message ---\n" + String(m.body || "").slice(0, 1800);
         } else if (mode === "forward" && m) {
           subject = /^fwd:/i.test(m.subject || "") ? (m.subject || "") : "Fwd: " + (m.subject || "");
           body = "\n\n--- Forwarded message ---\nFrom: " + (m.from || "") + "\nTo: " + (m.to || "") + "\n\n" + String(m.body || "").slice(0, 2200);
         }
-        openModal(mode === "reply" ? "Reply" : mode === "forward" ? "Forward email" : "Compose email",
-          '<label>To<input id="emailTo" list="emailContactOptions" value="' + esc(to) + '" placeholder="borrower@email.com"></label>' +
+        openModal(mode === "reply" ? "Reply" : mode === "reply-all" ? "Reply all" : mode === "forward" ? "Forward email" : "Compose email",
+          '<div class="fieldGrid"><label>From<input id="emailFrom" list="emailFromOptions" value="' + esc(from) + '" placeholder="verified@yourdomain.com"></label><label>To<input id="emailTo" list="emailContactOptions" value="' + esc(to) + '" placeholder="borrower@email.com"></label></div>' +
           '<label>Subject<input id="emailSubject" value="' + esc(subject) + '"></label>' +
+          '<div class="fieldGrid"><label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label><label>BCC<input id="emailBcc" value="' + esc(bcc) + '" placeholder="hidden@email.com"></label></div>' +
           '<label>Email body<textarea id="emailBody" rows="12">' + esc(body) + '</textarea></label>' +
-          '<label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-email-page">Send email</button></div><div id="emailPageMsg" class="statusLine"></div>');
       }
       async function sendEmailPage() {
@@ -2736,12 +2801,32 @@
         var data = await json("/api/email/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: $("emailCc").value })
+          body: JSON.stringify({ from: inputVal("emailFrom"), to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: inputVal("emailCc"), bcc: inputVal("emailBcc") })
         });
         status("emailPageMsg", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
         if (data.ok) closeModal();
         state.emailBox = "sent";
         state.activeEmailId = null;
+        await refreshEmailPage();
+      }
+      function openEmailFileModal() {
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (!m) return;
+        openModal("File email",
+          '<label>Folder<input id="emailFileFolder" list="emailFolderOptions" value="' + esc(m.file_folder || "General") + '" placeholder="Loan application"></label>' +
+          '<label>Discussion / file name<input id="emailDiscussionFile" value="' + esc(m.discussion_file || m.lead_name || "") + '" placeholder="HELOC follow-up thread"></label>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-email-folder">Save filing</button></div><div id="emailFileMsg" class="statusLine"></div>');
+      }
+      async function saveEmailFolder() {
+        if (!state.activeEmailId) return;
+        status("emailFileMsg", "Saving...");
+        await json("/api/email/activity/" + encodeURIComponent(state.activeEmailId), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_folder: inputVal("emailFileFolder"), discussion_file: inputVal("emailDiscussionFile") })
+        });
+        closeModal();
+        showToast("Email filed.");
         await refreshEmailPage();
       }
       async function copyEmailWebhook() {
@@ -2973,7 +3058,10 @@
           else if (a === "email-open") { state.activeEmailId = btn.dataset.id; renderEmailList(); renderEmailReader(); }
           else if (a === "email-compose") openEmailComposer("compose");
           else if (a === "email-reply") openEmailComposer("reply");
+          else if (a === "email-reply-all") openEmailComposer("reply-all");
           else if (a === "email-forward") openEmailComposer("forward");
+          else if (a === "email-file") openEmailFileModal();
+          else if (a === "save-email-folder") await saveEmailFolder();
           else if (a === "copy-email-webhook") await copyEmailWebhook();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
@@ -3093,6 +3181,8 @@
           else if (a === "doc-search") await docSearch();
           else if (a === "doc-select") await docSelect(btn.dataset.id);
           else if (a === "doc-upload") await uploadDocument(state.docLead && state.docLead.id, "docFile", "docType", "docNotes", "docStatus", "docList");
+          else if (a === "edit-doc") openDocEdit(btn);
+          else if (a === "save-doc-meta") await saveDocMeta(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
           else if (a === "delete-doc") await deleteDocument(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
           else if (a === "mode") { await setMessagingMode(btn.dataset.mode); await loadSettings(); }
           else if (a === "save-vendor") await saveVendor(btn.dataset.kind);

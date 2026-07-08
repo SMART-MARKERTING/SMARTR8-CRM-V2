@@ -41,11 +41,13 @@ export function resendApiConfigured(): boolean {
 export async function sendEmail(opts: {
   to: string;
   subject: string;
+  from?: string;
   html?: string;
   text?: string;
   replyTo?: string;
   /** Carbon-copy recipients (one address or a list) — e.g. a co-borrower or a partner. */
   cc?: string[];
+  bcc?: string[];
   /** File attachments: filename + base64-encoded content (what Resend's API expects). */
   attachments?: Array<{ filename: string; content: string }>;
   /** Extra MIME headers, e.g. List-Unsubscribe / List-Unsubscribe-Post for
@@ -58,12 +60,14 @@ export async function sendEmail(opts: {
   if (!opts.to) return { ok: false, detail: "no recipient" };
 
   const body: Record<string, unknown> = {
-    from: config.email.fromEmail,
+    from: opts.from || config.email.fromEmail,
     to: [opts.to],
     subject: opts.subject,
   };
   const cc = (opts.cc ?? []).map((s) => s.trim()).filter(Boolean);
+  const bcc = (opts.bcc ?? []).map((s) => s.trim()).filter(Boolean);
   if (cc.length) body.cc = cc;
+  if (bcc.length) body.bcc = bcc;
   if (opts.attachments && opts.attachments.length) {
     body.attachments = opts.attachments
       .filter((a) => a && a.filename && a.content)
