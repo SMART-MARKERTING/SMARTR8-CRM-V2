@@ -646,6 +646,7 @@
         automationDraftSteps: [],
         emailBox: "inbox",
         emailMessages: [],
+        emailMessageState: {},
         activeEmailId: null,
         emailFromOptions: [],
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
@@ -3148,7 +3149,7 @@
         pageShell("Email", "Mailbox for borrower replies, sent mail, and Resend inbound email.",
           '<button class="btn primary" data-action="email-compose">Compose</button><button class="btn" data-action="refresh-email-page">Refresh</button>',
           '<div class="emailShell">' +
-            '<section class="card"><div class="cardHead"><div><h2>Mailbox</h2><div id="emailCounter" class="sub">Loading...</div></div><div class="toolbar"><button class="btn small" data-action="email-box" data-box="inbox">Inbox</button><button class="btn small" data-action="email-box" data-box="sent">Sent</button><button class="btn small" data-action="email-box" data-box="all">All</button></div></div>' +
+            '<section class="card"><div class="cardHead"><div><h2>Mailbox</h2><div id="emailCounter" class="sub">Loading...</div></div><div class="toolbar"><button class="btn small" data-action="email-box" data-box="inbox">Inbox</button><button class="btn small" data-action="email-box" data-box="sent">Sent</button><button class="btn small" data-action="email-box" data-box="archived">Archived</button><button class="btn small" data-action="email-box" data-box="trash">Trash</button><button class="btn small" data-action="email-box" data-box="all">All</button></div></div>' +
               '<div style="padding:10px;border-bottom:1px solid var(--line)"><input id="emailSearch" type="search" placeholder="Search sender, lead, subject..."></div>' +
               '<div id="emailList" class="emailList"><div class="spinner"></div></div>' +
             '</section>' +
@@ -3162,6 +3163,8 @@
         var settings = await json("/api/email/settings").catch(function () { return { from: [], folders: [] }; });
         state.emailFromOptions = settings.from || [];
         state.emailFolderOptions = settings.folders || state.emailFolderOptions || [];
+        var messageState = await json("/api/email/message-state").catch(function () { return { state: {} }; });
+        state.emailMessageState = messageState.state || {};
         if ($("emailFromOptions")) $("emailFromOptions").innerHTML = (state.emailFromOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
         if ($("emailFolderOptions")) $("emailFolderOptions").innerHTML = (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
         var contacts = await json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
@@ -3285,6 +3288,34 @@
           attachments: Array.isArray(row.attachments) ? row.attachments : []
         };
       }
+      function emailStateForId(id) {
+        return (state.emailMessageState || {})[String(id || "")] || {};
+      }
+      function emailWithMailboxState(m) {
+        var row = Object.assign({}, m || {});
+        var remote = emailStateForId(row.id);
+        var meta = row.meta || {};
+        row.email_archived_at = row.email_archived_at || row.archived_at || meta.email_archived_at || remote.archived_at || "";
+        row.deleted_at = row.deleted_at || remote.deleted_at || "";
+        return row;
+      }
+      function emailVisibleInBox(m) {
+        var box = state.emailBox || "inbox";
+        var archived = Boolean(m.email_archived_at);
+        var deleted = Boolean(m.deleted_at);
+        if (box === "trash") return deleted;
+        if (deleted) return false;
+        if (box === "archived") return archived;
+        if (box === "inbox") return m.direction === "inbound" && !archived;
+        if (box === "sent") return m.direction === "outbound" && !archived;
+        return true;
+      }
+      function applyEmailMailboxState(rows) {
+        return (rows || []).map(emailWithMailboxState).filter(emailVisibleInBox);
+      }
+      function emailIsApiOnly(m) {
+        return Boolean(m && (m.resend_api || m.resend_received_api || /^resend/i.test(String(m.id || ""))));
+      }
       function mergeEmailMessages(localRows, sentRows, receivedRows) {
         var seenResend = {};
         (localRows || []).forEach(function (m) {
@@ -3296,7 +3327,7 @@
         var extraReceived = (receivedRows || []).map(resendReceivedMessage).filter(function (m) {
           return m.resend_id && !seenResend[m.resend_id];
         });
-        return (localRows || []).concat(extraReceived, extraSent).sort(function (a, b) {
+        return applyEmailMailboxState((localRows || []).concat(extraReceived, extraSent)).sort(function (a, b) {
           return dateMillis(b.created_at) - dateMillis(a.created_at);
         });
       }
@@ -3321,7 +3352,7 @@
         return (state.emailFromOptions || []).map(emailFromText).filter(Boolean).map(function (x) { return x.toLowerCase(); });
       }
       function emailBoxName() {
-        return ({ inbox: "Inbox", sent: "Sent", all: "All mail" })[state.emailBox || "inbox"] || "Inbox";
+        return ({ inbox: "Inbox", sent: "Sent", archived: "Archived mail", trash: "Trash", all: "All mail" })[state.emailBox || "inbox"] || "Inbox";
       }
       function emailStatusHtml(m) {
         var inbound = m.direction === "inbound";
@@ -3371,8 +3402,12 @@
         box.className = "";
         var attachments = Array.isArray(m.attachments) ? m.attachments : [];
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
-        var filedBadge = (m.resend_api || m.resend_received_api) ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>');
+        var mailboxBadge = m.deleted_at ? '<span class="badge red">Trash</span>' : (m.email_archived_at ? '<span class="badge amber">Archived</span>' : "");
+        var filedBadge = mailboxBadge + ((m.resend_api || m.resend_received_api) ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>'));
         var fileButton = (m.resend_api || m.resend_received_api) ? "" : '<button class="btn" data-action="email-file">File / folder</button>';
+        var mailboxButtons = m.deleted_at
+          ? '<button class="btn" data-action="email-restore">Restore</button>'
+          : (m.email_archived_at ? '<button class="btn" data-action="email-unarchive">Unarchive</button>' : '<button class="btn" data-action="email-archive">Archive</button>') + '<button class="btn danger" data-action="email-delete">Delete</button>';
         var resendButton = m.resend_received_api
           ? '<button class="btn" data-action="email-refresh-resend">Load received content</button>'
           : m.resend_api
@@ -3398,9 +3433,37 @@
         box.innerHTML =
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
           '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + receivedForLine + htmlFormatLine + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + resendLine + '</div>' +
-          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + mailboxButtons + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a, m.direction !== "inbound"); }).join("") + '</div>' : '') +
           '<div class="emailBodyText">' + esc(m.body || (m.direction === "inbound" ? "Use Load received content to fetch the full inbound body from Resend." : m.resend_api ? "This sent email came from Resend's team sent list. Use Load Resend content to fetch the full body." : "")) + '</div>';
+      }
+      async function setEmailMailboxState(action) {
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (!m) return;
+        if (action === "delete" && !confirm("Move this email to Trash?")) return;
+        if (emailIsApiOnly(m)) {
+          await json("/api/email/message-state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: m.id, action: action })
+          });
+        } else {
+          var path = "/api/email/activity/" + encodeURIComponent(m.id);
+          var method = "POST";
+          if (action === "archive") path += "/archive";
+          else if (action === "unarchive") path += "/unarchive";
+          else if (action === "restore") path += "/restore";
+          else if (action === "delete") method = "DELETE";
+          else return;
+          await json(path, {
+            method: method,
+            headers: { "Content-Type": "application/json" },
+            body: method === "DELETE" ? undefined : "{}"
+          });
+        }
+        showToast(action === "delete" ? "Email moved to Trash." : action === "archive" ? "Email archived." : action === "unarchive" ? "Email moved back." : "Email restored.");
+        state.activeEmailId = null;
+        await refreshEmailPage();
       }
       function openEmailComposer(mode) {
         mode = mode || "compose";
@@ -4029,6 +4092,10 @@
           else if (a === "email-reply-all") openEmailComposer("reply-all");
           else if (a === "email-forward") openEmailComposer("forward");
           else if (a === "email-file") openEmailFileModal();
+          else if (a === "email-archive") await setEmailMailboxState("archive");
+          else if (a === "email-unarchive") await setEmailMailboxState("unarchive");
+          else if (a === "email-delete") await setEmailMailboxState("delete");
+          else if (a === "email-restore") await setEmailMailboxState("restore");
           else if (a === "save-email-folder") await saveEmailFolder();
           else if (a === "copy-email-webhook") await copyEmailWebhook();
           else if (a === "check-resend-webhook") await checkResendWebhook();

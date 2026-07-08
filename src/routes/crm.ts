@@ -3770,24 +3770,135 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
   });
 });
 
+const EMAIL_MESSAGE_STATE_META_KEY = "email_message_state_v1";
+const EMAIL_BOXES = new Set(["inbox", "sent", "archived", "trash", "all"]);
+
+type EmailMessageStateRecord = {
+  archived_at?: string;
+  deleted_at?: string;
+  updated_at?: string;
+  by?: string;
+};
+
+type EmailActivityRow = {
+  id: string;
+  lead_id: string;
+  type: string;
+  direction: string | null;
+  subject: string | null;
+  body: string | null;
+  status: string | null;
+  meta: string | null;
+  deleted_at: number | null;
+};
+
+function emailMessageStateMap(): Record<string, EmailMessageStateRecord> {
+  const raw = getMeta(EMAIL_MESSAGE_STATE_META_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, EmailMessageStateRecord>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveEmailMessageStateMap(map: Record<string, EmailMessageStateRecord>): void {
+  setMeta(EMAIL_MESSAGE_STATE_META_KEY, JSON.stringify(map));
+}
+
+function resendMailboxStateId(value: unknown): string {
+  return cleanText(value).slice(0, 220);
+}
+
+function isResendMailboxStateId(id: string): boolean {
+  return id.startsWith("resend:") || id.startsWith("resend-received:");
+}
+
+function setResendMailboxState(req: Request, id: string, action: string): EmailMessageStateRecord {
+  const map = emailMessageStateMap();
+  const now = new Date().toISOString();
+  const current: EmailMessageStateRecord = { ...(map[id] || {}) };
+  if (action === "archive") {
+    current.archived_at = current.archived_at || now;
+    delete current.deleted_at;
+  } else if (action === "unarchive") {
+    delete current.archived_at;
+  } else if (action === "delete") {
+    current.deleted_at = current.deleted_at || now;
+  } else if (action === "restore") {
+    delete current.deleted_at;
+  }
+  current.updated_at = now;
+  current.by = leadActionAuthor(req);
+  if (!current.archived_at && !current.deleted_at) delete map[id];
+  else map[id] = current;
+  saveEmailMessageStateMap(map);
+  return current;
+}
+
+function emailActivityForRequest(req: Request, res: Response, allowDeleted = false): { row: EmailActivityRow; meta: Record<string, unknown>; lead: Lead } | null {
+  const row = db
+    .prepare(`SELECT * FROM activities WHERE id = ? ${allowDeleted ? "" : "AND deleted_at IS NULL"}`)
+    .get(req.params.activityId) as EmailActivityRow | undefined;
+  if (!row || row.type !== "email") {
+    res.status(404).json({ error: "email activity not found" });
+    return null;
+  }
+  const lead = getLead(row.lead_id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return null;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return null;
+  }
+  return { row, meta: safeMeta(row.meta) || {}, lead };
+}
+
+crmRouter.get("/api/email/message-state", requirePass, (_req, res) => {
+  res.json({ ok: true, state: emailMessageStateMap() });
+});
+
+crmRouter.post("/api/email/message-state", requirePass, (req, res) => {
+  const id = resendMailboxStateId(req.body?.id);
+  const action = cleanText(req.body?.action).toLowerCase();
+  if (!id || !isResendMailboxStateId(id)) {
+    res.status(400).json({ error: "message id must be a Resend mailbox id" });
+    return;
+  }
+  if (!["archive", "unarchive", "delete", "restore"].includes(action)) {
+    res.status(400).json({ error: "action must be archive, unarchive, delete, or restore" });
+    return;
+  }
+  const state = setResendMailboxState(req, id, action);
+  res.json({ ok: true, id, action, state });
+});
+
 crmRouter.get("/api/email/activity", requirePass, (req, res) => {
-  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
-  const box = typeof req.query.box === "string" ? req.query.box : "all";
+  const parsedLimit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+  const limit = Math.min(Math.max(parsedLimit || 100, 1), 500);
+  const requestedBox = typeof req.query.box === "string" ? req.query.box : "all";
+  const box = EMAIL_BOXES.has(requestedBox) ? requestedBox : "all";
   const directionWhere = box === "inbox" ? "AND a.direction = 'inbound'" : box === "sent" ? "AND a.direction = 'outbound'" : "";
+  const scanLimit = Math.min(Math.max(limit * 8, 500), 2500);
   const owner = ownerScope(req);
   const rows = db
     .prepare(
-      `SELECT a.id, a.created_at, a.subject, a.body, a.status, a.meta, a.direction, a.channel,
+      `SELECT a.id, a.created_at, a.subject, a.body, a.status, a.meta, a.direction, a.channel, a.deleted_at,
               l.id AS lead_id, l.first_name, l.last_name, l.email, l.phone
          FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
-        WHERE a.deleted_at IS NULL
-          AND a.type = 'email'
+        WHERE a.type = 'email'
           ${directionWhere}
           ${owner ? "AND l.owner_user_id = @owner" : ""}
         ORDER BY a.created_at DESC
-        LIMIT @limit`,
+        LIMIT @scanLimit`,
     )
-    .all({ owner: owner || "", limit: Math.min(limit || 100, 500) }) as Array<{
+    .all({ owner: owner || "", scanLimit }) as Array<{
     id: string;
     created_at: number;
     subject: string | null;
@@ -3796,16 +3907,30 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
     meta: string | null;
     direction: string | null;
     channel: string | null;
+    deleted_at: number | null;
     lead_id: string | null;
     first_name: string | null;
     last_name: string | null;
     email: string | null;
     phone: string | null;
   }>;
+  const visibleRows = rows
+    .filter((row) => {
+      const meta = safeMeta(row.meta);
+      const archived = typeof meta?.email_archived_at === "string" && Boolean(meta.email_archived_at);
+      const deleted = row.deleted_at !== null && row.deleted_at !== undefined;
+      if (box === "trash") return deleted;
+      if (deleted) return false;
+      if (box === "archived") return archived;
+      if (box === "inbox") return row.direction === "inbound" && !archived;
+      if (box === "sent") return row.direction === "outbound" && !archived;
+      return true;
+    })
+    .slice(0, limit);
   res.json({
     ok: true,
     box,
-    emails: rows.map((row) => {
+    emails: visibleRows.map((row) => {
       const meta = safeMeta(row.meta);
       const inbound = row.direction === "inbound";
       const toList = Array.isArray(meta?.to) ? meta.to.map((v) => String(v)).filter(Boolean) : [];
@@ -3838,6 +3963,8 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
         last_event: typeof meta?.last_event === "string" ? meta.last_event : "",
         resend_refreshed_at: typeof meta?.resend_refreshed_at === "string" ? meta.resend_refreshed_at : "",
         scheduled_at: typeof meta?.scheduled_at === "string" ? meta.scheduled_at : "",
+        email_archived_at: typeof meta?.email_archived_at === "string" ? meta.email_archived_at : "",
+        deleted_at: row.deleted_at,
         file_folder: typeof meta?.file_folder === "string" ? meta.file_folder : "",
         discussion_file: typeof meta?.discussion_file === "string" ? meta.discussion_file : "",
         attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
@@ -3846,6 +3973,81 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
       };
     }),
   });
+});
+
+crmRouter.post("/api/email/activity/:activityId/archive", requirePass, (req, res) => {
+  const found = emailActivityForRequest(req, res);
+  if (!found) return;
+  const meta = { ...found.meta };
+  const now = new Date().toISOString();
+  meta.email_archived_at = typeof meta.email_archived_at === "string" ? meta.email_archived_at : now;
+  meta.email_archived_by = leadActionAuthor(req);
+  delete meta.email_unarchived_at;
+  db.prepare(`UPDATE activities SET meta = ? WHERE id = ?`).run(JSON.stringify(meta), found.row.id);
+  logActivity(found.lead.id, {
+    type: "email_archived",
+    direction: "system",
+    channel: "email",
+    subject: "Email archived",
+    body: found.row.subject ? `Archived email: ${found.row.subject}` : "Archived email.",
+    status: "archived",
+    meta: { sourceActivityId: found.row.id },
+  });
+  res.json({ ok: true, activityId: found.row.id, archived_at: meta.email_archived_at });
+});
+
+crmRouter.post("/api/email/activity/:activityId/unarchive", requirePass, (req, res) => {
+  const found = emailActivityForRequest(req, res);
+  if (!found) return;
+  const meta = { ...found.meta };
+  delete meta.email_archived_at;
+  delete meta.email_archived_by;
+  meta.email_unarchived_at = new Date().toISOString();
+  meta.email_unarchived_by = leadActionAuthor(req);
+  db.prepare(`UPDATE activities SET meta = ? WHERE id = ?`).run(JSON.stringify(meta), found.row.id);
+  logActivity(found.lead.id, {
+    type: "email_unarchived",
+    direction: "system",
+    channel: "email",
+    subject: "Email unarchived",
+    body: found.row.subject ? `Moved email back: ${found.row.subject}` : "Moved email back from archive.",
+    status: "active",
+    meta: { sourceActivityId: found.row.id },
+  });
+  res.json({ ok: true, activityId: found.row.id });
+});
+
+crmRouter.delete("/api/email/activity/:activityId", requirePass, (req, res) => {
+  const found = emailActivityForRequest(req, res);
+  if (!found) return;
+  const deletedAt = Date.now();
+  db.prepare(`UPDATE activities SET deleted_at = COALESCE(deleted_at, ?) WHERE id = ?`).run(deletedAt, found.row.id);
+  logActivity(found.lead.id, {
+    type: "email_deleted",
+    direction: "system",
+    channel: "email",
+    subject: "Email moved to Trash",
+    body: found.row.subject ? `Moved email to Trash: ${found.row.subject}` : "Moved email to Trash.",
+    status: "deleted",
+    meta: { sourceActivityId: found.row.id, deleted_at: deletedAt, deleted_by: leadActionAuthor(req) },
+  });
+  res.json({ ok: true, activityId: found.row.id, deleted_at: deletedAt });
+});
+
+crmRouter.post("/api/email/activity/:activityId/restore", requirePass, (req, res) => {
+  const found = emailActivityForRequest(req, res, true);
+  if (!found) return;
+  db.prepare(`UPDATE activities SET deleted_at = NULL WHERE id = ?`).run(found.row.id);
+  logActivity(found.lead.id, {
+    type: "email_restored",
+    direction: "system",
+    channel: "email",
+    subject: "Email restored",
+    body: found.row.subject ? `Restored email: ${found.row.subject}` : "Restored email from Trash.",
+    status: "restored",
+    meta: { sourceActivityId: found.row.id, restored_by: leadActionAuthor(req) },
+  });
+  res.json({ ok: true, activityId: found.row.id });
 });
 
 crmRouter.patch("/api/email/activity/:activityId", requirePass, (req, res) => {
