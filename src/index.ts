@@ -53,6 +53,15 @@ app.post(
   express.raw({ type: "application/json", limit: "16mb" }),
   handleResendInboundWebhook,
 );
+app.get(["/api/webhooks/resend", "/v2/api/webhooks/resend"], (_req, res) => {
+  res.json({
+    ok: true,
+    route: "/api/webhooks/resend",
+    method: "POST",
+    event: "email.received",
+    time: new Date().toISOString(),
+  });
+});
 app.use(express.json({
   limit: "16mb",
   verify: (req, _res, buf) => {

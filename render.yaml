@@ -63,5 +63,11 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: EMAIL_FROM_ALIASES
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
       - key: VOICEMAIL_AUDIO_URL
         sync: false

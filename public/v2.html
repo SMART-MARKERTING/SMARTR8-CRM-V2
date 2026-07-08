@@ -3437,24 +3437,45 @@
         }
         var hooks = data.webhooks || [];
         var match = hooks.find(function (h) { return h.endpoint_matches_this_app; });
+        var hits = data.recent_webhook_hits || [];
+        var lastHit = hits[0] || null;
+        var failedHit = hits.find(function (h) { return h && !h.ok; });
+        var mxRows = data.inbound_mx || [];
+        var missingMx = mxRows.find(function (row) { return row && !row.resendInbound; });
         var received = Number(data.recent_received_count || 0);
         var sent = Number(data.recent_sent_count || 0);
         var diagnosis = "Resend inbound looks connected.";
         if (!data.resend_api_key_set) diagnosis = "RESEND_API_KEY is missing on the server.";
         else if (!data.received_ok) diagnosis = "Resend Receiving API failed. Check the API key permissions/account.";
+        else if (failedHit && /signature|svix/i.test(failedHit.reason || "")) diagnosis = "Resend is hitting this app, but webhook signature verification is failing. Copy the signing_secret from this exact Resend webhook into RESEND_WEBHOOK_SECRET and redeploy.";
+        else if (missingMx && !received) diagnosis = "This email domain is not routing inbound mail to Resend: " + missingMx.domain + ". Add/verify the Resend inbound MX record for that domain.";
         else if (!received) diagnosis = "Resend has 0 received emails. Check the receiving domain MX record, receiving address, or forwarding into Resend.";
+        else if (!hits.length) diagnosis = "Resend has received emails, but this server has not seen a webhook since the last deploy. Check the webhook URL and email.received event in Resend.";
         else if (!match) diagnosis = "Resend has received emails, but no webhook endpoint matches this app. Add the webhook URL below in Resend.";
         else if (!match.has_email_received) diagnosis = "Webhook exists, but email.received is not selected.";
         else if (!match.signing_secret_matches_env) diagnosis = "Webhook exists, but RESEND_WEBHOOK_SECRET does not match the Resend signing_secret.";
+        var mxLine = mxRows.length
+          ? mxRows.map(function (row) {
+              var records = (row.records || []).map(function (r) { return r.priority + " " + r.exchange; }).join(", ");
+              return row.domain + " -> " + (records || row.error || "no MX");
+            }).join(" / ")
+          : "No configured email domain found from EMAIL_FROM, aliases, or EMAIL_REPLY_TO.";
+        var lastHitLine = lastHit
+          ? [lastHit.ok ? "ok" : "failed", lastHit.reason || "", lastHit.type || "", lastHit.emailId || "", lastHit.at || ""].filter(Boolean).join(" ")
+          : "none since last deploy";
+        var secretSelfTest = data.resend_webhook_secret_self_test === null ? "not set" : (data.resend_webhook_secret_self_test ? "passes" : "fails");
         var lines = [
           diagnosis,
           "API key: " + (data.resend_api_key_set ? "set" : "missing"),
           "Webhook secret env: " + (data.resend_webhook_secret_set ? "set" : "missing"),
+          "Secret self-test: " + secretSelfTest,
           "Webhook URL: " + (match ? "matches this app" : "not found in Resend"),
           "email.received event: " + (match && match.has_email_received ? "subscribed" : "missing"),
           "Signing secret match: " + (match && match.signing_secret_matches_env ? "yes" : "no"),
           "Recent received emails in Resend: " + received,
-          "Recent sent emails in Resend: " + sent
+          "Recent sent emails in Resend: " + sent,
+          "Inbound MX: " + mxLine,
+          "Last webhook hit: " + lastHitLine
         ];
         if (!hooks.length && data.webhooks_error) lines.push("Webhook API error: " + data.webhooks_error);
         if (data.received_error) lines.push("Received email API error: " + data.received_error);

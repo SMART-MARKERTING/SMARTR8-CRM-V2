@@ -23,6 +23,24 @@ export interface StoreReceivedEmailResult {
   error?: string;
 }
 
+export interface ResendInboundWebhookHit {
+  at: string;
+  ok: boolean;
+  status: number;
+  reason: string;
+  type: string | null;
+  emailId: string | null;
+  from: string | null;
+  to: string[];
+  hasSvixHeaders: boolean;
+  stored?: boolean;
+  duplicate?: boolean;
+  leadId?: string;
+  activityId?: string;
+}
+
+const recentWebhookHits: ResendInboundWebhookHit[] = [];
+
 function headerValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || "" : value || "";
 }
@@ -35,7 +53,11 @@ function rawPayload(req: Request): string {
 
 function decodeSvixSecret(secret: string): Buffer {
   const cleaned = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : "";
-  if (cleaned) return Buffer.from(cleaned, "base64");
+  if (cleaned) {
+    const normalized = cleaned.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return Buffer.from(padded, "base64");
+  }
   return Buffer.from(secret, "utf8");
 }
 
@@ -45,22 +67,27 @@ function safeEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function verifySvixSignature(req: Request, payload: string): boolean {
+function verifySvixSignatureHeaders(
+  headers: { id?: string; timestamp?: string; signature?: string },
+  payload: string,
+  now = Date.now(),
+): { ok: boolean; reason: string; hasSvixHeaders: boolean } {
   const secret = config.email.resendWebhookSecret;
   if (!secret) {
     log.warn("RESEND_WEBHOOK_SECRET is not set; accepting Resend inbound webhook without signature verification");
-    return true;
+    return { ok: true, reason: "secret-not-set", hasSvixHeaders: Boolean(headers.id || headers.timestamp || headers.signature) };
   }
 
-  const id = headerValue(req.headers["svix-id"] as string | string[] | undefined);
-  const timestamp = headerValue(req.headers["svix-timestamp"] as string | string[] | undefined);
-  const signature = headerValue(req.headers["svix-signature"] as string | string[] | undefined);
-  if (!id || !timestamp || !signature) return false;
+  const id = headers.id || "";
+  const timestamp = headers.timestamp || "";
+  const signature = headers.signature || "";
+  const hasSvixHeaders = Boolean(id || timestamp || signature);
+  if (!id || !timestamp || !signature) return { ok: false, reason: "missing-svix-headers", hasSvixHeaders };
 
   const sentAt = Number(timestamp);
-  if (!Number.isFinite(sentAt)) return false;
-  const driftSeconds = Math.abs(Date.now() / 1000 - sentAt);
-  if (driftSeconds > 5 * 60) return false;
+  if (!Number.isFinite(sentAt)) return { ok: false, reason: "bad-svix-timestamp", hasSvixHeaders };
+  const driftSeconds = Math.abs(now / 1000 - sentAt);
+  if (driftSeconds > 5 * 60) return { ok: false, reason: "stale-svix-timestamp", hasSvixHeaders };
 
   const signedContent = `${id}.${timestamp}.${payload}`;
   const expected = createHmac("sha256", decodeSvixSecret(secret)).update(signedContent).digest("base64");
@@ -70,7 +97,19 @@ function verifySvixSignature(req: Request, payload: string): boolean {
     .map((part) => part.trim())
     .filter(Boolean)
     .filter((part) => part !== "v1");
-  return candidates.some((candidate) => safeEqual(candidate, expected));
+  const ok = candidates.some((candidate) => safeEqual(candidate, expected));
+  return { ok, reason: ok ? "verified" : "signature-mismatch", hasSvixHeaders };
+}
+
+function verifySvixSignature(req: Request, payload: string): { ok: boolean; reason: string; hasSvixHeaders: boolean } {
+  return verifySvixSignatureHeaders(
+    {
+      id: headerValue(req.headers["svix-id"] as string | string[] | undefined),
+      timestamp: headerValue(req.headers["svix-timestamp"] as string | string[] | undefined),
+      signature: headerValue(req.headers["svix-signature"] as string | string[] | undefined),
+    },
+    payload,
+  );
 }
 
 function parseJson(payload: string): ResendWebhookEvent | null {
@@ -135,6 +174,36 @@ function asString(value: unknown): string {
 
 function mergeReceived(data: Record<string, unknown>, fetched: ResendReceivedEmail | null): Record<string, unknown> {
   return { ...data, ...(fetched || {}) };
+}
+
+function eventSummary(event: ResendWebhookEvent | null): Pick<ResendInboundWebhookHit, "type" | "emailId" | "from" | "to"> {
+  const data = event?.data || {};
+  return {
+    type: event?.type || null,
+    emailId: asString(data.email_id || data.id) || null,
+    from: addressToString(data.from) || null,
+    to: addressList(data.to),
+  };
+}
+
+function recordWebhookHit(hit: Omit<ResendInboundWebhookHit, "at">): void {
+  recentWebhookHits.unshift({ at: new Date().toISOString(), ...hit });
+  if (recentWebhookHits.length > 25) recentWebhookHits.pop();
+}
+
+export function getRecentResendInboundWebhookHits(): ResendInboundWebhookHit[] {
+  return recentWebhookHits.slice();
+}
+
+export function selfTestResendWebhookSignature(): boolean | null {
+  if (!config.email.resendWebhookSecret) return null;
+  const payload = `{"type":"email.received","data":{"email_id":"self-test"}}`;
+  const id = "msg_self_test";
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = createHmac("sha256", decodeSvixSecret(config.email.resendWebhookSecret))
+    .update(`${id}.${timestamp}.${payload}`)
+    .digest("base64");
+  return verifySvixSignatureHeaders({ id, timestamp, signature: `v1,${signature}` }, payload).ok;
 }
 
 function inboundAlreadyStored(emailId: string, messageId: string): boolean {
@@ -215,17 +284,43 @@ export async function storeReceivedEmail(
 
 export async function handleResendInboundWebhook(req: Request, res: Response): Promise<void> {
   const payload = rawPayload(req);
-  if (!verifySvixSignature(req, payload)) {
+  const verification = verifySvixSignature(req, payload);
+  if (!verification.ok) {
+    const summary = eventSummary(parseJson(payload));
+    recordWebhookHit({
+      ok: false,
+      status: 401,
+      reason: verification.reason,
+      hasSvixHeaders: verification.hasSvixHeaders,
+      ...summary,
+    });
     res.status(401).json({ error: "invalid Resend webhook signature" });
     return;
   }
 
   const event = parseJson(payload);
   if (!event) {
+    recordWebhookHit({
+      ok: false,
+      status: 400,
+      reason: "invalid-json",
+      hasSvixHeaders: verification.hasSvixHeaders,
+      type: null,
+      emailId: null,
+      from: null,
+      to: [],
+    });
     res.status(400).json({ error: "invalid JSON webhook payload" });
     return;
   }
   if (event.type !== "email.received") {
+    recordWebhookHit({
+      ok: true,
+      status: 200,
+      reason: "ignored-event-type",
+      hasSvixHeaders: verification.hasSvixHeaders,
+      ...eventSummary(event),
+    });
     res.json({ ok: true, ignored: true, type: event.type || null });
     return;
   }
@@ -235,8 +330,26 @@ export async function handleResendInboundWebhook(req: Request, res: Response): P
     verified: Boolean(config.email.resendWebhookSecret),
   });
   if (!result.ok) {
+    recordWebhookHit({
+      ok: false,
+      status: 400,
+      reason: result.error || "store-failed",
+      hasSvixHeaders: verification.hasSvixHeaders,
+      ...eventSummary(event),
+    });
     res.status(400).json({ error: result.error || "received email could not be stored", emailId: result.emailId || null });
     return;
   }
+  recordWebhookHit({
+    ok: true,
+    status: 200,
+    reason: result.duplicate ? "duplicate" : "stored",
+    hasSvixHeaders: verification.hasSvixHeaders,
+    stored: Boolean(result.stored),
+    duplicate: Boolean(result.duplicate),
+    leadId: result.leadId,
+    activityId: result.activityId,
+    ...eventSummary(event),
+  });
   res.json(result);
 }

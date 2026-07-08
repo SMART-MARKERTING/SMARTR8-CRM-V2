@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { resolveMx } from "dns/promises";
 import path from "path";
 import { Router, Request, Response, raw } from "express";
 import { config } from "../config";
@@ -58,7 +59,7 @@ import {
   updateScheduledEmail,
   cancelScheduledEmail,
 } from "../services/email";
-import { storeReceivedEmail } from "../services/resendInbound";
+import { getRecentResendInboundWebhookHits, selfTestResendWebhookSignature, storeReceivedEmail } from "../services/resendInbound";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3159,6 +3160,51 @@ function selectedEmailFrom(raw: unknown): string | undefined {
   return allowed.some((item) => item.toLowerCase() === requested.toLowerCase()) ? requested : undefined;
 }
 
+function emailDomainsFromText(raw: unknown): string[] {
+  const matches = String(raw || "").match(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/gi) || [];
+  return matches
+    .map((email) => email.split("@").pop()?.toLowerCase().replace(/[>\])}.,;:]+$/g, "") || "")
+    .filter(Boolean);
+}
+
+function configuredEmailDomains(): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const source of [config.email.fromEmail, config.email.fromAliases, config.email.replyTo]) {
+    for (const domain of emailDomainsFromText(source)) {
+      if (!seen.has(domain)) {
+        seen.add(domain);
+        out.push(domain);
+      }
+    }
+  }
+  return out;
+}
+
+async function emailMxDiagnostics(domains: string[]): Promise<Array<{
+  domain: string;
+  records: Array<{ exchange: string; priority: number }>;
+  resendInbound: boolean;
+  error?: string;
+}>> {
+  return Promise.all(
+    domains.map(async (domain) => {
+      try {
+        const records = (await resolveMx(domain))
+          .map((row) => ({ exchange: row.exchange.toLowerCase(), priority: row.priority }))
+          .sort((a, b) => a.priority - b.priority || a.exchange.localeCompare(b.exchange));
+        return {
+          domain,
+          records,
+          resendInbound: records.some((row) => row.exchange === "inbound-smtp.us-east-1.amazonaws.com"),
+        };
+      } catch (err) {
+        return { domain, records: [], resendInbound: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }),
+  );
+}
+
 /** Validate attachments: [{ filename, content(base64) }]. Caps total size (~10MB base64). */
 function parseAttachments(raw: unknown): Array<{ filename: string; content: string }> {
   if (!Array.isArray(raw)) return [];
@@ -3574,6 +3620,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
   const expectedWebhook = "https://loangenius-v2.onrender.com/api/webhooks/resend";
   const mountedWebhook = `${mountedBase}/api/webhooks/resend`;
   const rootWebhook = `${req.protocol}://${req.get("host")}/api/webhooks/resend`;
+  const domains = configuredEmailDomains();
   const list = await listResendWebhooks();
   const enriched = await Promise.all(
     list.webhooks.slice(0, 25).map(async (hook) => {
@@ -3596,10 +3643,16 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
   );
   const received = await listReceivedEmails(10);
   const sent = await listSentEmails({ limit: 10 });
+  const mx = await emailMxDiagnostics(domains);
   res.json({
     ok: true,
     resend_api_key_set: Boolean(config.email.resendApiKey),
     resend_webhook_secret_set: Boolean(config.email.resendWebhookSecret),
+    resend_webhook_secret_self_test: selfTestResendWebhookSignature(),
+    email_from: config.email.fromEmail || "",
+    email_reply_to: config.email.replyTo || "",
+    configured_email_domains: domains,
+    inbound_mx: mx,
     expected_webhook_url: expectedWebhook,
     alternate_webhook_urls: [mountedWebhook, rootWebhook].filter((url, index, list) => url && list.indexOf(url) === index && url !== expectedWebhook),
     root_webhook_url: rootWebhook,
@@ -3627,6 +3680,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
       last_event: email.last_event || "",
       created_at: email.created_at || "",
     })),
+    recent_webhook_hits: getRecentResendInboundWebhookHits(),
   });
 });
 
