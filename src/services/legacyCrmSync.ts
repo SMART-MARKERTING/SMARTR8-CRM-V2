@@ -4,6 +4,7 @@ import { toE164 } from "../util/phone";
 import { LeadStatus } from "./leads";
 
 type JsonObject = Record<string, unknown>;
+type SyncLeadRow = JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null };
 
 export interface LegacyCrmSyncPayload {
   eventId?: string;
@@ -90,17 +91,25 @@ function readCustom(row: { custom?: string | null } | null | undefined): JsonObj
   return normalizeObject(row?.custom || "{}");
 }
 
-function getLeadRow(id: string): (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null }) | null {
-  return (db.prepare(`SELECT * FROM leads WHERE id = ?`).get(id) as (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null }) | undefined) || null;
+function isLeadPoolRow(row: SyncLeadRow | null | undefined): boolean {
+  if (!row) return false;
+  const custom = readCustom(row);
+  return custom.lead_pool === true || custom.lead_pool === "true" || asString(row.source) === "lead-pool";
 }
 
-function findByLegacyId(legacyLeadId: string): (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null }) | null {
+function getLeadRow(id: string): SyncLeadRow | null {
+  return (db.prepare(`SELECT * FROM leads WHERE id = ?`).get(id) as SyncLeadRow | undefined) || null;
+}
+
+function findByLegacyId(legacyLeadId: string): SyncLeadRow | null {
   return (
     db
-      .prepare(`SELECT * FROM leads WHERE custom LIKE ? ORDER BY updated_at DESC LIMIT 1`)
-      .get(`%"legacy_crm_id":"${legacyLeadId}"%`) as
-      | (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null })
-      | undefined
+      .prepare(
+        `SELECT * FROM leads
+         WHERE custom LIKE ? AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(`%"legacy_crm_id":"${legacyLeadId}"%`) as SyncLeadRow | undefined
   ) || null;
 }
 
@@ -110,16 +119,24 @@ function findTargetLead(legacyLeadId: string, phone: string | null, email: strin
   const byLegacy = findByLegacyId(legacyLeadId);
   if (byLegacy) return byLegacy;
   if (phone) {
-    const byPhone = db.prepare(`SELECT * FROM leads WHERE phone = ? ORDER BY updated_at DESC LIMIT 1`).get(phone) as
-      | (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null })
-      | undefined;
-    if (byPhone) return byPhone;
+    const byPhone = db
+      .prepare(
+        `SELECT * FROM leads
+         WHERE phone = ? AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(phone) as SyncLeadRow | undefined;
+    if (byPhone && !isLeadPoolRow(byPhone)) return byPhone;
   }
   if (email) {
-    const byEmail = db.prepare(`SELECT * FROM leads WHERE email = ? COLLATE NOCASE ORDER BY updated_at DESC LIMIT 1`).get(email) as
-      | (JsonObject & { id: string; custom?: string | null; owner_user_id?: string | null })
-      | undefined;
-    if (byEmail) return byEmail;
+    const byEmail = db
+      .prepare(
+        `SELECT * FROM leads
+         WHERE email = ? COLLATE NOCASE AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(email) as SyncLeadRow | undefined;
+    if (byEmail && !isLeadPoolRow(byEmail)) return byEmail;
   }
   return null;
 }
@@ -135,6 +152,7 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
   const now = Date.now();
   const id = existing?.id || legacyLeadId;
   const existingCustom = readCustom(existing);
+  const existingIsLeadPool = isLeadPoolRow(existing);
   const incomingCustom = normalizeObject(lead.custom);
   const custom = {
     ...existingCustom,
@@ -171,8 +189,8 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     email_unsubscribed: boolInt(lead.email_unsubscribed),
     consent_at: nullableNumber(lead.consent_at),
     deleted_at: nullableNumber(lead.deleted_at),
-    past_client: boolInt(lead.past_client),
-    contact_only: boolInt(lead.contact_only),
+    past_client: existingIsLeadPool ? 0 : boolInt(lead.past_client),
+    contact_only: existingIsLeadPool ? 1 : boolInt(lead.contact_only),
     owner_user_id: existing?.owner_user_id || null,
     todos: JSON.stringify(normalizeTodos(lead.todos)),
   };

@@ -768,7 +768,8 @@
         if (page === "portal") return renderPortal();
         if (page === "documents") return renderDocuments();
         if (page === "automations") return loadAutomations();
-        if (["reports","contacts","pastclients","deleted","email","admin"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
+        if (["contacts","pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
+        if (["reports","email","admin"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
         if (page === "settings") return loadSettings();
         return placeholderPage(pageLabels[page] || page, "LG");
       }
@@ -824,6 +825,47 @@
         renderLeadScopeSummary(data.stats || {});
         await renderLeadStatusTabs(q);
         if ($("leadListWrap")) $("leadListWrap").innerHTML = leadsTable(state.leads, true, data.stats || {});
+      }
+      function leadBucketConfig(page) {
+        var configs = {
+          contacts: {
+            title: "Contacts",
+            sub: "Contact-only records that are not active pipeline leads.",
+            query: "contactOnly=1&includePastClients=1",
+            empty: "No contact-only records found."
+          },
+          pastclients: {
+            title: "Past Clients",
+            sub: "Funded and archived client relationships kept outside the active pipeline.",
+            query: "pastClient=1&includeContacts=1",
+            empty: "No past clients found."
+          },
+          deleted: {
+            title: "Deleted",
+            sub: "Soft-deleted records are hidden from live workflow until restored.",
+            query: "deleted=1&includeContacts=1&includePastClients=1",
+            empty: "No deleted records found."
+          }
+        };
+        return configs[page] || configs.contacts;
+      }
+      async function loadLeadBucketView(page) {
+        var cfg = leadBucketConfig(page);
+        pageShell(cfg.title, cfg.sub,
+          '<button class="btn" data-action="refresh-lead-bucket">Refresh</button>',
+          '<section class="card"><div class="cardHead"><h2>' + esc(cfg.title) + '</h2><div class="toolbar"><input id="bucketSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-lead-bucket">Search</button></div></div><div id="bucketListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
+        if ($("bucketSearch")) $("bucketSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeadBucket(page); });
+        await loadLeadBucket(page);
+      }
+      async function loadLeadBucket(page) {
+        var cfg = leadBucketConfig(page || state.page);
+        var q = $("bucketSearch") ? $("bucketSearch").value.trim() : "";
+        var qs = "?" + cfg.query + "&limit=250" + (q ? "&q=" + encodeURIComponent(q) : "");
+        if ($("bucketListWrap")) $("bucketListWrap").innerHTML = '<div class="spinner"></div>';
+        var data = await json("/api/leads" + qs);
+        state.leads = data.leads || [];
+        if (!$("bucketListWrap")) return;
+        $("bucketListWrap").innerHTML = state.leads.length ? leadsTable(state.leads, false, data.stats || {}) : '<div class="empty">' + esc(cfg.empty) + '</div>';
       }
       function leadImportSampleColumns() {
         return "First Name, Last Name, Phone Number, Email, Status, Source, Property Address, City, State, Zip, DOB, Credit Score, Home Value, Mortgage Balance, Loan Purpose, Tags, Notes, SMS Consent";
@@ -1004,7 +1046,8 @@
         }
         state.selectedLead = data.lead;
         status("leadSaveMsg", "Saved.", "okText");
-        await loadLeads();
+        if (state.page === "leads") await loadLeads();
+        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
         await openLead(lead.id);
       }
 
@@ -1020,6 +1063,7 @@
         closeModal();
         showToast("Lead deleted.");
         if (state.page === "leadpool") await refreshLeadPool();
+        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
         else if ($("leadListWrap")) await loadLeads();
       }
 
@@ -1130,7 +1174,7 @@
       }
       async function loadLeadPool() {
         pageShell("Lead Pool", "Old-list contacts live here until you move them into active Leads.",
-          '<button class="btn" data-action="download-pool-sample">Sample CSV</button><button class="btn" data-action="refresh-leadpool">Refresh</button>',
+          '<button class="btn" data-action="download-pool-sample">Sample CSV</button><button class="btn" data-action="repair-leadpool">Repair hidden</button><button class="btn" data-action="refresh-leadpool">Refresh</button>',
           '<div class="splitShell">' +
             '<div class="grid">' +
               '<div class="grid cols2">' +
@@ -1166,6 +1210,12 @@
         setSelectOptions("poolState", data.states || [], "All states", st);
         setSelectOptions("poolTag", data.tags || [], "All tags", tag);
         if ($("poolListWrap")) $("poolListWrap").innerHTML = leadPoolTable(state.leadPool, data.total || 0);
+      }
+      async function repairLeadPool() {
+        status("poolActionMsg", "Repairing hidden Lead Pool records...");
+        var data = await json("/api/admin/repair-lead-pool", { method: "POST" });
+        status("poolActionMsg", "Restored " + Number(data.repaired || 0) + " hidden Lead Pool records.", "okText");
+        await refreshLeadPool();
       }
       function leadPoolTable(leads, total) {
         if (!leads || !leads.length) return '<div class="empty">No Lead Pool records found.</div>';
@@ -2508,8 +2558,10 @@
           else if (a === "open-lead-import") openLeadImport();
           else if (a === "run-lead-import") await importLeadCsv();
           else if (a === "refresh-leads") await loadLeads();
+          else if (a === "refresh-lead-bucket") await loadLeadBucket(state.page);
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
+          else if (a === "repair-leadpool") await repairLeadPool();
           else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) $("poolState").value = ""; if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
           else if (a === "download-pool-sample") downloadLeadPoolSample();
           else if (a === "import-leadpool") await importLeadPoolCsv();

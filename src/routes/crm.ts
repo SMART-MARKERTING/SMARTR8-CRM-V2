@@ -32,6 +32,8 @@ import {
   logActivity,
   leadStats,
   listPipeline,
+  listLeadPoolLeads,
+  repairLeadPoolVisibility,
   bulkCreateContacts,
   contactsDiag,
   LeadInput,
@@ -995,11 +997,34 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
   const deleted = req.query.deleted === "1" || req.query.deleted === "true";
   const pastClient = req.query.pastClient === "1" || req.query.pastClient === "true";
+  const includePastClients = req.query.includePastClients === "1" || req.query.includePastClients === "true";
+  const contactOnly =
+    req.query.contactOnly === "1" || req.query.contactOnly === "true"
+      ? true
+      : req.query.contactOnly === "0" || req.query.contactOnly === "false"
+        ? false
+        : undefined;
   // The Contacts tab passes includeContacts=1 to also get contact-only records; the Leads
   // tab omits it, so contact-only people stay out of the active pipeline.
   const includeContactOnly = req.query.includeContacts === "1" || req.query.includeContacts === "true";
+  const excludeLeadPool = !(req.query.includeLeadPool === "1" || req.query.includeLeadPool === "true");
   const ownerUserId = ownerScope(req);
-  res.json({ leads: listLeads({ q, status, stage, limit, deleted, pastClient, includeContactOnly, ownerUserId }), stats: leadStats(ownerUserId) });
+  res.json({
+    leads: listLeads({
+      q,
+      status,
+      stage,
+      limit,
+      deleted,
+      pastClient,
+      includePastClients,
+      contactOnly,
+      includeContactOnly,
+      excludeLeadPool,
+      ownerUserId,
+    }),
+    stats: leadStats(ownerUserId),
+  });
 });
 
 /** Materialize a contact (e.g. a GHL contact) into an editable record so it can be opened
@@ -1100,6 +1125,10 @@ crmRouter.post("/api/admin/revert-import", requirePass, (req, res) => {
 crmRouter.post("/api/admin/dedupe-contacts", requirePass, (req, res) => {
   const body = (req.body ?? {}) as { dryRun?: unknown };
   res.json(dedupeContacts(body.dryRun === false ? false : true));
+});
+
+crmRouter.post("/api/admin/repair-lead-pool", requireAdmin, (_req, res) => {
+  res.json({ ok: true, ...repairLeadPoolVisibility() });
 });
 
 crmRouter.post("/api/sync/legacy-crm", (req, res) => {
@@ -1298,7 +1327,7 @@ function truthyCell(value: string | undefined): boolean {
 
 function isLeadPoolLead(lead: Lead): boolean {
   const marker = lead.custom?.lead_pool;
-  return Boolean(lead.contact_only && (marker === true || marker === "true"));
+  return marker === true || marker === "true";
 }
 
 function leadPoolState(lead: Lead): string {
@@ -1509,7 +1538,8 @@ crmRouter.get("/api/lead-pool", requirePass, (req, res) => {
   const tagFilter = typeof req.query.tag === "string" ? req.query.tag.trim().toLowerCase() : "";
   const limit = Math.min(parseInt(String(req.query.limit || "500"), 10) || 500, 20000);
   const ownerUserId = ownerScope(req);
-  const allPool = listLeads({ includeContactOnly: true, limit: 20000, ownerUserId }).filter(isLeadPoolLead);
+  repairLeadPoolVisibility();
+  const allPool = listLeadPoolLeads({ limit: 20000, ownerUserId }).filter(isLeadPoolLead);
   const states = Array.from(new Set(allPool.map(leadPoolState).filter(Boolean))).sort();
   const tags = Array.from(new Set(allPool.flatMap((l) => l.tags || []))).sort((a, b) => a.localeCompare(b));
   const leads = allPool

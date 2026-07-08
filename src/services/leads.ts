@@ -308,6 +308,9 @@ export interface ListLeadsOpts {
   offset?: number;
   deleted?: boolean;
   pastClient?: boolean;
+  includePastClients?: boolean;
+  contactOnly?: boolean;
+  excludeLeadPool?: boolean;
   /** Include contact-only records (the Contacts tab). Default false = active Leads only. */
   includeContactOnly?: boolean;
   /** Restrict to leads owned by this user id (non-admins). Omit/undefined = no owner filter. */
@@ -322,9 +325,11 @@ export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
   // Past clients live ONLY under the Past Clients view — the active pipeline excludes them
   // so an imported/funded past client doesn't also clutter the regular Leads list.
   if (opts.pastClient) where.push(`past_client = 1`);
-  else if (!opts.deleted) where.push(`past_client = 0`);
+  else if (!opts.deleted && !opts.includePastClients) where.push(`past_client = 0`);
   // Contact-only records live in the Contacts tab, not the active Leads pipeline.
-  if (!opts.includeContactOnly) where.push(`contact_only = 0`);
+  if (opts.contactOnly === true) where.push(`contact_only = 1`);
+  else if (opts.contactOnly === false || !opts.includeContactOnly) where.push(`contact_only = 0`);
+  if (opts.excludeLeadPool) where.push(`custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`);
   // Non-admins see only the leads assigned to them.
   if (opts.ownerUserId) {
     where.push(`owner_user_id = @ownerUserId`);
@@ -352,6 +357,37 @@ export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
     `SELECT * FROM leads ${where.length ? "WHERE " + where.join(" AND ") : ""} ` +
     `ORDER BY COALESCE(last_activity_at, created_at) DESC LIMIT @limit OFFSET @offset`;
   return (db.prepare(sql).all(params) as LeadRow[]).map(rowToLead);
+}
+
+export function listLeadPoolLeads(opts: { limit?: number; ownerUserId?: string } = {}): Lead[] {
+  const where = [`deleted_at IS NULL`, `(custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')`];
+  const params: Record<string, unknown> = { limit: Math.min(opts.limit ?? 20000, 20000) };
+  if (opts.ownerUserId) {
+    where.push(`owner_user_id = @ownerUserId`);
+    params.ownerUserId = opts.ownerUserId;
+  }
+  const rows = db
+    .prepare(
+      `SELECT * FROM leads
+       WHERE ${where.join(" AND ")}
+       ORDER BY COALESCE(last_activity_at, updated_at, created_at) DESC
+       LIMIT @limit`,
+    )
+    .all(params) as LeadRow[];
+  return rows.map(rowToLead);
+}
+
+export function repairLeadPoolVisibility(): { repaired: number } {
+  const result = db
+    .prepare(
+      `UPDATE leads
+       SET contact_only = 1, past_client = 0, updated_at = @now
+       WHERE deleted_at IS NULL
+         AND (custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')
+         AND (contact_only != 1 OR past_client != 0)`,
+    )
+    .run({ now: Date.now() });
+  return { repaired: result.changes || 0 };
 }
 
 const UPDATABLE = [
@@ -980,7 +1016,7 @@ export function leadStats(ownerUserId?: string): Record<string, number> {
   };
   const statusStmt = db.prepare(
     `SELECT status, COUNT(*) AS n FROM leads
-     WHERE deleted_at IS NULL AND past_client = 0 AND contact_only = 0 ${ownerWhere}
+     WHERE deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%' ${ownerWhere}
      GROUP BY status`,
   );
   const rows = (ownerUserId ? statusStmt.all(params) : statusStmt.all()) as Array<{
@@ -988,9 +1024,9 @@ export function leadStats(ownerUserId?: string): Record<string, number> {
     n: number;
   }>;
   const out: Record<string, number> = {
-    active: count("deleted_at IS NULL AND past_client = 0 AND contact_only = 0"),
-    contacts: count("deleted_at IS NULL AND contact_only = 1"),
-    past: count("deleted_at IS NULL AND past_client = 1"),
+    active: count(`deleted_at IS NULL AND past_client = 0 AND contact_only = 0 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
+    contacts: count(`deleted_at IS NULL AND contact_only = 1 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
+    past: count(`deleted_at IS NULL AND past_client = 1 AND custom NOT LIKE '%"lead_pool":true%' AND custom NOT LIKE '%"lead_pool":"true"%'`),
     deleted: count("deleted_at IS NOT NULL"),
     all: count("1 = 1"),
     total: 0,
