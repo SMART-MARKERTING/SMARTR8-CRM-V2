@@ -2943,14 +2943,22 @@
           return;
         }
         state.emailResendError = "";
+        state.emailReceivedError = "";
         var sentList = { emails: [] };
+        var receivedList = { emails: [] };
         if ((state.emailBox || "inbox") !== "inbox") {
           sentList = await json("/api/email/sent?limit=100").catch(function (e) {
             state.emailResendError = e.message || String(e);
             return { emails: [] };
           });
         }
-        state.emailMessages = mergeEmailMessages(log.emails || [], sentList.emails || []);
+        if ((state.emailBox || "inbox") !== "sent") {
+          receivedList = await json("/api/email/received?limit=100").catch(function (e) {
+            state.emailReceivedError = e.message || String(e);
+            return { emails: [] };
+          });
+        }
+        state.emailMessages = mergeEmailMessages(log.emails || [], sentList.emails || [], receivedList.emails || []);
         if (!state.emailMessages.some(function (m) { return m.id === state.activeEmailId; })) {
           state.activeEmailId = state.emailMessages.length ? state.emailMessages[0].id : null;
         }
@@ -3007,15 +3015,53 @@
           attachments: Array.isArray(row.attachments) ? row.attachments : []
         };
       }
-      function mergeEmailMessages(localRows, resendRows) {
+      function resendReceivedMessage(row) {
+        row = row || {};
+        var id = String(row.id || row.email_id || "").trim();
+        var toList = emailArray(row.to);
+        var ccList = emailArray(row.cc);
+        var bccList = emailArray(row.bcc);
+        var receivedFor = emailArray(row.received_for);
+        return {
+          id: "resend-received:" + id,
+          resend_id: id,
+          resend_received_api: true,
+          created_at: dateMillis(row.created_at),
+          subject: row.subject || "(no subject)",
+          body: row.text || "",
+          html: row.html || null,
+          html_format: row.html_format || "",
+          status: "received",
+          direction: "inbound",
+          channel: "email",
+          lead_id: null,
+          lead_name: "Resend inbox",
+          email: emailFromText(row.from || ""),
+          from: row.from || "",
+          to: toList.join(", "),
+          cc: ccList,
+          bcc: bccList,
+          reply_to: emailArray(row.reply_to),
+          message_id: row.message_id || "",
+          received_for: receivedFor,
+          raw: row.raw || null,
+          file_folder: "",
+          discussion_file: "",
+          attachments: Array.isArray(row.attachments) ? row.attachments : []
+        };
+      }
+      function mergeEmailMessages(localRows, sentRows, receivedRows) {
         var seenResend = {};
         (localRows || []).forEach(function (m) {
           if (m && m.resend_id) seenResend[String(m.resend_id)] = true;
         });
-        var extra = (resendRows || []).map(resendSentMessage).filter(function (m) {
+        var extraSent = (sentRows || []).map(resendSentMessage).filter(function (m) {
           return m.resend_id && !seenResend[m.resend_id];
         });
-        return (localRows || []).concat(extra).sort(function (a, b) {
+        var extraReceived = (receivedRows || []).map(resendReceivedMessage).filter(function (m) {
+          return m.resend_id && !seenResend[m.resend_id];
+        });
+        return (localRows || []).concat(extraReceived, extraSent).sort(function (a, b) {
           return dateMillis(b.created_at) - dateMillis(a.created_at);
         });
       }
@@ -3059,12 +3105,12 @@
           var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to, m.file_folder, m.discussion_file].join(" ").toLowerCase();
           return !q || hay.indexOf(q) >= 0;
         });
-        if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName() + (state.emailResendError ? " | Resend list error" : "");
+        if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName() + (state.emailResendError || state.emailReceivedError ? " | Resend list error" : "");
         if (!rows.length) {
           var help = (state.emailBox || "inbox") === "inbox"
-            ? '<div class="sub" style="margin-top:8px">Inbound email appears here only after Resend sends an <b>email.received</b> webhook to <code>' + esc(location.origin + apiPath("/api/webhooks/resend")) + '</code>. Check RESEND_WEBHOOK_SECRET if the webhook shows 401.</div>'
-            : state.emailResendError
-              ? '<div class="sub badText" style="margin-top:8px">Resend sent-list error: ' + esc(state.emailResendError) + '</div>'
+            ? '<div class="sub" style="margin-top:8px">Inbound email appears here from Resend received-mail history and from <b>email.received</b> webhooks to <code>' + esc(location.origin + apiPath("/api/webhooks/resend")) + '</code>.' + (state.emailReceivedError ? ' Resend received-list error: ' + esc(state.emailReceivedError) : ' Check RESEND_WEBHOOK_SECRET if webhook storage shows 401.') + '</div>'
+            : (state.emailResendError || state.emailReceivedError)
+              ? '<div class="sub badText" style="margin-top:8px">Resend list error: ' + esc(state.emailResendError || state.emailReceivedError) + '</div>'
             : "";
           box.innerHTML = '<div class="empty">No email found in ' + esc(emailBoxName()) + '.' + help + '</div>';
           return;
@@ -3092,9 +3138,11 @@
         box.className = "";
         var attachments = Array.isArray(m.attachments) ? m.attachments : [];
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
-        var filedBadge = m.resend_api ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>');
-        var fileButton = m.resend_api ? "" : '<button class="btn" data-action="email-file">File / folder</button>';
-        var resendButton = m.resend_api
+        var filedBadge = (m.resend_api || m.resend_received_api) ? '<span class="badge purple">Resend API</span>' : (m.file_folder ? '<span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span>' : '<span class="badge amber">Not filed</span>');
+        var fileButton = (m.resend_api || m.resend_received_api) ? "" : '<button class="btn" data-action="email-file">File / folder</button>';
+        var resendButton = m.resend_received_api
+          ? '<button class="btn" data-action="email-refresh-resend">Load received content</button>'
+          : m.resend_api
           ? '<button class="btn" data-action="email-load-resend">Load Resend content</button>'
           : (m.direction === "inbound" && m.resend_id)
             ? '<button class="btn" data-action="email-refresh-resend">Load received content</button>'
@@ -3188,6 +3236,17 @@
       }
       async function refreshEmailFromResend() {
         if (!state.activeEmailId) return;
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (m && m.resend_received_api) {
+          var receivedId = m.resend_id || String(m.id || "").replace(/^resend-received:/, "");
+          if (!receivedId) { showToast("This received email has no Resend id.", true); return; }
+          var receivedData = await json("/api/email/received/" + encodeURIComponent(receivedId) + "?html_format=data_uri");
+          applyReceivedEmail(m, receivedData.email || {});
+          showToast("Received email loaded.");
+          renderEmailList();
+          renderEmailReader();
+          return;
+        }
         var data = await json("/api/email/activity/" + encodeURIComponent(state.activeEmailId) + "/resend-refresh", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3204,6 +3263,33 @@
           .replace(/<br\s*\/?>/gi, "\n")
           .replace(/<\/p>/gi, "\n\n");
         return (holder.textContent || holder.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
+      }
+      function applyReceivedEmail(m, email) {
+        email = email || {};
+        var toList = emailArray(email.to);
+        var ccList = emailArray(email.cc);
+        var bccList = emailArray(email.bcc);
+        m.subject = email.subject || m.subject;
+        m.from = email.from || m.from;
+        m.to = toList.length ? toList.join(", ") : m.to;
+        m.cc = ccList;
+        m.bcc = bccList;
+        m.reply_to = emailArray(email.reply_to);
+        m.message_id = email.message_id || m.message_id;
+        m.status = "received";
+        m.created_at = dateMillis(email.created_at) || m.created_at;
+        m.html = email.html || m.html || null;
+        m.html_format = email.html_format || m.html_format || "";
+        m.body = email.text || (email.html ? htmlToText(email.html) : "") || m.body || "";
+        m.attachments = Array.isArray(email.attachments) ? email.attachments : (m.attachments || []);
+        m.received_for = emailArray(email.received_for);
+        m.raw = email.raw || m.raw || null;
+        m.meta = Object.assign({}, m.meta || {}, {
+          raw: m.raw || null,
+          html_format: m.html_format || "",
+          received_for: m.received_for || [],
+          resend_refreshed_at: new Date().toISOString()
+        });
       }
       async function loadResendSentEmail() {
         var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });

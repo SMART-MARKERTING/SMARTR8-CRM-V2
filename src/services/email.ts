@@ -207,10 +207,29 @@ export async function retrieveResendWebhook(webhookId: string): Promise<ResendWe
   return result.ok && result.data ? result.data : null;
 }
 
-export async function listReceivedEmails(limit = 10): Promise<{ ok: boolean; emails: ResendReceivedEmail[]; detail?: string }> {
-  const result = await resendGet<{ object?: string; data?: ResendReceivedEmail[] }>(`/emails/receiving?limit=${Math.max(1, Math.min(limit, 100))}`);
-  if (!result.ok) return { ok: false, emails: [], detail: result.detail };
-  return { ok: true, emails: Array.isArray(result.data?.data) ? result.data.data : [] };
+export async function listReceivedEmails(
+  opts: number | ListSentEmailsOptions = {},
+): Promise<{ ok: boolean; emails: ResendReceivedEmail[]; has_more: boolean; detail?: string }> {
+  const listOpts = typeof opts === "number" ? { limit: opts } : opts;
+  if (listOpts.after && listOpts.before) {
+    return { ok: false, emails: [], has_more: false, detail: "Use either after or before, not both" };
+  }
+  const query = new URLSearchParams();
+  if (listOpts.limit != null) {
+    const parsedLimit = Number(listOpts.limit || 20);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 100)) : 20;
+    query.set("limit", String(limit));
+  }
+  if (listOpts.after) query.set("after", listOpts.after);
+  if (listOpts.before) query.set("before", listOpts.before);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const result = await resendGet<{ object?: string; data?: ResendReceivedEmail[]; has_more?: boolean }>(`/emails/receiving${suffix}`);
+  if (!result.ok) return { ok: false, emails: [], has_more: false, detail: result.detail };
+  return {
+    ok: true,
+    emails: Array.isArray(result.data?.data) ? result.data.data : [],
+    has_more: Boolean(result.data?.has_more),
+  };
 }
 
 export async function listSentEmails(

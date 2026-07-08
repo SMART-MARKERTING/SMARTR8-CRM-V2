@@ -3454,6 +3454,15 @@ crmRouter.get("/api/email/sent", requirePass, async (req, res) => {
   res.json(result);
 });
 
+crmRouter.get("/api/email/received", requirePass, async (req, res) => {
+  const result = await listReceivedEmails(resendListQuery(req));
+  if (!result.ok) {
+    res.status(400).json({ error: result.detail || "could not list received email from Resend" });
+    return;
+  }
+  res.json(result);
+});
+
 crmRouter.get("/api/email/received/:emailId", requirePass, async (req, res) => {
   const email = await retrieveReceivedEmail(req.params.emailId, resendReceivedHtmlFormat(req));
   if (!email) {
