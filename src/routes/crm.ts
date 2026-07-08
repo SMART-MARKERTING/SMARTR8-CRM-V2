@@ -843,6 +843,147 @@ function requestPublicBase(req: Request): string {
   return config.publicBaseUrl || config.crm.publicBaseUrl || `${req.protocol}://${req.get("host")}`;
 }
 
+function requestMountedBase(req: Request): string {
+  const base = requestPublicBase(req).replace(/\/+$/, "");
+  const mount = req.baseUrl || "";
+  return mount && !base.endsWith(mount) ? `${base}${mount}` : base;
+}
+
+function cleanText(value: unknown, fallback = ""): string {
+  const s = value === null || value === undefined ? "" : String(value).trim();
+  return s || fallback;
+}
+
+function safeMeta(value: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return { raw: value };
+  }
+}
+
+function leadDisplayName(lead: Lead): string {
+  return [lead.first_name, lead.last_name].filter(Boolean).join(" ") || lead.email || lead.phone || "Lead";
+}
+
+function leadContactScope(lead: Lead): string {
+  if (isLeadPoolLead(lead)) return "Lead Pool";
+  if (lead.past_client) return "Past Client";
+  if (lead.contact_only) return "Contact";
+  return "Lead";
+}
+
+function leadContactAddress(lead: Lead): string {
+  const c = lead.custom || {};
+  const street = cleanText(c.property_address || c.address || c.street);
+  const city = cleanText(c.city || c.property_city);
+  const state = cleanText(c.state || c.property_state || c.lead_pool_state);
+  const zip = cleanText(c.zip || c.property_zip || c.postal_code);
+  return [street, city, state, zip].filter(Boolean).join(", ");
+}
+
+function calendarStamp(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function icsEscape(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function calendarEventLinks(
+  req: Request,
+  event: { title: string; start: number; end: number; description?: string; location?: string },
+) {
+  const dates = `${calendarStamp(event.start)}/${calendarStamp(event.end)}`;
+  const details = event.description || "";
+  const location = event.location || "";
+  const icsParams = new URLSearchParams({
+    title: event.title,
+    start: String(event.start),
+    end: String(event.end),
+    description: details,
+    location,
+  });
+  const google = new URL("https://calendar.google.com/calendar/render");
+  google.searchParams.set("action", "TEMPLATE");
+  google.searchParams.set("text", event.title);
+  google.searchParams.set("dates", dates);
+  google.searchParams.set("details", details);
+  google.searchParams.set("location", location);
+  const outlook = new URL("https://outlook.office.com/calendar/0/deeplink/compose");
+  outlook.searchParams.set("path", "/calendar/action/compose");
+  outlook.searchParams.set("rru", "addevent");
+  outlook.searchParams.set("subject", event.title);
+  outlook.searchParams.set("startdt", new Date(event.start).toISOString());
+  outlook.searchParams.set("enddt", new Date(event.end).toISOString());
+  outlook.searchParams.set("body", details);
+  outlook.searchParams.set("location", location);
+  return {
+    google: google.toString(),
+    microsoft: outlook.toString(),
+    outlook: outlook.toString(),
+    apple: `${requestMountedBase(req)}/calendar.ics?${icsParams.toString()}`,
+    ics: `${requestMountedBase(req)}/calendar.ics?${icsParams.toString()}`,
+  };
+}
+
+function appointmentInviteBody(lead: Lead, event: { title: string; start: number; end: number; description?: string; location?: string }, links: Record<string, string>): string {
+  const when = new Date(event.start).toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  return [
+    `Hi ${lead.first_name || "there"},`,
+    "",
+    `Here is the appointment link for ${event.title}.`,
+    `When: ${when}`,
+    event.location ? `Where: ${event.location}` : "",
+    event.description || "",
+    "Add it to your calendar:",
+    `Google/Gmail: ${links.google}`,
+    `Microsoft/Outlook: ${links.microsoft}`,
+    `Apple/iCloud/ICS: ${links.ics}`,
+  ].filter((line) => line !== "").join("\n");
+}
+
+crmRouter.get("/calendar.ics", (req, res) => {
+  const title = cleanText(req.query.title, "Appointment");
+  const start = Number(req.query.start);
+  const end = Number(req.query.end) || start + 30 * 60_000;
+  if (!Number.isFinite(start) || start <= 0) {
+    res.status(400).send("Missing valid start");
+    return;
+  }
+  const description = cleanText(req.query.description);
+  const location = cleanText(req.query.location);
+  const uid = `${Buffer.from(`${title}:${start}:${end}`).toString("base64url")}@loangenius`;
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//LoanGenius//CRM Calendar//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${calendarStamp(Date.now())}`,
+    `DTSTART:${calendarStamp(start)}`,
+    `DTEND:${calendarStamp(end)}`,
+    `SUMMARY:${icsEscape(title)}`,
+    description ? `DESCRIPTION:${icsEscape(description)}` : "",
+    location ? `LOCATION:${icsEscape(location)}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean).join("\r\n");
+  res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "appointment"}.ics"`);
+  res.send(ics);
+});
+
 crmRouter.get("/api/settings/voicemail-audio", requireAdmin, (_req, res) => {
   res.json({ ok: true, settings: publicVoicemailAudioSettings() });
 });
@@ -1026,6 +1167,41 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
     }),
     stats: leadStats(ownerUserId),
   });
+});
+
+crmRouter.get("/api/contacts/all", requirePass, (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q : undefined;
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20000;
+  const ownerUserId = ownerScope(req);
+  const leads = listLeads({
+    q,
+    limit,
+    includePastClients: true,
+    includeContactOnly: true,
+    excludeLeadPool: false,
+    ownerUserId,
+  });
+  const contacts = leads.map((lead) => ({
+    id: lead.id,
+    name: leadDisplayName(lead),
+    first_name: lead.first_name,
+    last_name: lead.last_name,
+    phone: lead.phone,
+    email: lead.email,
+    source: lead.source,
+    scope: leadContactScope(lead),
+    status: lead.pipeline_stage || lead.status,
+    address: leadContactAddress(lead),
+    last_contact_at: lead.last_activity_at || lead.updated_at || lead.created_at,
+    sms_consent: lead.sms_consent,
+    email_unsubscribed: lead.email_unsubscribed,
+  }));
+  const counts = contacts.reduce<Record<string, number>>((acc, item) => {
+    acc[item.scope] = (acc[item.scope] || 0) + 1;
+    acc.All = (acc.All || 0) + 1;
+    return acc;
+  }, {});
+  res.json({ ok: true, contacts, counts });
 });
 
 crmRouter.get("/api/duplicates", requirePass, (req, res) => {
@@ -2273,7 +2449,15 @@ crmRouter.get("/api/deleted/activities", requirePass, (req, res) => {
 crmRouter.post("/api/leads/:id/todos", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
-  const body = (req.body ?? {}) as { text?: string; title?: string; due_date?: string | number | null; cc_email?: string | null };
+  const body = (req.body ?? {}) as {
+    text?: string;
+    title?: string;
+    due_date?: string | number | null;
+    cc_email?: string | null;
+    duration_minutes?: string | number | null;
+    location?: string | null;
+    description?: string | null;
+  };
   const text = body.text || body.title;
   if (!text || !text.trim()) {
     res.status(400).json({ error: "pass { text } or { title }" });
@@ -2288,6 +2472,9 @@ crmRouter.post("/api/leads/:id/todos", requirePass, (req, res) => {
     text,
     due_date: due && Number.isFinite(due) ? due : null,
     cc_email: typeof body.cc_email === "string" && body.cc_email.trim() ? body.cc_email.trim() : null,
+    duration_minutes: Number.isFinite(Number(body.duration_minutes)) ? Number(body.duration_minutes) : null,
+    location: typeof body.location === "string" && body.location.trim() ? body.location.trim() : null,
+    description: typeof body.description === "string" && body.description.trim() ? body.description.trim() : null,
   });
   if (!todos) {
     res.status(404).json({ error: "lead not found" });
@@ -2337,6 +2524,87 @@ crmRouter.post("/api/leads/:id/todos/:todoId/restore", requirePass, (req, res) =
 });
 
 /** Update a lead (status, pipeline_stage, owner, fields, tags…). */
+crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const body = (req.body ?? {}) as {
+    todoId?: string;
+    title?: string;
+    start?: string | number;
+    durationMinutes?: string | number;
+    location?: string;
+    description?: string;
+    via?: string;
+  };
+  const todo = body.todoId ? lead.todos.find((t) => t.id === body.todoId && !t.deleted_at) : undefined;
+  const start = Number(body.start || todo?.due_date || 0);
+  if (!Number.isFinite(start) || start <= 0) {
+    res.status(400).json({ error: "calendar invite needs a start date/time" });
+    return;
+  }
+  const duration = Number(body.durationMinutes || todo?.duration_minutes || 30);
+  const event = {
+    title: cleanText(body.title || todo?.text, "Appointment"),
+    start,
+    end: start + Math.max(5, Math.min(480, Number.isFinite(duration) ? duration : 30)) * 60_000,
+    location: cleanText(body.location || todo?.location),
+    description: cleanText(body.description || todo?.description || `Appointment with ${leadDisplayName(lead)}`),
+  };
+  const links = calendarEventLinks(req, event);
+  const inviteBody = appointmentInviteBody(lead, event, links);
+  const via = cleanText(body.via, "email").toLowerCase();
+  const result = { email: "skipped", text: "skipped" };
+  const author = leadActionAuthor(req);
+
+  if (via === "email" || via === "both") {
+    if (!lead.email) result.email = "skipped:no email";
+    else if (isEmailUnsubscribed(lead)) result.email = "skipped:unsubscribed";
+    else if (!emailConfigured()) result.email = "skipped:email not configured";
+    else {
+      const { html, text } = buildBrandedEmail(inviteBody, unsubscribeUrl(lead.id));
+      const sent = await sendEmail({ to: lead.email, subject: `Appointment: ${event.title}`, html, text });
+      result.email = sent.ok ? "sent" : `failed:${sent.detail || "send failed"}`;
+      logActivity(lead.id, {
+        type: "email",
+        direction: "outbound",
+        channel: "email",
+        subject: `Appointment: ${event.title}`,
+        body: inviteBody,
+        status: sent.ok ? "calendar-invite-sent" : result.email,
+        meta: { id: sent.id, detail: sent.detail, author, calendarInvite: true, links },
+      });
+    }
+  }
+
+  if (via === "text" || via === "both") {
+    if (!lead.phone) result.text = "skipped:no phone";
+    else if (await isOnDnc(lead.phone)) result.text = "skipped:dnc";
+    else {
+      const sent = await sendOutbound({ phone: lead.phone, message: inviteBody });
+      const channel = sent.path.startsWith("imessage") ? "imessage" : "sms";
+      result.text = sent.ok ? `sent:${sent.path}` : `failed:${sent.detail || sent.path}`;
+      logActivity(lead.id, {
+        type: channel,
+        direction: "outbound",
+        channel,
+        body: inviteBody,
+        status: sent.ok ? "calendar-invite-sent" : result.text,
+        meta: { detail: sent.detail, author, calendarInvite: true, links },
+      });
+    }
+  }
+
+  logActivity(lead.id, {
+    type: "calendar",
+    direction: "system",
+    channel: "system",
+    body: `Calendar invite prepared: ${event.title}`,
+    status: "prepared",
+    meta: { author, event, links, result },
+  });
+  res.json({ ok: true, event, links, result });
+});
+
 crmRouter.get("/api/leads/:id/sensitive", requirePortalVerified, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
@@ -2597,20 +2865,66 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const unsubUrl = lead
     ? unsubscribeUrl(lead.id)
     : `mailto:${config.email.fromEmail || "unsubscribe"}?subject=${encodeURIComponent("Unsubscribe")}`;
-  const { html, text } = buildBrandedEmail(bodyText, unsubUrl);
-  const r = await sendEmail({ to, subject, html, text, cc, attachments: parseAttachments(req.body?.attachments) });
+  const renderedSubject = lead ? renderLeadMergeTemplate(subject, lead) : subject;
+  const renderedBody = lead ? renderLeadMergeTemplate(bodyText, lead) : bodyText;
+  const { html, text } = buildBrandedEmail(renderedBody, unsubUrl);
+  const r = await sendEmail({ to, subject: renderedSubject, html, text, cc, attachments: parseAttachments(req.body?.attachments) });
   if (lead) {
     logActivity(lead.id, {
       type: "email",
       direction: "outbound",
       channel: "email",
-      subject,
-      body: bodyText,
+      subject: renderedSubject,
+      body: renderedBody,
       status: r.ok ? "sent" : `failed:${r.detail ?? "send failed"}`,
       meta: { id: r.id, detail: r.detail, cc: cc.length ? cc : undefined, author: req.body?.author },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
+});
+
+crmRouter.get("/api/email/activity", requirePass, (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+  const owner = ownerScope(req);
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.created_at, a.subject, a.body, a.status, a.meta,
+              l.id AS lead_id, l.first_name, l.last_name, l.email, l.phone
+         FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
+        WHERE a.deleted_at IS NULL
+          AND a.type = 'email'
+          AND a.direction = 'outbound'
+          ${owner ? "AND l.owner_user_id = @owner" : ""}
+        ORDER BY a.created_at DESC
+        LIMIT @limit`,
+    )
+    .all({ owner: owner || "", limit: Math.min(limit || 100, 500) }) as Array<{
+    id: string;
+    created_at: number;
+    subject: string | null;
+    body: string | null;
+    status: string | null;
+    meta: string | null;
+    lead_id: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  }>;
+  res.json({
+    ok: true,
+    emails: rows.map((row) => ({
+      id: row.id,
+      created_at: row.created_at,
+      subject: row.subject,
+      body: row.body,
+      status: row.status,
+      lead_id: row.lead_id,
+      lead_name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || row.phone || "Lead",
+      email: row.email,
+      meta: safeMeta(row.meta),
+    })),
+  });
 });
 
 /** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.
@@ -2880,6 +3194,60 @@ crmRouter.get("/api/automations/health", requirePass, (_req, res) => {
 crmRouter.get("/api/automations/activity", requirePass, (req, res) => {
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 40;
   res.json({ activity: recentAutomationActivity(limit) });
+});
+
+crmRouter.get("/api/campaigns/successes", requirePass, (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 200;
+  const owner = ownerScope(req);
+  const rows = db
+    .prepare(
+      `SELECT j.id, j.step, j.updated_at, j.created_at, a.name AS automation_name,
+              l.id AS lead_id, l.first_name, l.last_name, l.phone, l.email, l.pipeline_stage
+         FROM automation_jobs j
+         JOIN automations a ON a.id = j.automation_id
+         LEFT JOIN leads l ON l.id = j.lead_id
+        WHERE j.status = 'done'
+          ${owner ? "AND l.owner_user_id = @owner" : ""}
+        ORDER BY COALESCE(j.updated_at, j.created_at) DESC
+        LIMIT @limit`,
+    )
+    .all({ owner: owner || "", limit: Math.min((limit || 200) * 3, 1000) }) as Array<{
+    id: string;
+    step: string;
+    updated_at: number | null;
+    created_at: number;
+    automation_name: string | null;
+    lead_id: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    email: string | null;
+    pipeline_stage: string | null;
+  }>;
+  const sends = rows
+    .map((row) => {
+      let step: Step = { type: "wait" };
+      try {
+        step = JSON.parse(row.step) as Step;
+      } catch {
+        step = { type: "wait" };
+      }
+      return {
+        id: row.id,
+        automation_name: row.automation_name || "Automation",
+        step_type: step.type,
+        lead_id: row.lead_id,
+        lead_name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || row.phone || "Lead",
+        phone: row.phone,
+        email: row.email,
+        pipeline_stage: row.pipeline_stage,
+        sent_at: row.updated_at || row.created_at,
+        preview: "message" in step ? step.message : "subject" in step ? step.subject : "voicemailText" in step ? step.voicemailText : "",
+      };
+    })
+    .filter((row) => ["send_text", "send_email", "voicemail_drop"].includes(row.step_type))
+    .slice(0, Math.min(limit || 200, 500));
+  res.json({ ok: true, sends });
 });
 
 crmRouter.post("/api/automations", requirePass, (req, res) => {

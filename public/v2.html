@@ -344,6 +344,34 @@
       backdrop-filter: blur(8px);
     }
     .pipelineScroller input[type="range"] { padding: 0; box-shadow: none; }
+    .calendarToolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .calendarGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+    .calendarDow { color: var(--muted); font-size: 12px; font-weight: 900; text-align: center; text-transform: uppercase; }
+    .calendarDay {
+      min-height: 138px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: hidden;
+    }
+    .calendarDay.mutedDay { opacity: .55; background: var(--empty); }
+    .calendarDate { font-weight: 950; font-size: 12px; color: var(--muted); }
+    .calendarEvent {
+      border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line));
+      background: color-mix(in srgb, var(--blue) 10%, var(--item));
+      border-radius: 7px;
+      padding: 6px;
+      display: grid;
+      gap: 3px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .calendarEvent b { font-size: 12px; }
+    .calendarEvent .sub { font-size: 11px; }
     @media (min-width: 1100px) {
       .pipelineShell { width: calc(100vw - 264px - 48px); }
       .stageCol { flex-basis: clamp(285px, 18vw, 360px); min-height: calc(100vh - 220px); }
@@ -545,7 +573,8 @@
         activeCall: null,
         activeConferenceName: null,
         powerDialerLeads: [],
-        powerDialerSelectedIds: new Set()
+        powerDialerSelectedIds: new Set(),
+        calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
       };
 
       try { state.token = localStorage.getItem("sp_token") || ""; } catch (e) {}
@@ -626,7 +655,7 @@
         if (!path || /^https?:\/\//i.test(path)) return path;
         var base = appBasePath();
         if (!base || path === base || path.indexOf(base + "/") === 0) return path;
-        if (/^\/(api|webrtc|calls|dnc|admin|ghl|oauth|providers|webhooks|public|media)(\/|$)/.test(path)) return base + path;
+        if (/^\/(api|webrtc|calls|dnc|admin|ghl|oauth|providers|webhooks|public|media|calendar\.ics)(\/|$|\?)/.test(path)) return base + path;
         return path;
       }
       function apiHref(path) {
@@ -771,15 +800,18 @@
         if (page === "messages") return loadMessages();
         if (page === "dialer") return loadDialer();
         if (page === "powerdialer") return loadPowerDialer();
-        if (page === "campaigns") return placeholderPage("Text Campaigns", "TC");
+        if (page === "campaigns") return loadCampaigns();
         if (page === "tasks") return loadTasksPage();
         if (page === "calendar") return loadCalendar();
         if (page === "portal") return renderPortal();
         if (page === "documents") return renderDocuments();
         if (page === "automations") return loadAutomations();
         if (page === "duplicates") return loadDuplicates();
-        if (["contacts","pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
-        if (["reports","email","admin"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
+        if (page === "contacts") return loadContactsPage();
+        if (["pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
+        if (page === "email") return loadEmailPage();
+        if (page === "admin") return loadAdminPage();
+        if (["reports"].indexOf(page) >= 0) return placeholderPage(pageLabels[page] || page, (pageLabels[page] || page).slice(0, 2).toUpperCase());
         if (page === "settings") return loadSettings();
         return placeholderPage(pageLabels[page] || page, "LG");
       }
@@ -876,6 +908,34 @@
         state.leads = data.leads || [];
         if (!$("bucketListWrap")) return;
         $("bucketListWrap").innerHTML = state.leads.length ? leadsTable(state.leads, false, data.stats || {}) : '<div class="empty">' + esc(cfg.empty) + '</div>';
+      }
+      async function loadContactsPage() {
+        pageShell("Contacts", "Every non-deleted person across active Leads, Lead Pool, Past Clients, and contact records.",
+          '<button class="btn" data-action="refresh-contacts">Refresh</button>',
+          '<section class="card"><div class="cardHead"><h2>All contacts</h2><div class="toolbar"><input id="contactsSearch" type="search" placeholder="Search name, phone, email, address..." style="width:340px"><button class="btn small" data-action="refresh-contacts">Search</button></div></div><div id="contactsSummary" class="leadScopeSummary"></div><div id="contactsWrap" class="tableWrap"><div class="spinner"></div></div></section>');
+        $("contactsSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshContacts(); });
+        await refreshContacts();
+      }
+      async function refreshContacts() {
+        var q = $("contactsSearch") ? $("contactsSearch").value.trim() : "";
+        var data = await json("/api/contacts/all?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : ""));
+        var contacts = data.contacts || [];
+        var counts = data.counts || {};
+        if ($("contactsSummary")) {
+          $("contactsSummary").innerHTML =
+            '<div class="scopeTile"><span>All contacts</span><b>' + Number(counts.All || contacts.length || 0) + '</b></div>' +
+            '<div class="scopeTile"><span>Active leads</span><b>' + Number(counts.Lead || 0) + '</b></div>' +
+            '<div class="scopeTile"><span>Lead Pool</span><b>' + Number(counts["Lead Pool"] || 0) + '</b></div>' +
+            '<div class="scopeTile"><span>Past Clients</span><b>' + Number(counts["Past Client"] || 0) + '</b></div>';
+        }
+        if (!$("contactsWrap")) return;
+        $("contactsWrap").innerHTML = contacts.length ? contactTable(contacts) : '<div class="empty">No contacts found.</div>';
+      }
+      function contactTable(contacts) {
+        return '<table class="table"><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Section</th><th>Last contact</th><th></th></tr></thead><tbody>' +
+          contacts.map(function (c) {
+            return '<tr class="rowBtn" data-action="open-lead" data-id="' + esc(c.id) + '"><td><div class="leadCell"><span class="avatar">' + esc(initials(c.name)) + '</span><div><div class="leadName">' + esc(c.name || "Contact") + '</div><div class="sub">' + esc(c.source || "") + '</div></div></div></td><td>' + esc(c.phone || "-") + '</td><td>' + esc(c.email || "-") + '</td><td>' + esc(c.address || "-") + '</td><td><span class="badge ' + (c.scope === "Past Client" ? "purple" : c.scope === "Lead Pool" ? "amber" : c.scope === "Lead" ? "blue" : "green") + '">' + esc(c.scope || "Contact") + '</span></td><td>' + esc(when(c.last_contact_at)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(c.id) + '">Open</button></td></tr>';
+          }).join("") + '</tbody></table>';
       }
       function duplicateKindLabel(kind) {
         if (kind === "phone") return "Same phone";
@@ -1480,24 +1540,103 @@
       }
 
       async function loadCalendar() {
-        pageShell("Calendar", "Scheduled lead tasks grouped by day.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="calendarWrap" class="grid"><div class="spinner"></div></div>');
+        var monthDate = new Date(state.calendarMonth || new Date().setDate(1));
+        pageShell("Calendar", "Monthly appointment calendar with task events and sendable calendar links.",
+          '<button class="btn" data-action="cal-prev">Prev</button><button class="btn" data-action="cal-today">Today</button><button class="btn" data-action="cal-next">Next</button><button class="btn primary" data-action="cal-add-event">Add event</button>',
+          '<section class="card pad"><div class="calendarToolbar"><h2 id="calendarTitle" style="margin:0"></h2><button class="btn small" data-action="refresh">Refresh</button></div><div id="calendarWrap"><div class="spinner"></div></div></section>');
+        $("calendarTitle").textContent = monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+        await refreshCalendar();
+      }
+      async function refreshCalendar() {
         var data = await json("/api/todos");
-        var todos = (data.todos || []).filter(function (t) { return t.due_date && !t.done && !t.deleted_at; }).sort(function (a, b) { return Number(a.due_date) - Number(b.due_date); });
-        if (!todos.length) {
-          $("calendarWrap").innerHTML = '<div class="empty">No scheduled events yet...</div>';
-          return;
-        }
-        var groups = {};
-        todos.forEach(function (t) {
+        var events = (data.todos || []).filter(function (t) { return t.due_date && !t.done && !t.deleted_at; });
+        renderCalendarMonth(events);
+      }
+      function renderCalendarMonth(events) {
+        var box = $("calendarWrap");
+        if (!box) return;
+        var first = new Date(state.calendarMonth || new Date().setDate(1));
+        first = new Date(first.getFullYear(), first.getMonth(), 1);
+        var start = new Date(first);
+        start.setDate(1 - first.getDay());
+        var end = new Date(start);
+        end.setDate(start.getDate() + 41);
+        var byDay = {};
+        events.forEach(function (t) {
           var d = new Date(Number(t.due_date));
-          var key = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-          (groups[key] = groups[key] || []).push(t);
+          var key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+          (byDay[key] = byDay[key] || []).push(t);
         });
-        $("calendarWrap").innerHTML = Object.keys(groups).map(function (day) {
-          return '<section class="card"><div class="cardHead"><h2>' + esc(day) + '</h2></div><div class="list" style="padding:14px">' + groups[day].map(function (t) {
-            return '<div class="item taskRow ' + (t.done ? 'done' : '') + '"><span>' + esc(formatTime(t.due_date)) + '</span><div><b class="taskTitle">' + esc(todoTitle(t)) + '</b><div class="taskMeta"><span>' + esc(t.lead_name || "Lead") + '</span>' + (t.cc_email ? '<span>@ ' + esc(t.cc_email) + '</span>' : '') + '</div></div><button class="btn small" data-action="open-lead" data-id="' + esc(t.lead_id) + '">Open</button></div>';
-          }).join("") + '</div></section>';
+        var dows = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(function (d) { return '<div class="calendarDow">' + d + '</div>'; }).join("");
+        var cells = [];
+        for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          var key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+          var dayEvents = (byDay[key] || []).sort(function (a, b) { return Number(a.due_date) - Number(b.due_date); });
+          cells.push('<div class="calendarDay ' + (d.getMonth() === first.getMonth() ? "" : "mutedDay") + '"><div class="calendarDate">' + d.getDate() + '</div>' +
+            dayEvents.slice(0, 5).map(function (t) {
+              return '<div class="calendarEvent" data-action="cal-open-event" data-lead-id="' + esc(t.lead_id) + '" data-todo-id="' + esc(t.id) + '"><b>' + esc(formatTime(t.due_date)) + ' ' + esc(todoTitle(t)) + '</b><div class="sub">' + esc(t.lead_name || "Lead") + '</div>' + (t.location ? '<div class="sub">' + esc(t.location) + '</div>' : '') + '</div>';
+            }).join("") + (dayEvents.length > 5 ? '<div class="sub">+' + (dayEvents.length - 5) + ' more</div>' : '') + '</div>');
+        }
+        box.innerHTML = '<div class="calendarGrid">' + dows + cells.join("") + '</div>';
+      }
+      async function openAddCalendarEvent() {
+        var contacts = await json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
+        var options = (contacts.contacts || []).slice(0, 5000).map(function (c) {
+          return '<option value="' + esc(c.id) + '">' + esc(c.name || c.phone || c.email || "Contact") + ' - ' + esc(c.scope || "Lead") + '</option>';
         }).join("");
+        var start = new Date(Date.now() + 60 * 60_000);
+        start.setMinutes(0, 0, 0);
+        openModal("Add Calendar Event",
+          '<div class="grid fieldGrid"><label>Contact<select id="calLead">' + options + '</select></label><label>Title<input id="calTitle" value="Mortgage review appointment"></label><label>Start<input id="calStart" type="datetime-local" value="' + localDateInput(start.getTime()) + '"></label><label>Duration<select id="calDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label><label>Location<input id="calLocation" placeholder="Phone call, Zoom, office..."></label><label>Send invite<select id="calInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="calDescription">We will review your mortgage and home equity options.</textarea></label><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="cal-save-event">Save event</button></div><div id="calEventMsg" class="statusLine"></div>');
+      }
+      function localDateInput(ms) {
+        var d = new Date(Number(ms));
+        var pad = function (n) { return String(n).padStart(2, "0"); };
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+      }
+      async function saveCalendarEvent() {
+        var leadId = $("calLead").value;
+        var start = new Date($("calStart").value).getTime();
+        if (!leadId || !Number.isFinite(start)) { status("calEventMsg", "Choose a contact and start time.", "warnText"); return; }
+        status("calEventMsg", "Saving event...");
+        var payload = { title: $("calTitle").value, due_date: start, duration_minutes: Number($("calDuration").value), location: $("calLocation").value, description: $("calDescription").value };
+        var data = await json("/api/leads/" + encodeURIComponent(leadId) + "/todos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        var todo = (data.todos || []).slice().sort(function (a, b) { return Number(b.created_at) - Number(a.created_at); })[0];
+        var via = $("calInviteVia").value;
+        if (via !== "none" && todo) {
+          await json("/api/leads/" + encodeURIComponent(leadId) + "/calendar-invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ todoId: todo.id, via: via }) });
+        }
+        closeModal();
+        showToast("Calendar event saved.");
+        await loadCalendar();
+      }
+      async function openCalendarEvent(leadId, todoId) {
+        var lead = await json("/api/leads/" + encodeURIComponent(leadId));
+        var todo = (lead.lead.todos || []).find(function (t) { return t.id === todoId; });
+        if (!todo) return;
+        var start = Number(todo.due_date);
+        var end = start + Number(todo.duration_minutes || 30) * 60000;
+        var links = localCalendarLinks(todoTitle(todo), start, end, todo.description || "", todo.location || "");
+        openModal("Calendar Event",
+          '<div class="item"><b>' + esc(todoTitle(todo)) + '</b><div class="sub">' + esc(formatDateTime(start)) + ' | ' + esc(lead.lead.first_name || lead.lead.email || lead.lead.phone || "Lead") + '</div>' + (todo.location ? '<div class="sub">' + esc(todo.location) + '</div>' : '') + '</div><div class="toolbar"><a class="btn" href="' + esc(links.google) + '" target="_blank" rel="noopener">Google</a><a class="btn" href="' + esc(links.microsoft) + '" target="_blank" rel="noopener">Microsoft</a><a class="btn" href="' + esc(links.ics) + '" target="_blank" rel="noopener">Apple / ICS</a></div><div class="toolbar"><button class="btn primary" data-action="cal-send-invite" data-lead-id="' + esc(leadId) + '" data-todo-id="' + esc(todoId) + '" data-via="email">Send email invite</button><button class="btn" data-action="cal-send-invite" data-lead-id="' + esc(leadId) + '" data-todo-id="' + esc(todoId) + '" data-via="text">Send text invite</button><button class="btn danger" data-action="main-task-delete" data-lead-id="' + esc(leadId) + '" data-todo-id="' + esc(todoId) + '">Delete</button></div><div id="calInviteMsg" class="statusLine"></div>');
+      }
+      function localCalendarLinks(title, start, end, description, location) {
+        var dates = new Date(start).toISOString().replace(/[-:]/g, "").replace(".000Z", "Z") + "/" + new Date(end).toISOString().replace(/[-:]/g, "").replace(".000Z", "Z");
+        var google = "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent(title) + "&dates=" + encodeURIComponent(dates) + "&details=" + encodeURIComponent(description || "") + "&location=" + encodeURIComponent(location || "");
+        var microsoft = "https://outlook.office.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=" + encodeURIComponent(title) + "&startdt=" + encodeURIComponent(new Date(start).toISOString()) + "&enddt=" + encodeURIComponent(new Date(end).toISOString()) + "&body=" + encodeURIComponent(description || "") + "&location=" + encodeURIComponent(location || "");
+        var ics = apiHref("/calendar.ics?title=" + encodeURIComponent(title) + "&start=" + encodeURIComponent(start) + "&end=" + encodeURIComponent(end) + "&description=" + encodeURIComponent(description || "") + "&location=" + encodeURIComponent(location || ""));
+        return { google: google, microsoft: microsoft, ics: ics };
+      }
+      async function sendCalendarInvite(leadId, todoId, via) {
+        status("calInviteMsg", "Sending invite...");
+        var data = await json("/api/leads/" + encodeURIComponent(leadId) + "/calendar-invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ todoId: todoId, via: via }) });
+        status("calInviteMsg", JSON.stringify(data.result), "okText");
+      }
+      function shiftCalendarMonth(delta) {
+        var d = new Date(state.calendarMonth || Date.now());
+        d = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+        state.calendarMonth = d.getTime();
+        loadCalendar();
       }
       function setupPipelineSlider() {
         var shell = $("pipelineShell");
@@ -2442,6 +2581,88 @@
         showToast("Webhook copied.");
       }
 
+      async function loadCampaigns() {
+        pageShell("Text Campaigns", "Successful automation sends across text, email, and voicemail follow-up workflows.",
+          '<button class="btn" data-action="refresh-campaigns">Refresh</button><button class="btn primary" data-nav="automations">Open automations</button>',
+          '<section class="card"><div class="cardHead"><h2>Successful automation sends</h2><span id="campaignCount" class="badge blue">0 shown</span></div><div id="campaignWrap" class="tableWrap"><div class="spinner"></div></div></section>');
+        await refreshCampaigns();
+      }
+      async function refreshCampaigns() {
+        var data = await json("/api/campaigns/successes?limit=250");
+        var sends = data.sends || [];
+        if ($("campaignCount")) $("campaignCount").textContent = sends.length + " shown";
+        if (!$("campaignWrap")) return;
+        $("campaignWrap").innerHTML = sends.length ? '<table class="table"><thead><tr><th>Sent</th><th>Campaign</th><th>Type</th><th>Lead</th><th>Contact</th><th>Preview</th><th></th></tr></thead><tbody>' +
+          sends.map(function (s) {
+            return '<tr><td>' + esc(formatDateTime(s.sent_at)) + '</td><td><b>' + esc(s.automation_name || "Automation") + '</b></td><td><span class="badge ' + (s.step_type === "send_text" ? "blue" : s.step_type === "send_email" ? "green" : "purple") + '">' + esc(stepLabel(s.step_type)) + '</span></td><td>' + esc(s.lead_name || "Lead") + '</td><td>' + esc(s.phone || s.email || "-") + '</td><td>' + esc(String(s.preview || "").slice(0, 120)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(s.lead_id || "") + '">Open</button></td></tr>';
+          }).join("") + '</tbody></table>' : '<div class="empty">No successful automation sends found yet.</div>';
+      }
+
+      async function loadEmailPage() {
+        pageShell("Email", "Send individual borrower emails and review outbound email history.",
+          '<button class="btn" data-action="refresh-email-page">Refresh</button>',
+          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Send email</h2><label>To<input id="emailTo" list="emailContactOptions" placeholder="borrower@email.com"></label><datalist id="emailContactOptions"></datalist><label>Email subject<input id="emailSubject" value="Quick follow-up"></label><label>Email body<textarea id="emailBody" rows="10">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><label>CC<input id="emailCc" placeholder="optional@email.com"></label><button class="btn primary" data-action="send-email-page">Send email</button><div id="emailPageMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Recent outbound email</h2></div><div id="emailLogWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
+        await refreshEmailPage();
+      }
+      async function refreshEmailPage() {
+        var contacts = await json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
+        if ($("emailContactOptions")) {
+          $("emailContactOptions").innerHTML = (contacts.contacts || []).filter(function (c) { return c.email; }).slice(0, 5000).map(function (c) {
+            return '<option value="' + esc(c.email) + '">' + esc(c.name || c.email) + '</option>';
+          }).join("");
+        }
+        var log = await json("/api/email/activity?limit=80").catch(function (e) { return { emails: [], error: e.message }; });
+        if (!$("emailLogWrap")) return;
+        $("emailLogWrap").innerHTML = log.error ? '<div class="empty badText">' + esc(log.error) + '</div>' : (log.emails || []).length ? (log.emails || []).map(function (m) {
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between"><b>' + esc(m.subject || "(no subject)") + '</b><span class="badge ' + (/failed/i.test(m.status || "") ? "red" : "green") + '">' + esc(m.status || "sent") + '</span></div><div class="sub">' + esc(formatDateTime(m.created_at)) + ' | ' + esc(m.lead_name || m.email || "") + '</div><div class="sub">' + esc(String(m.body || "").slice(0, 160)) + '</div></div>';
+        }).join("") : '<div class="empty">No outbound email logged yet.</div>';
+      }
+      async function sendEmailPage() {
+        status("emailPageMsg", "Sending...");
+        var data = await json("/api/email/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: $("emailCc").value })
+        });
+        status("emailPageMsg", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+        await refreshEmailPage();
+      }
+
+      async function loadAdminPage() {
+        pageShell("Admin / Sub-Accounts", "Manage admin users, sub-account users, passwords, roles, and account access.",
+          '<button class="btn" data-action="refresh-admin">Refresh</button>',
+          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
+        await refreshAdminPage();
+      }
+      async function refreshAdminPage() {
+        var data = await json("/api/users").catch(function (e) { return { users: [], error: e.message }; });
+        if (!$("adminUsersWrap")) return;
+        $("adminUsersWrap").innerHTML = data.error ? '<div class="empty badText">' + esc(data.error) + '</div>' : (data.users || []).length ? data.users.map(function (u) {
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.username) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div><div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
+        }).join("") : '<div class="empty">No users found.</div>';
+      }
+      async function createAdminUser() {
+        status("adminMsg", "Creating user...");
+        await json("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("adminUserName").value, username: $("adminUsername").value, password: $("adminPassword").value, role: $("adminRole").value }) });
+        status("adminMsg", "User created.", "okText");
+        $("adminPassword").value = "";
+        await refreshAdminPage();
+      }
+      async function resetAdminPassword(id) {
+        var password = prompt("Enter a new temporary password for this user:");
+        if (!password) return;
+        await json("/api/users/" + encodeURIComponent(id) + "/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: password }) });
+        showToast("Password reset.");
+      }
+      async function toggleAdminUser(id, disabled) {
+        await json("/api/users/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled: !disabled }) });
+        await refreshAdminPage();
+      }
+      async function toggleAdminRole(id, role) {
+        await json("/api/users/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: role === "admin" ? "user" : "admin" }) });
+        await refreshAdminPage();
+      }
+
       async function loadSettings() {
         pageShell("Settings", "Messaging channel, vendor credentials, ElevenLabs voice, voicemail audio, and service readiness.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="settingsBody" class="grid cols2"></div>');
         var mode = await json("/api/messaging-mode").catch(function () { return { mode: "auto" }; });
@@ -2623,6 +2844,22 @@
           else if (a === "refresh-leads") await loadLeads();
           else if (a === "refresh-lead-bucket") await loadLeadBucket(state.page);
           else if (a === "refresh-duplicates") await refreshDuplicates();
+          else if (a === "refresh-contacts") await refreshContacts();
+          else if (a === "refresh-campaigns") await refreshCampaigns();
+          else if (a === "refresh-email-page") await refreshEmailPage();
+          else if (a === "send-email-page") await sendEmailPage();
+          else if (a === "refresh-admin") await refreshAdminPage();
+          else if (a === "admin-create-user") await createAdminUser();
+          else if (a === "admin-reset-pass") await resetAdminPassword(btn.dataset.id);
+          else if (a === "admin-toggle-user") await toggleAdminUser(btn.dataset.id, btn.dataset.disabled === "1");
+          else if (a === "admin-toggle-role") await toggleAdminRole(btn.dataset.id, btn.dataset.role);
+          else if (a === "cal-prev") shiftCalendarMonth(-1);
+          else if (a === "cal-next") shiftCalendarMonth(1);
+          else if (a === "cal-today") { state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(); await loadCalendar(); }
+          else if (a === "cal-add-event") await openAddCalendarEvent();
+          else if (a === "cal-save-event") await saveCalendarEvent();
+          else if (a === "cal-open-event") await openCalendarEvent(btn.dataset.leadId, btn.dataset.todoId);
+          else if (a === "cal-send-invite") await sendCalendarInvite(btn.dataset.leadId, btn.dataset.todoId, btn.dataset.via);
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
           else if (a === "repair-leadpool") await repairLeadPool();
@@ -2735,7 +2972,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 

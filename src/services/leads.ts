@@ -46,6 +46,9 @@ export interface Todo {
   created_at: number;
   due_date?: number | null;
   cc_email?: string | null;
+  duration_minutes?: number | null;
+  location?: string | null;
+  description?: string | null;
   deleted_at?: number | null;
 }
 
@@ -624,10 +627,21 @@ function saveTodos(leadId: string, todos: Todo[]): Todo[] {
 }
 
 /** Append a to-do item. Returns the updated list (or null if the lead is gone). */
-export function addTodo(leadId: string, input: string | { text: string; due_date?: number | null; cc_email?: string | null }): Todo[] | null {
+export function addTodo(
+  leadId: string,
+  input: string | {
+    text: string;
+    due_date?: number | null;
+    cc_email?: string | null;
+    duration_minutes?: number | null;
+    location?: string | null;
+    description?: string | null;
+  },
+): Todo[] | null {
   const lead = getLead(leadId);
   if (!lead) return null;
   const text = typeof input === "string" ? input : input.text;
+  const duration = typeof input === "string" ? null : Number(input.duration_minutes || 0);
   const item: Todo = {
     id: randomUUID(),
     text: text.trim(),
@@ -635,6 +649,9 @@ export function addTodo(leadId: string, input: string | { text: string; due_date
     created_at: Date.now(),
     due_date: typeof input === "string" ? null : input.due_date ?? null,
     cc_email: typeof input === "string" ? null : input.cc_email ?? null,
+    duration_minutes: duration && Number.isFinite(duration) ? Math.max(5, Math.min(480, Math.round(duration))) : null,
+    location: typeof input === "string" ? null : input.location?.trim() || null,
+    description: typeof input === "string" ? null : input.description?.trim() || null,
   };
   return saveTodos(leadId, [...lead.todos, item]);
 }
