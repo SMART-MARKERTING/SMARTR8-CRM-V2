@@ -172,6 +172,7 @@ export const config = {
     resendApiKey: env("RESEND_API_KEY"),
     fromEmail: env("EMAIL_FROM"), // e.g. "Adaxa Home Loans <mike@adaxahomeloans.com>"
     replyTo: env("EMAIL_REPLY_TO"),
+    resendWebhookSecret: env("RESEND_WEBHOOK_SECRET"),
   },
 
   // LOS / settlement / credit vendor integrations. These are intentionally optional:

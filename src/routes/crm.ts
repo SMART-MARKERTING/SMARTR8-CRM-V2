@@ -2885,15 +2885,17 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
 
 crmRouter.get("/api/email/activity", requirePass, (req, res) => {
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+  const box = typeof req.query.box === "string" ? req.query.box : "all";
+  const directionWhere = box === "inbox" ? "AND a.direction = 'inbound'" : box === "sent" ? "AND a.direction = 'outbound'" : "";
   const owner = ownerScope(req);
   const rows = db
     .prepare(
-      `SELECT a.id, a.created_at, a.subject, a.body, a.status, a.meta,
+      `SELECT a.id, a.created_at, a.subject, a.body, a.status, a.meta, a.direction, a.channel,
               l.id AS lead_id, l.first_name, l.last_name, l.email, l.phone
          FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
         WHERE a.deleted_at IS NULL
           AND a.type = 'email'
-          AND a.direction = 'outbound'
+          ${directionWhere}
           ${owner ? "AND l.owner_user_id = @owner" : ""}
         ORDER BY a.created_at DESC
         LIMIT @limit`,
@@ -2905,6 +2907,8 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
     body: string | null;
     status: string | null;
     meta: string | null;
+    direction: string | null;
+    channel: string | null;
     lead_id: string | null;
     first_name: string | null;
     last_name: string | null;
@@ -2913,17 +2917,37 @@ crmRouter.get("/api/email/activity", requirePass, (req, res) => {
   }>;
   res.json({
     ok: true,
-    emails: rows.map((row) => ({
-      id: row.id,
-      created_at: row.created_at,
-      subject: row.subject,
-      body: row.body,
-      status: row.status,
-      lead_id: row.lead_id,
-      lead_name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || row.phone || "Lead",
-      email: row.email,
-      meta: safeMeta(row.meta),
-    })),
+    box,
+    emails: rows.map((row) => {
+      const meta = safeMeta(row.meta);
+      const inbound = row.direction === "inbound";
+      const toList = Array.isArray(meta?.to) ? meta.to.map((v) => String(v)).filter(Boolean) : [];
+      const ccList = Array.isArray(meta?.cc) ? meta.cc.map((v) => String(v)).filter(Boolean) : [];
+      const from = inbound
+        ? String(meta?.from || meta?.from_email || row.email || "")
+        : config.email.fromEmail || "CRM";
+      const to = inbound
+        ? toList.join(", ") || config.email.fromEmail || ""
+        : row.email || "";
+      return {
+        id: row.id,
+        created_at: row.created_at,
+        subject: row.subject,
+        body: row.body,
+        status: row.status,
+        direction: row.direction,
+        channel: row.channel,
+        lead_id: row.lead_id,
+        lead_name: [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email || row.phone || "Lead",
+        email: row.email,
+        from,
+        to,
+        cc: ccList,
+        attachments: Array.isArray(meta?.attachments) ? meta.attachments : [],
+        html: typeof meta?.html === "string" ? meta.html : null,
+        meta,
+      };
+    }),
   });
 });
 

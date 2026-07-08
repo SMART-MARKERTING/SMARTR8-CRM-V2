@@ -15,6 +15,7 @@ import { usersRouter } from "./routes/users";
 import { startCallNowPoller } from "./services/callNowPoller";
 import { seedCampaigns, startAutomationWorker } from "./services/automations";
 import { seedAdminIfEmpty } from "./services/auth";
+import { handleResendInboundWebhook } from "./services/resendInbound";
 
 const app = express();
 const publicDir = path.resolve(process.cwd(), "public");
@@ -47,6 +48,11 @@ app.use((_req, res, next) => {
   );
   next();
 });
+app.post(
+  ["/api/webhooks/resend", "/v2/api/webhooks/resend"],
+  express.raw({ type: "application/json", limit: "16mb" }),
+  handleResendInboundWebhook,
+);
 app.use(express.json({ limit: "16mb" })); // CSV imports post the whole file as JSON — allow large exports
 app.use(express.urlencoded({ extended: true }));
 

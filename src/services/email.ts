@@ -7,8 +7,31 @@ export interface EmailResult {
   detail?: string;
 }
 
+export interface ResendReceivedEmail {
+  object?: string;
+  id?: string;
+  email_id?: string;
+  from?: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  created_at?: string;
+  html?: string | null;
+  text?: string | null;
+  attachments?: Array<Record<string, unknown>>;
+  headers?: Record<string, string>;
+  message_id?: string;
+  raw?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export function emailConfigured(): boolean {
   return Boolean(config.email.resendApiKey && config.email.fromEmail);
+}
+
+export function resendApiConfigured(): boolean {
+  return Boolean(config.email.resendApiKey);
 }
 
 /**
@@ -73,5 +96,29 @@ export async function sendEmail(opts: {
   } catch (err) {
     log.error("Resend send threw", { err: String(err) });
     return { ok: false, detail: String(err) };
+  }
+}
+
+export async function retrieveReceivedEmail(emailId: string): Promise<ResendReceivedEmail | null> {
+  if (!resendApiConfigured()) return null;
+  if (!emailId) return null;
+
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}?html_format=data_uri`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.email.resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const raw = await res.text().catch(() => "");
+    if (!res.ok) {
+      log.error(`Resend received email retrieve failed ${res.status}: ${raw}`);
+      return null;
+    }
+    return raw ? (JSON.parse(raw) as ResendReceivedEmail) : null;
+  } catch (err) {
+    log.error("Resend received email retrieve threw", { err: String(err), emailId });
+    return null;
   }
 }

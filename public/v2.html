@@ -310,6 +310,18 @@
     .item.clickable { cursor: pointer; }
     .item.clickable:hover { border-color: var(--muted); background: var(--hover); }
     .empty { border: 1px dashed var(--fieldLine); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); background: var(--empty); }
+    .emailShell { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 14px; align-items: start; }
+    .emailList { max-height: calc(100vh - 256px); overflow: auto; padding: 10px; display: grid; gap: 8px; }
+    .emailRow { display: grid; gap: 6px; text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--item); color: var(--text); padding: 11px; }
+    .emailRow:hover { border-color: var(--muted); background: var(--hover); }
+    .emailRow.active { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent); }
+    .emailRowTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .emailSubject { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .emailMeta { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .emailPreview { color: var(--muted); font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .emailReader { min-height: 540px; }
+    .emailBodyText { white-space: pre-wrap; line-height: 1.55; color: var(--text); }
+    .emailAddressLine { display: grid; gap: 3px; margin: 12px 0; color: var(--muted); font-size: 13px; }
     .statusLine {
       min-height: 22px;
       color: var(--muted);
@@ -437,7 +449,7 @@
     }
     .mobileMenu { display: none; }
     @media (max-width: 1120px) {
-      .cols2, .cols3, .splitShell { grid-template-columns: 1fr; }
+      .cols2, .cols3, .splitShell, .emailShell { grid-template-columns: 1fr; }
       .drawer { position: static; max-height: none; }
     }
     @media (max-width: 820px) {
@@ -567,6 +579,9 @@
         automations: [],
         editingAutomation: null,
         automationDraftSteps: [],
+        emailBox: "inbox",
+        emailMessages: [],
+        activeEmailId: null,
         leadStageFilter: "",
         dialerClient: null,
         crmLineReady: false,
@@ -2599,9 +2614,18 @@
       }
 
       async function loadEmailPage() {
-        pageShell("Email", "Send individual borrower emails and review outbound email history.",
-          '<button class="btn" data-action="refresh-email-page">Refresh</button>',
-          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Send email</h2><label>To<input id="emailTo" list="emailContactOptions" placeholder="borrower@email.com"></label><datalist id="emailContactOptions"></datalist><label>Email subject<input id="emailSubject" value="Quick follow-up"></label><label>Email body<textarea id="emailBody" rows="10">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><label>CC<input id="emailCc" placeholder="optional@email.com"></label><button class="btn primary" data-action="send-email-page">Send email</button><div id="emailPageMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Recent outbound email</h2></div><div id="emailLogWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
+        var webhookUrl = location.origin + apiPath("/api/webhooks/resend");
+        pageShell("Email", "Mailbox for borrower replies, sent mail, and Resend inbound email.",
+          '<button class="btn primary" data-action="email-compose">Compose</button><button class="btn" data-action="refresh-email-page">Refresh</button>',
+          '<div class="emailShell">' +
+            '<section class="card"><div class="cardHead"><div><h2>Mailbox</h2><div id="emailCounter" class="sub">Loading...</div></div><div class="toolbar"><button class="btn small" data-action="email-box" data-box="inbox">Inbox</button><button class="btn small" data-action="email-box" data-box="sent">Sent</button><button class="btn small" data-action="email-box" data-box="all">All</button></div></div>' +
+              '<div style="padding:10px;border-bottom:1px solid var(--line)"><input id="emailSearch" type="search" placeholder="Search sender, lead, subject..."></div>' +
+              '<div id="emailList" class="emailList"><div class="spinner"></div></div>' +
+            '</section>' +
+            '<section class="card pad emailReader"><div id="emailReader" class="empty">Select an email.</div></section>' +
+          '</div>' +
+          '<section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Resend inbound setup</h2><p class="muted">Use this webhook for received-email events. Add RESEND_WEBHOOK_SECRET in Render and Cloudflare after creating the webhook.</p><div class="toolbar"><input id="emailWebhookUrl" value="' + esc(webhookUrl) + '" readonly><button class="btn small" data-action="copy-email-webhook">Copy</button></div></section><datalist id="emailContactOptions"></datalist>');
+        if ($("emailSearch")) $("emailSearch").addEventListener("input", renderEmailList);
         await refreshEmailPage();
       }
       async function refreshEmailPage() {
@@ -2611,11 +2635,101 @@
             return '<option value="' + esc(c.email) + '">' + esc(c.name || c.email) + '</option>';
           }).join("");
         }
-        var log = await json("/api/email/activity?limit=80").catch(function (e) { return { emails: [], error: e.message }; });
-        if (!$("emailLogWrap")) return;
-        $("emailLogWrap").innerHTML = log.error ? '<div class="empty badText">' + esc(log.error) + '</div>' : (log.emails || []).length ? (log.emails || []).map(function (m) {
-          return '<div class="item"><div class="toolbar" style="justify-content:space-between"><b>' + esc(m.subject || "(no subject)") + '</b><span class="badge ' + (/failed/i.test(m.status || "") ? "red" : "green") + '">' + esc(m.status || "sent") + '</span></div><div class="sub">' + esc(formatDateTime(m.created_at)) + ' | ' + esc(m.lead_name || m.email || "") + '</div><div class="sub">' + esc(String(m.body || "").slice(0, 160)) + '</div></div>';
-        }).join("") : '<div class="empty">No outbound email logged yet.</div>';
+        var log = await json("/api/email/activity?box=" + encodeURIComponent(state.emailBox || "inbox") + "&limit=250").catch(function (e) { return { emails: [], error: e.message }; });
+        state.emailMessages = log.emails || [];
+        if (log.error) {
+          if ($("emailList")) $("emailList").innerHTML = '<div class="empty badText">' + esc(log.error) + '</div>';
+          if ($("emailCounter")) $("emailCounter").textContent = "Mailbox error";
+          renderEmailReader();
+          return;
+        }
+        if (!state.emailMessages.some(function (m) { return m.id === state.activeEmailId; })) {
+          state.activeEmailId = state.emailMessages.length ? state.emailMessages[0].id : null;
+        }
+        renderEmailList();
+        renderEmailReader();
+      }
+      function emailFromText(value) {
+        var s = String(value || "");
+        var bracket = s.match(/<([^<>@\s]+@[^<>@\s]+)>/);
+        if (bracket) return bracket[1];
+        var bare = s.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        return bare ? bare[0] : s;
+      }
+      function emailBoxName() {
+        return ({ inbox: "Inbox", sent: "Sent", all: "All mail" })[state.emailBox || "inbox"] || "Inbox";
+      }
+      function emailStatusHtml(m) {
+        var inbound = m.direction === "inbound";
+        var failed = /failed/i.test(m.status || "");
+        return '<span class="badge ' + (failed ? "red" : inbound ? "blue" : "green") + '">' + esc(inbound ? "Received" : (m.status || "Sent")) + '</span>';
+      }
+      function renderEmailList() {
+        var box = $("emailList");
+        if (!box) return;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-action="email-box"]'), function (b) {
+          b.classList.toggle("primary", b.dataset.box === (state.emailBox || "inbox"));
+        });
+        var q = inputVal("emailSearch").toLowerCase();
+        var rows = (state.emailMessages || []).filter(function (m) {
+          var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to].join(" ").toLowerCase();
+          return !q || hay.indexOf(q) >= 0;
+        });
+        if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName();
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty">No email found in ' + esc(emailBoxName()) + '.</div>';
+          return;
+        }
+        box.innerHTML = rows.map(function (m) {
+          var inbound = m.direction === "inbound";
+          var contact = inbound ? (m.from || m.lead_name || m.email || "Sender") : (m.to || m.lead_name || m.email || "Recipient");
+          return '<button class="emailRow ' + (m.id === state.activeEmailId ? 'active' : '') + '" data-action="email-open" data-id="' + esc(m.id) + '">' +
+            '<div class="emailRowTop"><span class="emailSubject">' + esc(m.subject || "(no subject)") + '</span>' + emailStatusHtml(m) + '</div>' +
+            '<div class="emailMeta">' + esc(contact) + ' | ' + esc(formatDateTime(m.created_at)) + '</div>' +
+            '<div class="emailPreview">' + esc(String(m.body || "").slice(0, 220)) + '</div>' +
+          '</button>';
+        }).join("");
+      }
+      function renderEmailReader() {
+        var box = $("emailReader");
+        if (!box) return;
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        if (!m) {
+          box.className = "empty";
+          box.innerHTML = "Select an email.";
+          return;
+        }
+        box.className = "";
+        var attachments = Array.isArray(m.attachments) ? m.attachments : [];
+        var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
+        box.innerHTML =
+          '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div>' + emailStatusHtml(m) + '</div>' +
+          '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div></div>' +
+          '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-forward">Forward</button>' + leadButton + '</div>' +
+          (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return '<span class="badge purple">' + esc(a.filename || a.name || "Attachment") + '</span>'; }).join("") + '</div>' : '') +
+          '<div class="emailBodyText">' + esc(m.body || "") + '</div>';
+      }
+      function openEmailComposer(mode) {
+        mode = mode || "compose";
+        var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
+        var to = "";
+        var cc = "";
+        var subject = "Quick follow-up";
+        var body = "Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal";
+        if (mode === "reply" && m) {
+          to = m.direction === "inbound" ? emailFromText(m.from || "") : (m.email || m.to || "");
+          subject = /^re:/i.test(m.subject || "") ? (m.subject || "") : "Re: " + (m.subject || "");
+          body = "\n\n--- Original message ---\n" + String(m.body || "").slice(0, 1800);
+        } else if (mode === "forward" && m) {
+          subject = /^fwd:/i.test(m.subject || "") ? (m.subject || "") : "Fwd: " + (m.subject || "");
+          body = "\n\n--- Forwarded message ---\nFrom: " + (m.from || "") + "\nTo: " + (m.to || "") + "\n\n" + String(m.body || "").slice(0, 2200);
+        }
+        openModal(mode === "reply" ? "Reply" : mode === "forward" ? "Forward email" : "Compose email",
+          '<label>To<input id="emailTo" list="emailContactOptions" value="' + esc(to) + '" placeholder="borrower@email.com"></label>' +
+          '<label>Subject<input id="emailSubject" value="' + esc(subject) + '"></label>' +
+          '<label>Email body<textarea id="emailBody" rows="12">' + esc(body) + '</textarea></label>' +
+          '<label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-email-page">Send email</button></div><div id="emailPageMsg" class="statusLine"></div>');
       }
       async function sendEmailPage() {
         status("emailPageMsg", "Sending...");
@@ -2625,7 +2739,15 @@
           body: JSON.stringify({ to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: $("emailCc").value })
         });
         status("emailPageMsg", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+        if (data.ok) closeModal();
+        state.emailBox = "sent";
+        state.activeEmailId = null;
         await refreshEmailPage();
+      }
+      async function copyEmailWebhook() {
+        var url = $("emailWebhookUrl") ? $("emailWebhookUrl").value : (location.origin + apiPath("/api/webhooks/resend"));
+        if (navigator.clipboard) await navigator.clipboard.writeText(url);
+        showToast("Resend inbound webhook copied.");
       }
 
       async function loadAdminPage() {
@@ -2847,6 +2969,12 @@
           else if (a === "refresh-contacts") await refreshContacts();
           else if (a === "refresh-campaigns") await refreshCampaigns();
           else if (a === "refresh-email-page") await refreshEmailPage();
+          else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; await refreshEmailPage(); }
+          else if (a === "email-open") { state.activeEmailId = btn.dataset.id; renderEmailList(); renderEmailReader(); }
+          else if (a === "email-compose") openEmailComposer("compose");
+          else if (a === "email-reply") openEmailComposer("reply");
+          else if (a === "email-forward") openEmailComposer("forward");
+          else if (a === "copy-email-webhook") await copyEmailWebhook();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
           else if (a === "admin-create-user") await createAdminUser();
