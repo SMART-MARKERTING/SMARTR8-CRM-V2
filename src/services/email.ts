@@ -230,6 +230,31 @@ export async function listSentEmails(
   };
 }
 
+export async function listSentEmailAttachments(
+  emailId: string,
+  opts: ListSentEmailsOptions = {},
+): Promise<{ ok: boolean; attachments: ResendSentAttachment[]; has_more: boolean; detail?: string }> {
+  const id = String(emailId || "").trim();
+  if (!id) return { ok: false, attachments: [], has_more: false, detail: "email id is required" };
+  if (opts.after && opts.before) {
+    return { ok: false, attachments: [], has_more: false, detail: "Use either after or before, not both" };
+  }
+  const parsedLimit = Number(opts.limit || 20);
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 100)) : 20;
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (opts.after) query.set("after", opts.after);
+  if (opts.before) query.set("before", opts.before);
+  const result = await resendGet<{ object?: string; data?: ResendSentAttachment[]; has_more?: boolean }>(
+    `/emails/${encodeURIComponent(id)}/attachments?${query.toString()}`,
+  );
+  if (!result.ok) return { ok: false, attachments: [], has_more: false, detail: result.detail };
+  return {
+    ok: true,
+    attachments: Array.isArray(result.data?.data) ? result.data.data : [],
+    has_more: Boolean(result.data?.has_more),
+  };
+}
+
 /**
  * Send a transactional email via the Resend HTTP API (no SDK — keeps deps minimal,
  * matching how Telnyx/GHL are called). `html` is optional; if omitted, `text` is sent.
