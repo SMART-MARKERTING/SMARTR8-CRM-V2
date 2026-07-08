@@ -75,6 +75,12 @@ export interface ResendSentEmail {
   [key: string]: unknown;
 }
 
+export interface ListSentEmailsOptions {
+  limit?: number;
+  after?: string;
+  before?: string;
+}
+
 export interface ResendWebhook {
   object?: string;
   id: string;
@@ -137,6 +143,26 @@ export async function listReceivedEmails(limit = 10): Promise<{ ok: boolean; ema
   const result = await resendGet<{ object?: string; data?: ResendReceivedEmail[] }>(`/emails/receiving?limit=${Math.max(1, Math.min(limit, 100))}`);
   if (!result.ok) return { ok: false, emails: [], detail: result.detail };
   return { ok: true, emails: Array.isArray(result.data?.data) ? result.data.data : [] };
+}
+
+export async function listSentEmails(
+  opts: ListSentEmailsOptions = {},
+): Promise<{ ok: boolean; emails: ResendSentEmail[]; has_more: boolean; detail?: string }> {
+  if (opts.after && opts.before) {
+    return { ok: false, emails: [], has_more: false, detail: "Use either after or before, not both" };
+  }
+  const parsedLimit = Number(opts.limit || 20);
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 100)) : 20;
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (opts.after) query.set("after", opts.after);
+  if (opts.before) query.set("before", opts.before);
+  const result = await resendGet<{ object?: string; data?: ResendSentEmail[]; has_more?: boolean }>(`/emails?${query.toString()}`);
+  if (!result.ok) return { ok: false, emails: [], has_more: false, detail: result.detail };
+  return {
+    ok: true,
+    emails: Array.isArray(result.data?.data) ? result.data.data : [],
+    has_more: Boolean(result.data?.has_more),
+  };
 }
 
 /**

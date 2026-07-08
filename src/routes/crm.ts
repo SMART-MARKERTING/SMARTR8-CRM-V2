@@ -43,7 +43,7 @@ import {
   resolveLeadTimezone,
 } from "../services/leads";
 import { listAllContacts } from "../services/ghl";
-import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails } from "../services/email";
+import { sendEmail, emailConfigured, listReceivedEmails, listResendWebhooks, retrieveResendWebhook, retrieveSentEmail, sendBatchEmails, listSentEmails } from "../services/email";
 import { renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
@@ -3379,6 +3379,22 @@ crmRouter.post("/api/email/batch-send", requirePass, async (req, res) => {
   res.status(result.ok ? 200 : 400).json(result);
 });
 
+crmRouter.get("/api/email/sent", requirePass, async (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+  const after = cleanText(req.query.after);
+  const before = cleanText(req.query.before);
+  const result = await listSentEmails({
+    limit,
+    after: after || undefined,
+    before: before || undefined,
+  });
+  if (!result.ok) {
+    res.status(400).json({ error: result.detail || "could not list sent email from Resend" });
+    return;
+  }
+  res.json(result);
+});
+
 crmRouter.get("/api/email/sent/:emailId", requirePass, async (req, res) => {
   const email = await retrieveSentEmail(req.params.emailId);
   if (!email) {
@@ -3432,6 +3448,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
     }),
   );
   const received = await listReceivedEmails(10);
+  const sent = await listSentEmails({ limit: 10 });
   res.json({
     ok: true,
     resend_api_key_set: Boolean(config.email.resendApiKey),
@@ -3449,6 +3466,17 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
       from: email.from || "",
       to: email.to || [],
       subject: email.subject || "",
+      created_at: email.created_at || "",
+    })),
+    sent_ok: sent.ok,
+    sent_error: sent.detail || null,
+    recent_sent_count: sent.emails.length,
+    recent_sent: sent.emails.map((email) => ({
+      id: email.id || "",
+      from: email.from || "",
+      to: email.to || [],
+      subject: email.subject || "",
+      last_event: email.last_event || "",
       created_at: email.created_at || "",
     })),
   });
