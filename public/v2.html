@@ -159,6 +159,14 @@
       font-size: 12px;
       padding: 10px 8px;
     }
+    #workspaceNav:empty::after {
+      content: "Star Workspace tabs in Control Panel";
+      display: block;
+      color: var(--navText);
+      opacity: .66;
+      font-size: 12px;
+      padding: 10px 8px;
+    }
     .navIco {
       width: 26px;
       height: 26px;
@@ -522,21 +530,14 @@
         </div>
       </div>
       <div class="navGroup">
-        <small>Workspace</small>
-        <button class="navBtn active" data-nav="dashboard"><span class="navIco">DB</span>Dashboard</button>
-        <button class="navBtn" data-nav="leads"><span class="navIco">LD</span>Leads</button>
-        <button class="navBtn" data-nav="pipeline"><span class="navIco">PL</span>Pipeline</button>
-        <button class="navBtn" data-nav="messages"><span class="navIco">MS</span>Conversations</button>
-        <button class="navBtn" data-nav="dialer"><span class="navIco">PH</span>Dialer</button>
-        <button class="navBtn" data-nav="powerdialer"><span class="navIco">PD</span>Power Dialer</button>
-        <button class="navBtn" data-nav="leadpool"><span class="navIco">LP</span>Lead Pool</button>
-        <button class="navBtn" data-nav="campaigns"><span class="navIco">TC</span>Text Campaigns</button>
-        <button class="navBtn" data-nav="tasks"><span class="navIco">TS</span>Tasks</button>
-        <button class="navBtn" data-nav="calendar"><span class="navIco">CA</span>Calendar</button>
-      </div>
-      <div class="navGroup">
         <small>Favorites</small>
         <div id="favoritesNav"></div>
+      </div>
+      <div class="navGroup">
+        <small>Workspace</small>
+        <div id="workspaceNav"></div>
+      </div>
+      <div class="navGroup">
         <button class="navBtn" data-nav="control"><span class="navIco">CP</span>Control Panel</button>
         <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
       </div>
@@ -806,14 +807,22 @@
       function isFavorite(page) {
         return state.favoritePages.indexOf(page) >= 0;
       }
+      function navButtonHtml(item) {
+        return '<button class="navBtn" data-nav="' + esc(item.id) + '"><span class="navIco">' + esc(item.icon) + '</span>' + esc(item.label) + '</button>';
+      }
       function renderSidebarFavorites() {
-        var wrap = $("favoritesNav");
-        if (!wrap) return;
-        wrap.innerHTML = state.favoritePages.map(function (page) {
+        var favoritesWrap = $("favoritesNav");
+        var workspaceWrap = $("workspaceNav");
+        var favoriteItems = state.favoritePages.map(function (page) {
           var item = itemByPage(page);
-          if (!item) return "";
-          return '<button class="navBtn" data-nav="' + esc(item.id) + '"><span class="navIco">' + esc(item.icon) + '</span>' + esc(item.label) + '</button>';
-        }).join("");
+          return item || null;
+        }).filter(Boolean);
+        if (favoritesWrap) favoritesWrap.innerHTML = favoriteItems.map(navButtonHtml).join("");
+        if (workspaceWrap) {
+          workspaceWrap.innerHTML = favoriteItems.filter(function (item) {
+            return item.group === "Workspace";
+          }).map(navButtonHtml).join("");
+        }
         document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
           b.classList.toggle("active", b.dataset.nav === state.page);
         });
