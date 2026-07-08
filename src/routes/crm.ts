@@ -112,6 +112,15 @@ import { getContactMessages } from "../services/ghl";
 import { sendLeadEvent } from "../services/metaCapi";
 import { recordAudit, listAuditEvents } from "../services/audit";
 import { buildCrmReport, reportPdfBuffer } from "../services/reports";
+import {
+  handleInboundWhatsAppWebhook,
+  listWhatsAppMessages,
+  sendWhatsAppTemplate,
+  sendWhatsAppText,
+  simulateInboundWhatsApp,
+  whatsAppProviderStatus,
+  whatsappTemplateOptions,
+} from "../services/whatsapp";
 
 export const crmRouter = Router();
 
@@ -750,6 +759,142 @@ function accessibleLead(req: Request, res: Response): Lead | null {
   }
   return lead;
 }
+
+function accessibleLeadById(req: Request, res: Response, id: string): Lead | null {
+  const lead = getLead(id);
+  if (!lead) {
+    res.status(404).json({ error: "lead not found" });
+    return null;
+  }
+  const owner = ownerScope(req);
+  if (owner && lead.owner_user_id !== owner) {
+    res.status(403).json({ error: "this lead is assigned to another user" });
+    return null;
+  }
+  return lead;
+}
+
+crmRouter.get("/api/whatsapp/status", requirePass, (_req, res) => {
+  res.json({ ok: true, ...whatsAppProviderStatus() });
+});
+
+crmRouter.post("/api/whatsapp/send", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as {
+    contactId?: string;
+    leadId?: string;
+    phone?: string;
+    message?: string;
+    body?: string;
+    templateName?: string;
+    template_name?: string;
+    templateVariables?: Record<string, string | number | null | undefined>;
+    variables?: Record<string, string | number | null | undefined>;
+    aiAutoSend?: boolean;
+  };
+  const contactId = cleanText(body.contactId || body.leadId);
+  if (contactId && !accessibleLeadById(req, res, contactId)) return;
+  if (!contactId && !body.phone) {
+    res.status(400).json({ error: "pass contactId/leadId or phone" });
+    return;
+  }
+  try {
+    const templateName = cleanText(body.templateName || body.template_name);
+    const messageBody = cleanText(body.message || body.body);
+    if (!templateName && !messageBody) {
+      res.status(400).json({ error: "pass message/body or templateName" });
+      return;
+    }
+    const actor = leadActionAuthor(req);
+    const result = templateName
+      ? await sendWhatsAppTemplate({
+          contactId: contactId || undefined,
+          phone: body.phone,
+          templateName,
+          variables: body.templateVariables || body.variables || {},
+          actor,
+          aiAutoSend: body.aiAutoSend === true,
+        })
+      : await sendWhatsAppText({
+          contactId: contactId || undefined,
+          phone: body.phone,
+          body: messageBody,
+          actor,
+          aiAutoSend: body.aiAutoSend === true,
+        });
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (err) {
+    log.error("WhatsApp send failed", { err: String(err) });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+crmRouter.get("/api/webhooks/whatsapp", (req, res) => {
+  const mode = cleanText(req.query["hub.mode"]);
+  const token = cleanText(req.query["hub.verify_token"]);
+  const challenge = cleanText(req.query["hub.challenge"]);
+  if (mode === "subscribe" && token && token === config.whatsapp.verifyToken) {
+    res.status(200).send(challenge);
+    return;
+  }
+  res.status(403).send("verification failed");
+});
+
+crmRouter.post("/api/webhooks/whatsapp", async (req, res) => {
+  try {
+    const result = await handleInboundWhatsAppWebhook(req);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+crmRouter.get("/api/whatsapp/debug", requireAdmin, (_req, res) => {
+  res.json({
+    ok: true,
+    status: whatsAppProviderStatus(),
+    templates: whatsappTemplateOptions(),
+    recent: listWhatsAppMessages(undefined, 25),
+  });
+});
+
+crmRouter.post("/api/whatsapp/debug/simulate-inbound", requireAdmin, (req, res) => {
+  const body = (req.body ?? {}) as { phone?: string; body?: string; message?: string };
+  if (!body.phone || !(body.body || body.message)) {
+    res.status(400).json({ error: "pass phone and body/message" });
+    return;
+  }
+  const result = simulateInboundWhatsApp({ phone: body.phone, body: body.body || body.message || "" });
+  res.json({ ok: true, leadId: result.lead.id, message: result.message });
+});
+
+crmRouter.get("/debug/whatsapp", requireAdmin, (_req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhatsApp Debug</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0;padding:24px}main{max-width:980px;margin:auto}
+.card{background:#fff;border:1px solid #d8e0ec;border-radius:10px;padding:16px;margin:0 0 16px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+label{display:block;font-weight:700;margin:10px 0 4px}input,textarea,select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit}
+button{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:9px 12px;font-weight:800;cursor:pointer}button.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ok{color:#047857}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;overflow:auto}
+</style></head><body><main>
+<h1>WhatsApp Debug</h1>
+<section class="card"><h2>Status</h2><div id="status">Loading...</div><div class="toolbar"><button onclick="loadDebug()">Refresh</button></div></section>
+<section class="card"><h2>Send Test</h2><label>Lead ID or phone</label><input id="target" placeholder="Lead id or +1623..."><label>Message</label><textarea id="msg" rows="4">Hi {{first_name}}, Mykoal with Adaxa Home here. I can help you check home equity options. Subject to approval.</textarea><div class="toolbar"><button class="primary" onclick="sendTest()">Send free-form</button><button onclick="sendTemplate()">Send HELOC template</button></div><div id="sendOut"></div></section>
+<section class="card"><h2>Simulate Inbound</h2><label>Phone</label><input id="simPhone" placeholder="+1623..."><label>Inbound body</label><textarea id="simBody" rows="3">HELOC</textarea><div class="toolbar"><button class="primary" onclick="simulateInbound()">Simulate inbound webhook</button></div><div id="simOut"></div></section>
+<section class="card"><h2>Recent WhatsApp log</h2><pre id="log"></pre></section>
+</main><script>
+const token=localStorage.getItem("sp_token")||"";
+function headers(){return {"content-type":"application/json","x-session-token":token};}
+async function api(path,opts={}){opts.headers=Object.assign(headers(),opts.headers||{});const r=await fetch(path,opts);const t=await r.text();let j={};try{j=JSON.parse(t)}catch{j={raw:t}}if(!r.ok)throw new Error(j.error||t||r.statusText);return j;}
+async function loadDebug(){try{const j=await api("/api/whatsapp/debug");document.getElementById("status").innerHTML="<b>Provider:</b> "+j.status.provider+"<br><b>Configured:</b> "+j.status.configured+"<br><b>Warnings:</b> "+(j.status.warnings||[]).join("; ");document.getElementById("log").textContent=JSON.stringify(j.recent,null,2);}catch(e){document.getElementById("status").innerHTML='<span class="bad">'+e.message+"</span>";}}
+async function sendTest(){const target=document.getElementById("target").value.trim();const body={message:document.getElementById("msg").value};if(target.startsWith("+"))body.phone=target;else body.contactId=target;try{document.getElementById("sendOut").textContent=JSON.stringify(await api("/api/whatsapp/send",{method:"POST",body:JSON.stringify(body)}),null,2);await loadDebug();}catch(e){document.getElementById("sendOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
+async function sendTemplate(){const target=document.getElementById("target").value.trim();const body={templateName:"heloc_follow_up",templateVariables:{}};if(target.startsWith("+"))body.phone=target;else body.contactId=target;try{document.getElementById("sendOut").textContent=JSON.stringify(await api("/api/whatsapp/send",{method:"POST",body:JSON.stringify(body)}),null,2);await loadDebug();}catch(e){document.getElementById("sendOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
+async function simulateInbound(){try{document.getElementById("simOut").textContent=JSON.stringify(await api("/api/whatsapp/debug/simulate-inbound",{method:"POST",body:JSON.stringify({phone:document.getElementById("simPhone").value,body:document.getElementById("simBody").value})}),null,2);await loadDebug();}catch(e){document.getElementById("simOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
+loadDebug();
+</script></body></html>`);
+});
 
 function publicDocumentUrl(docId: string): string {
   return `/api/documents/${encodeURIComponent(docId)}/download`;
@@ -2741,6 +2886,7 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
     durationMinutes?: string | number;
     location?: string;
     description?: string;
+    cc_email?: string;
     via?: string;
   };
   const todo = body.todoId ? lead.todos.find((t) => t.id === body.todoId && !t.deleted_at) : undefined;
@@ -2760,6 +2906,7 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
   const links = calendarEventLinks(req, event);
   const inviteBody = appointmentInviteBody(lead, event, links);
   const via = cleanText(body.via, "email").toLowerCase();
+  const cc = parseCc(body.cc_email || todo?.cc_email || "");
   const result = { email: "skipped", text: "skipped" };
   const author = leadActionAuthor(req);
 
@@ -2769,7 +2916,7 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
     else if (!emailConfigured()) result.email = "skipped:email not configured";
     else {
       const { html, text } = buildBrandedEmail(inviteBody, unsubscribeUrl(lead.id));
-      const sent = await sendEmail({ to: lead.email, subject: `Appointment: ${event.title}`, html, text });
+      const sent = await sendEmail({ to: lead.email, subject: `Appointment: ${event.title}`, html, text, cc });
       result.email = sent.ok ? "sent" : `failed:${sent.detail || "send failed"}`;
       logActivity(lead.id, {
         type: "email",
@@ -2778,7 +2925,7 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
         subject: `Appointment: ${event.title}`,
         body: inviteBody,
         status: sent.ok ? "calendar-invite-sent" : result.email,
-        meta: { id: sent.id, detail: sent.detail, author, calendarInvite: true, links },
+        meta: { id: sent.id, detail: sent.detail, author, calendarInvite: true, links, cc: cc.length ? cc : undefined },
       });
     }
   }
@@ -2807,7 +2954,7 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
     channel: "system",
     body: `Calendar invite prepared: ${event.title}`,
     status: "prepared",
-    meta: { author, event, links, result },
+    meta: { author, event, links, result, cc: cc.length ? cc : undefined },
   });
   res.json({ ok: true, event, links, result });
 });

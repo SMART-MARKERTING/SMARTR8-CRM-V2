@@ -35,6 +35,13 @@ export interface Lead {
   past_client: number;
   contact_only: number;
   owner_user_id: string | null;
+  whatsapp_phone: string | null;
+  whatsapp_opt_in_status: number;
+  whatsapp_opt_in_source: string | null;
+  whatsapp_opt_in_timestamp: number | null;
+  whatsapp_last_inbound_at: number | null;
+  whatsapp_last_outbound_at: number | null;
+  preferred_channel: string | null;
   todos: Todo[];
 }
 
@@ -135,6 +142,13 @@ interface LeadRow {
   past_client: number;
   contact_only: number;
   owner_user_id: string | null;
+  whatsapp_phone: string | null;
+  whatsapp_opt_in_status: number;
+  whatsapp_opt_in_source: string | null;
+  whatsapp_opt_in_timestamp: number | null;
+  whatsapp_last_inbound_at: number | null;
+  whatsapp_last_outbound_at: number | null;
+  preferred_channel: string | null;
   todos: string;
 }
 
@@ -185,6 +199,10 @@ export interface LeadInput {
   sms_consent?: boolean;
   consent_at?: number;
   contact_only?: boolean;
+  whatsapp_phone?: string;
+  whatsapp_opt_in_status?: boolean;
+  whatsapp_opt_in_source?: string;
+  preferred_channel?: string;
 }
 
 function splitName(name?: string): { first?: string; last?: string } {
@@ -457,6 +475,12 @@ const UPDATABLE = [
   "category_reason",
   "campaign",
   "owner_user_id",
+  "whatsapp_phone",
+  "whatsapp_opt_in_source",
+  "whatsapp_opt_in_timestamp",
+  "whatsapp_last_inbound_at",
+  "whatsapp_last_outbound_at",
+  "preferred_channel",
 ] as const;
 
 /** Patch a lead. Only known scalar columns + tags/custom/consent flags are applied. */
@@ -470,6 +494,7 @@ export function updateLead(
     email_unsubscribed?: boolean;
     past_client?: boolean;
     contact_only?: boolean;
+    whatsapp_opt_in_status?: boolean;
   },
 ): Lead | null {
   const existing = getLead(id);
@@ -485,7 +510,7 @@ export function updateLead(
   for (const col of UPDATABLE) {
     if (patch[col] !== undefined) {
       let val = patch[col];
-      if (col === "phone" && typeof val === "string") val = toE164(val);
+      if ((col === "phone" || col === "whatsapp_phone") && typeof val === "string") val = val.trim() ? toE164(val) : null;
       sets.push(`${col} = @${col}`);
       params[col] = val;
     }
@@ -517,6 +542,14 @@ export function updateLead(
   if (patch.contact_only !== undefined) {
     sets.push(`contact_only = @contact_only`);
     params.contact_only = patch.contact_only ? 1 : 0;
+  }
+  if (patch.whatsapp_opt_in_status !== undefined) {
+    sets.push(`whatsapp_opt_in_status = @whatsapp_opt_in_status`);
+    params.whatsapp_opt_in_status = patch.whatsapp_opt_in_status ? 1 : 0;
+    if (patch.whatsapp_opt_in_status && patch.whatsapp_opt_in_timestamp === undefined) {
+      sets.push(`whatsapp_opt_in_timestamp = COALESCE(whatsapp_opt_in_timestamp, @whatsapp_opt_in_timestamp_auto)`);
+      params.whatsapp_opt_in_timestamp_auto = Date.now();
+    }
   }
   if (sets.length) {
     db.prepare(`UPDATE leads SET ${sets.join(", ")}, updated_at = @updated_at WHERE id = @id`).run(params);
@@ -725,7 +758,7 @@ export interface ActivityInput {
 }
 
 export function logActivity(leadId: string, a: ActivityInput): Activity {
-  if ((a.type === "sms" || a.type === "imessage") && a.direction === "outbound" && a.body) {
+  if ((a.type === "sms" || a.type === "imessage" || a.type === "whatsapp") && a.direction === "outbound" && a.body) {
     const existing = recentDuplicateTextActivity(leadId, a);
     if (existing) return existing;
   }
@@ -775,7 +808,7 @@ function recentDuplicateTextActivity(leadId: string, a: ActivityInput, windowMs 
 
 /** Log an activity unless the same lead already has an identical recent row. */
 export function logActivityOnce(leadId: string, a: ActivityInput, windowMs = 5 * 60_000): Activity | null {
-  if ((a.type === "sms" || a.type === "imessage") && a.direction === "outbound" && a.body) {
+  if ((a.type === "sms" || a.type === "imessage" || a.type === "whatsapp") && a.direction === "outbound" && a.body) {
     const existing = recentDuplicateTextActivity(leadId, a, Math.max(windowMs, 48 * 60 * 60_000));
     if (existing) return null;
   }
@@ -803,7 +836,7 @@ export function listActivities(leadId: string, limit = 100): Activity[] {
   const seen = new Set<string>();
   const out: Activity[] = [];
   for (const r of rows) {
-    const isText = (r.type === "sms" || r.type === "imessage") && r.direction === "outbound";
+    const isText = (r.type === "sms" || r.type === "imessage" || r.type === "whatsapp") && r.direction === "outbound";
     const key = isText ? [r.lead_id, r.type, r.direction ?? "", r.channel ?? "", normalizedActivityBody(r.body)].join("|") : "";
     if (key && seen.has(key)) continue;
     if (key) seen.add(key);
@@ -867,13 +900,13 @@ export interface ThreadMessage {
   direction: "inbound" | "outbound";
   body: string;
   date: string | null; // ISO string
-  channel: "imessage" | "sms"; // the lane this message went/came on
+  channel: "imessage" | "sms" | "whatsapp"; // the lane this message went/came on
   status: "sent" | "failed" | "received"; // normalized delivery status for the UI indicator
 }
 
 /**
  * Recent text conversations across all leads, newest activity first. Each lead with at
- * least one sms/imessage activity becomes one thread, carrying its most recent text.
+ * least one sms/imessage/whatsapp activity becomes one thread, carrying its most recent text.
  */
 export function listMessageThreads(limit = 50, ownerUserId?: string): MessageThread[] {
   const rows = db
@@ -883,7 +916,7 @@ export function listMessageThreads(limit = 50, ownerUserId?: string): MessageThr
          FROM leads l
          JOIN activities a ON a.id = (
            SELECT a2.id FROM activities a2
-           WHERE a2.lead_id = l.id AND a2.type IN ('sms','imessage')
+           WHERE a2.lead_id = l.id AND a2.type IN ('sms','imessage','whatsapp')
              AND a2.body IS NOT NULL AND a2.body <> ''
              ORDER BY a2.created_at DESC LIMIT 1
          )
@@ -911,12 +944,12 @@ export function listMessageThreads(limit = 50, ownerUserId?: string): MessageThr
   }));
 }
 
-/** A lead's text messages (sms/imessage) for the thread view, oldest first. */
+/** A lead's text messages (sms/imessage/whatsapp) for the thread view, oldest first. */
 export function getLeadMessages(leadId: string, limit = 100): ThreadMessage[] {
   const rows = db
     .prepare(
       `SELECT direction, body, created_at, type, status FROM activities
-        WHERE lead_id = ? AND deleted_at IS NULL AND type IN ('sms','imessage') AND body IS NOT NULL AND body <> ''
+        WHERE lead_id = ? AND deleted_at IS NULL AND type IN ('sms','imessage','whatsapp') AND body IS NOT NULL AND body <> ''
         ORDER BY created_at DESC LIMIT ?`,
     )
     .all(leadId, limit) as Array<{
@@ -945,7 +978,7 @@ export function getLeadMessages(leadId: string, limit = 100): ThreadMessage[] {
         direction,
         body: r.body ?? "",
         date: r.created_at ? new Date(r.created_at).toISOString() : null,
-        channel: (r.type === "imessage" ? "imessage" : "sms") as "imessage" | "sms",
+        channel: (r.type === "imessage" ? "imessage" : r.type === "whatsapp" ? "whatsapp" : "sms") as "imessage" | "sms" | "whatsapp",
         status,
       };
     })

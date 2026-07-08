@@ -591,6 +591,7 @@
         stages: ["Lead-In", "Replied", "Not Replying", "Quote Sent", "App Completed", "Suspended", "Processing", "Funded", "Lost"],
         conversations: [],
         activeThread: null,
+        activeThreadContact: null,
         portalVerifiedUntil: 0,
         docLead: null,
         portalApps: [],
@@ -1210,6 +1211,10 @@
             field("Full Name", "ldFull", name) +
             field("Phone", "ldPhone", lead.phone || "") +
             field("Email", "ldEmail", lead.email || "") +
+            field("WhatsApp phone", "ldWhatsappPhone", lead.whatsapp_phone || lead.phone || "") +
+            '<label>WhatsApp opt-in<select id="ldWhatsappOptIn"><option value="0"' + (!lead.whatsapp_opt_in_status ? " selected" : "") + '>Not recorded</option><option value="1"' + (lead.whatsapp_opt_in_status ? " selected" : "") + '>Opted in</option></select></label>' +
+            field("WhatsApp opt-in source", "ldWhatsappOptInSource", lead.whatsapp_opt_in_source || "") +
+            '<label>Preferred channel<select id="ldPreferredChannel">' + ["","sms","imessage","whatsapp","email","call"].map(function (c) { return '<option value="' + esc(c) + '"' + (c === (lead.preferred_channel || "") ? " selected" : "") + '>' + esc(c || "No preference") + '</option>'; }).join("") + '</select></label>' +
             field("Source", "ldSource", lead.source || "") +
             field("Owner", "ldOwner", lead.owner || "") +
             '<label>Pipeline Status<select id="ldStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
@@ -1220,9 +1225,10 @@
           '</div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
+          '<section class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
           '<details class="card pad" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-lead">Save</button></div><div id="leadSaveMsg" class="statusLine"></div>' +
-          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="toolbar"><button class="btn" data-action="sms-consent">Mark SMS consent</button>' + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
+          '<details><summary class="muted" style="cursor:pointer;font-weight:800">Advanced actions</summary><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button></div><div id="leadWhatsappMsg" class="statusLine"></div><div class="toolbar"><button class="btn" data-action="sms-consent">Mark SMS consent</button>' + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button class="btn teal" data-action="call-lead">Call</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadActionMsg" class="statusLine"></div></div></details>');
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
@@ -1317,6 +1323,10 @@
             source: inputVal("ldSource"),
             owner: inputVal("ldOwner"),
             pipeline_stage: inputVal("ldStage"),
+            whatsapp_phone: inputVal("ldWhatsappPhone"),
+            whatsapp_opt_in_status: inputVal("ldWhatsappOptIn") === "1",
+            whatsapp_opt_in_source: inputVal("ldWhatsappOptInSource"),
+            preferred_channel: inputVal("ldPreferredChannel"),
             custom: custom
           })
         });
@@ -1364,6 +1374,42 @@
         if ($("todoTitle")) $("todoTitle").value = "";
         if ($("todoDue")) $("todoDue").value = "";
         if ($("todoCc")) $("todoCc").value = "";
+      }
+
+      async function bookLeadAppointment() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var start = $("apptStart") ? new Date($("apptStart").value).getTime() : NaN;
+        if (!Number.isFinite(start)) { status("leadCalendarMsg", "Choose a valid appointment start time.", "warnText"); return; }
+        var title = inputVal("apptTitle") || "Appointment";
+        status("leadCalendarMsg", "Booking appointment...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title,
+            due_date: start,
+            duration_minutes: Number(inputVal("apptDuration") || 30),
+            location: inputVal("apptLocation"),
+            description: inputVal("apptDescription"),
+            cc_email: inputVal("apptCc")
+          })
+        });
+        var todos = data.todos || [];
+        var todo = todos.slice().sort(function (a, b) { return Number(b.created_at) - Number(a.created_at); })[0];
+        var via = inputVal("apptInviteVia") || "none";
+        if (via !== "none" && todo) {
+          await json("/api/leads/" + encodeURIComponent(lead.id) + "/calendar-invite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ todoId: todo.id, via: via, cc_email: inputVal("apptCc") })
+          });
+        }
+        state.selectedLead.todos = todos;
+        if ($("todoList")) $("todoList").innerHTML = renderTodoList(todos);
+        status("leadCalendarMsg", via === "none" ? "Appointment booked." : "Appointment booked and invite queued.", "okText");
+        showToast("Appointment booked.");
+        if (state.page === "calendar") await refreshCalendar();
       }
 
       async function toggleTask(todoId, done) {
@@ -1719,8 +1765,8 @@
       async function loadCalendar() {
         var monthDate = new Date(state.calendarMonth || new Date().setDate(1));
         pageShell("Calendar", "Monthly appointment calendar with task events and sendable calendar links.",
-          '<button class="btn" data-action="cal-prev">Prev</button><button class="btn" data-action="cal-today">Today</button><button class="btn" data-action="cal-next">Next</button><button class="btn primary" data-action="cal-add-event">Add event</button>',
-          '<section class="card pad"><div class="calendarToolbar"><h2 id="calendarTitle" style="margin:0"></h2><button class="btn small" data-action="refresh">Refresh</button></div><div id="calendarWrap"><div class="spinner"></div></div></section>');
+          '<button class="btn" data-action="cal-prev">Prev</button><button class="btn" data-action="cal-today">Today</button><button class="btn" data-action="cal-next">Next</button>',
+          '<section class="card pad"><div class="calendarToolbar"><div><h2 id="calendarTitle" style="margin:0"></h2><div class="sub">Book appointments from any open lead, contact, lead-pool record, or past client profile.</div></div><button class="btn small" data-action="refresh">Refresh</button></div><div id="calendarWrap"><div class="spinner"></div></div></section>');
         $("calendarTitle").textContent = monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
         await refreshCalendar();
       }
@@ -1888,7 +1934,7 @@
       });
 
       async function loadMessages() {
-        pageShell("Conversations", "Recent local message threads with iMessage-first sending and SMS fallback.", '<button class="btn" data-action="refresh">Refresh</button>', '<div class="grid cols2"><section class="card"><div class="cardHead"><h2>Inbox</h2></div><div id="convList" class="list" style="padding:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Thread</h2><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Write a message..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button><button class="btn" data-action="refresh-thread">Refresh thread</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div></section></div>');
+        pageShell("Conversations", "Recent local message threads with iMessage-first, SMS fallback, email, and WhatsApp.", '<button class="btn" data-action="refresh">Refresh</button>', '<div class="grid cols2"><section class="card"><div class="cardHead"><h2>Inbox</h2></div><div id="convList" class="list" style="padding:12px"></div></section><section class="card pad"><h2 style="margin-top:0">Thread</h2><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button><button class="btn small" data-action="conv-compose-mode" data-mode="whatsapp">WhatsApp</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Write a message..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button><button class="btn" data-action="refresh-thread">Refresh thread</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div><div id="convWhatsappPanel" class="grid hidden" style="margin-top:10px"><label>To WhatsApp<input id="waPhone" placeholder="+16232808351"></label><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="waBody" rows="6">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button><button class="btn" data-action="send-whatsapp-quote">Send quote link</button><button class="btn" data-action="refresh-thread">Refresh thread</button></div><div id="whatsappStatus" class="statusLine"></div></div></section></div>');
         var data = await json("/api/conversations");
         state.conversations = data.conversations || [];
         $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
@@ -1897,17 +1943,28 @@
       }
       function setConversationMode(mode) {
         var isEmail = mode === "email";
-        if ($("convTextPanel")) $("convTextPanel").classList.toggle("hidden", isEmail);
+        var isWhatsapp = mode === "whatsapp";
+        if ($("convTextPanel")) $("convTextPanel").classList.toggle("hidden", isEmail || isWhatsapp);
         if ($("convEmailPanel")) $("convEmailPanel").classList.toggle("hidden", !isEmail);
+        if ($("convWhatsappPanel")) $("convWhatsappPanel").classList.toggle("hidden", !isWhatsapp);
         document.querySelectorAll('[data-action="conv-compose-mode"]').forEach(function (b) {
           b.classList.toggle("primary", b.dataset.mode === mode);
         });
       }
       async function openThread(id, phone, email) {
         state.activeThread = id || null;
+        state.activeThreadContact = null;
         if ($("msgPhone")) $("msgPhone").value = phone || "";
         if ($("convEmailTo")) $("convEmailTo").value = email || "";
+        if ($("waPhone")) $("waPhone").value = phone || "";
         var data = await json("/api/messages/" + encodeURIComponent(id));
+        state.activeThreadContact = data.contact || null;
+        if ($("waPhone")) $("waPhone").value = (data.contact && (data.contact.whatsapp_phone || data.contact.phone)) || phone || "";
+        if ($("waOptInWarning")) {
+          var ok = data.contact && data.contact.whatsapp_opt_in_status;
+          $("waOptInWarning").className = ok ? "okText" : "warnBox";
+          $("waOptInWarning").textContent = ok ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked.";
+        }
         $("thread").innerHTML = (data.messages || []).length ? (data.messages || []).map(function (m) {
           var dir = m.direction === "inbound" ? "in" : "out";
           return '<div class="bubble ' + dir + '">' + esc(m.body || "") + '<div class="sub">' + esc(m.channel || "") + ' ' + esc(m.status || "") + '</div></div>';
@@ -1942,6 +1999,25 @@
           body: JSON.stringify({ to: to, subject: subject, body: body })
         });
         status("convEmailStatus", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+      }
+
+      async function sendWhatsAppThread(kind) {
+        var phone = $("waPhone") ? $("waPhone").value.trim() : "";
+        var body = $("waBody") ? $("waBody").value.trim() : "";
+        var templateName = kind === "quote" ? "quote_app_link" : ($("waTemplate") ? $("waTemplate").value : "heloc_follow_up");
+        var payload = { contactId: state.activeThread || undefined, phone: phone || undefined };
+        if (kind === "text") {
+          if (!body) { status("whatsappStatus", "Write a WhatsApp message first.", "warnText"); return; }
+          payload.message = body;
+        } else {
+          payload.templateName = templateName;
+          payload.templateVariables = {};
+        }
+        status("whatsappStatus", "Sending WhatsApp...");
+        var data = await json("/api/whatsapp/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        state.activeThread = data.contactId || state.activeThread;
+        status("whatsappStatus", data.ok ? "WhatsApp sent." : (data.detail || data.status || "WhatsApp blocked."), data.ok ? "okText" : "warnText");
+        if (state.activeThread) await openThread(state.activeThread, phone, $("convEmailTo") ? $("convEmailTo").value : "");
       }
 
       async function loadDialer() {
@@ -2897,7 +2973,10 @@
         });
         if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName();
         if (!rows.length) {
-          box.innerHTML = '<div class="empty">No email found in ' + esc(emailBoxName()) + '.</div>';
+          var help = (state.emailBox || "inbox") === "inbox"
+            ? '<div class="sub" style="margin-top:8px">Inbound email appears here only after Resend sends an <b>email.received</b> webhook to <code>' + esc(location.origin + apiPath("/api/webhooks/resend")) + '</code>. Check RESEND_WEBHOOK_SECRET if the webhook shows 401.</div>'
+            : "";
+          box.innerHTML = '<div class="empty">No email found in ' + esc(emailBoxName()) + '.' + help + '</div>';
           return;
         }
         box.innerHTML = rows.map(function (m) {
@@ -3220,6 +3299,27 @@
         $("modalBody").innerHTML = "";
       }
 
+      async function sendLeadWhatsApp(kind) {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var payload = { contactId: lead.id, phone: inputVal("ldWhatsappPhone") || lead.whatsapp_phone || lead.phone || "" };
+        if (kind === "text") {
+          payload.message = inputVal("ldWhatsappText");
+          if (!payload.message) { status("leadWhatsappMsg", "Write a WhatsApp message first.", "warnText"); return; }
+        } else {
+          payload.templateName = kind === "quote" ? "quote_app_link" : inputVal("ldWhatsappTemplate");
+          payload.templateVariables = {};
+        }
+        status("leadWhatsappMsg", "Sending WhatsApp...");
+        var data = await json("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        status("leadWhatsappMsg", data.ok ? "WhatsApp sent." : (data.detail || data.status || "WhatsApp blocked."), data.ok ? "okText" : "warnText");
+        state.selectedLead = Object.assign({}, state.selectedLead, { whatsapp_phone: payload.phone, preferred_channel: "whatsapp" });
+      }
+
       async function leadAction(action, statusId) {
         var lead = state.selectedLead;
         if (!lead) return;
@@ -3370,6 +3470,7 @@
           else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
           else if (a === "save-lead") await saveCurrentLead();
           else if (a === "add-task") await addTaskToLead();
+          else if (a === "book-lead-appointment") await bookLeadAppointment();
           else if (a === "toggle-task") await toggleTask(btn.dataset.id, btn.checked);
           else if (a === "delete-task") await deleteTask(btn.dataset.id);
           else if (a === "main-task-complete") await completeMainTask(btn.dataset.leadId, btn.dataset.todoId);
@@ -3379,6 +3480,9 @@
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
           else if (a === "send-lead-text") await leadAction("text");
           else if (a === "send-lead-email") await leadAction("email");
+          else if (a === "send-lead-whatsapp") await sendLeadWhatsApp("text");
+          else if (a === "send-lead-whatsapp-template") await sendLeadWhatsApp("template");
+          else if (a === "send-lead-whatsapp-quote") await sendLeadWhatsApp("quote");
           else if (a === "add-note") await leadAction("note");
           else if (a === "call-lead") await leadAction("call");
           else if (a === "voicemail-lead") await leadAction("vm");
@@ -3391,6 +3495,9 @@
           else if (a === "conv-compose-mode") setConversationMode(btn.dataset.mode);
           else if (a === "send-thread") await sendThread();
           else if (a === "send-conv-email") await sendConversationEmail();
+          else if (a === "send-whatsapp-thread") await sendWhatsAppThread("text");
+          else if (a === "send-whatsapp-template") await sendWhatsAppThread("template");
+          else if (a === "send-whatsapp-quote") await sendWhatsAppThread("quote");
           else if (a === "refresh-thread" && state.activeThread) await openThread(state.activeThread, $("msgPhone").value);
           else if (a === "lead-portal-verify") await verifyLeadPortal();
           else if (a === "portal-verify") await verifyPortal();
@@ -3426,7 +3533,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 

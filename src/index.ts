@@ -53,7 +53,12 @@ app.post(
   express.raw({ type: "application/json", limit: "16mb" }),
   handleResendInboundWebhook,
 );
-app.use(express.json({ limit: "16mb" })); // CSV imports post the whole file as JSON — allow large exports
+app.use(express.json({
+  limit: "16mb",
+  verify: (req, _res, buf) => {
+    (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+  },
+})); // CSV imports post the whole file as JSON — allow large exports
 app.use(express.urlencoded({ extended: true }));
 
 app.get(["/health", "/v2/health"], async (_req, res) => {

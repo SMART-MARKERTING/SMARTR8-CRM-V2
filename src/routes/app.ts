@@ -242,7 +242,21 @@ appRouter.get("/api/messages/:contactId", requirePass, async (req, res) => {
     const messages = getLeadMessages(req.params.contactId, 100)
       .map((m) => ({ ...m, sig: messageSig(m) }))
       .filter((m) => !hidden.has(m.sig));
-    res.json({ messages });
+    res.json({
+      messages,
+      contact: lead
+        ? {
+            id: lead.id,
+            phone: lead.phone,
+            email: lead.email,
+            whatsapp_phone: lead.whatsapp_phone,
+            whatsapp_opt_in_status: Boolean(lead.whatsapp_opt_in_status),
+            whatsapp_last_inbound_at: lead.whatsapp_last_inbound_at,
+            whatsapp_last_outbound_at: lead.whatsapp_last_outbound_at,
+            preferred_channel: lead.preferred_channel,
+          }
+        : null,
+    });
   } catch (err) {
     log.error("console messages read error", { err: String(err) });
     res.status(500).json({ error: String(err) });

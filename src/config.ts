@@ -66,6 +66,18 @@ export const config = {
     numbers: env("TELNYX_NUMBERS"),
   },
 
+  whatsapp: {
+    twilioAccountSid: env("TWILIO_ACCOUNT_SID"),
+    twilioAuthToken: env("TWILIO_AUTH_TOKEN"),
+    twilioFrom: env("TWILIO_WHATSAPP_FROM"),
+    accessToken: env("WHATSAPP_ACCESS_TOKEN"),
+    phoneNumberId: env("WHATSAPP_PHONE_NUMBER_ID"),
+    verifyToken: env("WHATSAPP_VERIFY_TOKEN"),
+    appSecret: env("WHATSAPP_APP_SECRET"),
+    graphVersion: env("WHATSAPP_GRAPH_VERSION", "v21.0"),
+    aiAutoSendEnabled: env("WHATSAPP_AI_AUTOSEND_ENABLED", "false") === "true",
+  },
+
   bluebubbles: {
     url: env("BLUEBUBBLES_URL").replace(/\/+$/, ""),
     password: env("BLUEBUBBLES_PASSWORD"),
@@ -233,5 +245,12 @@ export function reportMissingConfig(warn: (m: string) => void): void {
   if (!config.voice.applicationId) missing.push("TELNYX_VOICE_APP_ID or TELNYX_CONNECTION_ID");
   if (!config.voice.myCell) missing.push("MY_CELL_NUMBER");
   if (!config.borrowerData.encryptionKey) missing.push("BORROWER_DATA_KEY");
+  const twilioAny = Boolean(config.whatsapp.twilioAccountSid || config.whatsapp.twilioAuthToken || config.whatsapp.twilioFrom);
+  const twilioReady = Boolean(config.whatsapp.twilioAccountSid && config.whatsapp.twilioAuthToken && config.whatsapp.twilioFrom);
+  const metaAny = Boolean(config.whatsapp.accessToken || config.whatsapp.phoneNumberId || config.whatsapp.verifyToken || config.whatsapp.appSecret);
+  const metaReady = Boolean(config.whatsapp.accessToken && config.whatsapp.phoneNumberId);
+  if ((twilioAny && !twilioReady) || (metaAny && !metaReady)) {
+    missing.push("complete WhatsApp provider vars (Twilio or Meta)");
+  }
   if (missing.length) warn(`missing env (set these in .env / host config): ${missing.join(", ")}`);
 }

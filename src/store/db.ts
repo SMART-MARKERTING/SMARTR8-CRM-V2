@@ -222,6 +222,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_audit_events_created ON audit_events(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_audit_events_user ON audit_events(user_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id                  TEXT PRIMARY KEY,
+    contact_id          TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    channel             TEXT NOT NULL DEFAULT 'whatsapp',
+    direction           TEXT NOT NULL,
+    provider            TEXT NOT NULL,
+    provider_message_id TEXT,
+    body                TEXT,
+    template_name       TEXT,
+    status              TEXT NOT NULL,
+    error_code          TEXT,
+    created_at          INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_contact ON whatsapp_messages(contact_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_provider_id ON whatsapp_messages(provider_message_id);
 `);
 
 // ── Multi-user accounts ──────────────────────────────────────────────────────
@@ -310,6 +326,13 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id)`);
 ensureColumn("leads", "contact_only", "contact_only INTEGER NOT NULL DEFAULT 0");
 // Per-lead to-do checklist: JSON array of { id, text, done, created_at }.
 ensureColumn("leads", "todos", "todos TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("leads", "whatsapp_phone", "whatsapp_phone TEXT");
+ensureColumn("leads", "whatsapp_opt_in_status", "whatsapp_opt_in_status INTEGER NOT NULL DEFAULT 0");
+ensureColumn("leads", "whatsapp_opt_in_source", "whatsapp_opt_in_source TEXT");
+ensureColumn("leads", "whatsapp_opt_in_timestamp", "whatsapp_opt_in_timestamp INTEGER");
+ensureColumn("leads", "whatsapp_last_inbound_at", "whatsapp_last_inbound_at INTEGER");
+ensureColumn("leads", "whatsapp_last_outbound_at", "whatsapp_last_outbound_at INTEGER");
+ensureColumn("leads", "preferred_channel", "preferred_channel TEXT");
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal
 // activity feed but keeps them available in the Deleted workspace.
 ensureColumn("activities", "deleted_at", "deleted_at INTEGER");
