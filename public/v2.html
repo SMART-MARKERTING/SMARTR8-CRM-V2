@@ -1482,7 +1482,9 @@
             field("State", "ldState", addr.state) +
             field("ZIP", "ldZip", addr.zip) +
           '</div>' +
-          '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label></section>' +
+          '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
+          '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
+          '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Previous message history</h3><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div></div><span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></div><div id="leadHistoryList" class="list" style="margin-top:12px">' + renderLeadHistory(activities) + '</div></section>' +
           '<section id="leadAppointmentCard" class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
           '<section class="card pad"><h3 style="margin-top:0">File folders</h3><div class="fieldGrid"><label>Folder<input id="ldDocFolder" list="emailFolderOptions" value="General"></label><label>File name<input id="ldDocDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="ldDocFile" type="file"></label></div><button class="btn primary" data-action="upload-doc" style="margin-top:10px">Upload document</button><div id="docMiniList" class="list" style="margin-top:12px"><div class="spinner"></div></div></section>' +
@@ -1493,6 +1495,76 @@
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
+      }
+      function renderLeadNotes(notes) {
+        notes = notes || [];
+        if (!notes.length) return '<div class="empty">No notes saved yet.</div>';
+        return notes.slice(0, 100).map(function (n) {
+          return '<div class="item">' +
+            '<div class="toolbar" style="justify-content:space-between;align-items:flex-start">' +
+              '<div><b>' + esc(n.author || "Internal note") + '</b><div class="sub">' + esc(formatDateTime(n.created_at)) + '</div></div>' +
+              '<span class="badge purple">Note</span>' +
+            '</div>' +
+            '<div style="white-space:pre-wrap;margin-top:8px">' + esc(n.body || "") + '</div>' +
+          '</div>';
+        }).join("");
+      }
+      function activityLabel(a) {
+        var type = String((a && a.type) || "").toLowerCase();
+        var channel = String((a && a.channel) || "").toLowerCase();
+        var key = channel || type;
+        if (key === "imessage") return "iMessage";
+        if (key === "sms") return "SMS";
+        if (key === "email") return "Email";
+        if (key === "whatsapp") return "WhatsApp";
+        if (type.indexOf("voicemail") >= 0 || key.indexOf("voicemail") >= 0) return "Voicemail";
+        if (type.indexOf("call") >= 0 || key.indexOf("call") >= 0) return "Call";
+        if (type === "note") return "Note";
+        if (type === "application") return "Application";
+        if (type === "title_order") return "Title";
+        if (type === "flood_order") return "Flood";
+        return type ? type.replace(/_/g, " ") : "Activity";
+      }
+      function activityBadgeClass(a) {
+        var text = String([a && a.status, a && a.direction, a && a.type].filter(Boolean).join(" ")).toLowerCase();
+        if (/fail|error|bounce|blocked|deleted|complaint/.test(text)) return "red";
+        if (/inbound|received|reply/.test(text)) return "blue";
+        if (/outbound|sent|delivered|completed|success/.test(text)) return "green";
+        if (/note|system/.test(text)) return "purple";
+        return "blue";
+      }
+      function activityPreview(a) {
+        var meta = (a && a.meta) || {};
+        return (a && (a.body || a.subject)) ||
+          meta.message || meta.preview || meta.text || meta.outcome || meta.detail ||
+          meta.error || meta.provider_message_id || "";
+      }
+      function renderLeadHistory(activities) {
+        activities = (activities || []).filter(function (a) { return !a.deleted_at; });
+        if (!activities.length) return '<div class="empty">No previous messages or activity yet.</div>';
+        return activities.slice(0, 120).map(function (a) {
+          var label = activityLabel(a);
+          var preview = String(activityPreview(a) || "");
+          var metaLine = [formatDateTime(a.created_at), a.direction, a.channel, a.status].filter(Boolean).join(" | ");
+          return '<div class="item">' +
+            '<div class="toolbar" style="justify-content:space-between;align-items:flex-start">' +
+              '<div><b>' + esc(a.subject || label) + '</b><div class="sub">' + esc(metaLine) + '</div></div>' +
+              '<span class="badge ' + activityBadgeClass(a) + '">' + esc(label) + '</span>' +
+            '</div>' +
+            (preview ? '<div style="white-space:pre-wrap;margin-top:8px">' + esc(preview.slice(0, 2000)) + '</div>' : '') +
+          '</div>';
+        }).join("");
+      }
+      async function refreshLeadTimelinePanels(leadId) {
+        if (!leadId || (!$("leadNotesList") && !$("leadHistoryList"))) return;
+        var data = await json("/api/leads/" + encodeURIComponent(leadId));
+        if (data.lead) state.selectedLead = data.lead;
+        var notes = data.notes || [];
+        var activities = data.activities || [];
+        if ($("leadNotesList")) $("leadNotesList").innerHTML = renderLeadNotes(notes);
+        if ($("leadHistoryList")) $("leadHistoryList").innerHTML = renderLeadHistory(activities);
+        if ($("leadNotesCount")) $("leadNotesCount").textContent = notes.length + " notes";
+        if ($("leadHistoryCount")) $("leadHistoryCount").textContent = activities.length + " events";
       }
       function toggleLeadChrome() {
         var body = $("modalBody");
@@ -4405,6 +4477,7 @@
         });
         status("leadWhatsappMsg", data.ok ? "WhatsApp sent." : (data.detail || data.status || "WhatsApp blocked."), data.ok ? "okText" : "warnText");
         state.selectedLead = Object.assign({}, state.selectedLead, { whatsapp_phone: payload.phone, preferred_channel: "whatsapp" });
+        await refreshLeadTimelinePanels(lead.id);
       }
 
       async function leadAction(action, statusId) {
@@ -4414,7 +4487,11 @@
         var body = {};
         if (action === "text") { path = "/api/leads/" + lead.id + "/message"; body = { message: $("ldText").value }; }
         if (action === "email") { path = "/api/leads/" + lead.id + "/email"; body = { subject: $("ldEmailSubject").value, body: $("ldEmailBody").value }; }
-        if (action === "note") { path = "/api/leads/" + lead.id + "/notes"; body = { body: $("ldNote").value }; }
+        if (action === "note") {
+          var noteBody = $("ldNote") ? $("ldNote").value.trim() : "";
+          if (!noteBody) { status(statusId || "leadActionMsg", "Type a note first.", "warnText"); return; }
+          path = "/api/leads/" + lead.id + "/notes"; body = { body: noteBody };
+        }
         if (action === "call") path = "/api/leads/" + lead.id + "/call";
         if (action === "vm") { path = "/api/leads/" + lead.id + "/voicemail-drop"; body = { voicemailText: "Hi {{first_name}}, this is Mykoal with Adaxa Home. I am following up on your home equity options. I will send you a quick text too.", sendText: true, text: "Hi {{first_name}}, I just left you a quick voicemail. Reply HELOC and I will send next steps." }; }
         if (action === "runflow") path = "/api/leads/" + lead.id + "/run-automation";
@@ -4426,6 +4503,7 @@
         var data = await json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         status(statusId || "leadActionMsg", (data.detail || data.path || data.ok) ? JSON.stringify(data).slice(0, 260) : "Done.", data.ok === false ? "warnText" : "okText");
         if (action === "note" && $("ldNote")) $("ldNote").value = "";
+        await refreshLeadTimelinePanels(lead.id);
         return data;
       }
 
