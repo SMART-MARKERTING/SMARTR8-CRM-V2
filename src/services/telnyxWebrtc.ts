@@ -8,6 +8,8 @@ import { log } from "../logger";
 // once on the SIP connection and reused; tokens are minted per session from it.
 const TELNYX_V2 = `${config.telnyx.apiBase}/v2`;
 const CRED_FILE = path.resolve(process.cwd(), config.tokenDir, "telnyx-webrtc.json");
+const SIP_CONNECTION_HELP =
+  "Set TELNYX_SIP_CONNECTION_ID to the Telnyx Credential/SIP Connection id. Do not use TELNYX_VOICE_APP_ID or TELNYX_CONNECTION_ID for WebRTC credentials.";
 
 function jsonHeaders(): Record<string, string> {
   return {
@@ -35,14 +37,18 @@ async function writeCredId(id: string): Promise<void> {
 async function getOrCreateCredentialId(): Promise<string> {
   const existing = await readCredId();
   if (existing) return existing;
-  if (!config.webrtc.sipConnectionId) throw new Error("TELNYX_SIP_CONNECTION_ID/TELNYX_CONNECTION_ID/TELNYX_VOICE_APP_ID not set");
+  if (!config.webrtc.sipConnectionId) throw new Error(`TELNYX_SIP_CONNECTION_ID not set. ${SIP_CONNECTION_HELP}`);
   const res = await fetch(`${TELNYX_V2}/telephony_credentials`, {
     method: "POST",
     headers: jsonHeaders(),
     body: JSON.stringify({ connection_id: config.webrtc.sipConnectionId, name: "smartr8-softphone" }),
   });
   const raw = await res.text().catch(() => "");
-  if (!res.ok) throw new Error(`Telnyx create credential failed ${res.status}: ${raw}`);
+  if (!res.ok) {
+    const invalidConnection = res.status === 422 && /invalid connection/i.test(raw);
+    const setupHint = invalidConnection ? ` ${SIP_CONNECTION_HELP}` : "";
+    throw new Error(`Telnyx create credential failed ${res.status}.${setupHint} Provider response: ${raw}`);
+  }
   const id = (JSON.parse(raw) as { data?: { id?: string } }).data?.id;
   if (!id) throw new Error(`Telnyx create credential: no id in response: ${raw}`);
   await writeCredId(id);
@@ -78,7 +84,7 @@ export async function getWebrtcSipUri(): Promise<string | null> {
  */
 export async function ensureSipUriCalling(): Promise<{ ok: boolean; preference?: string; detail?: string }> {
   const connId = config.webrtc.sipConnectionId;
-  if (!connId) return { ok: false, detail: "TELNYX_SIP_CONNECTION_ID/TELNYX_CONNECTION_ID/TELNYX_VOICE_APP_ID not set" };
+  if (!connId) return { ok: false, detail: `TELNYX_SIP_CONNECTION_ID not set. ${SIP_CONNECTION_HELP}` };
   try {
     const res = await fetch(`${TELNYX_V2}/credential_connections/${connId}`, {
       method: "PATCH",
@@ -86,7 +92,10 @@ export async function ensureSipUriCalling(): Promise<{ ok: boolean; preference?:
       body: JSON.stringify({ sip_uri_calling_preference: "unrestricted" }),
     });
     const raw = await res.text().catch(() => "");
-    if (!res.ok) return { ok: false, detail: `PATCH ${res.status}: ${raw.slice(0, 200)}` };
+    if (!res.ok) {
+      const setupHint = res.status === 422 && /invalid connection/i.test(raw) ? ` ${SIP_CONNECTION_HELP}` : "";
+      return { ok: false, detail: `PATCH ${res.status}.${setupHint} ${raw.slice(0, 200)}` };
+    }
     const data = JSON.parse(raw) as { data?: { sip_uri_calling_preference?: string } };
     return { ok: true, preference: data.data?.sip_uri_calling_preference };
   } catch (err) {

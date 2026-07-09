@@ -125,7 +125,10 @@ export const config = {
 
   // Browser softphone (Telnyx WebRTC)
   webrtc: {
-    sipConnectionId: env("TELNYX_SIP_CONNECTION_ID", env("TELNYX_CONNECTION_ID", env("TELNYX_VOICE_APP_ID"))), // Telnyx SIP/Credential Connection
+    // Telnyx WebRTC tokens must be minted from a Credential/SIP Connection.
+    // Do not fall back to TELNYX_VOICE_APP_ID/TELNYX_CONNECTION_ID here; those
+    // are Call Control connection ids and Telnyx rejects them for credentials.
+    sipConnectionId: env("TELNYX_SIP_CONNECTION_ID", env("TELNYX_CREDENTIAL_CONNECTION_ID", env("TELNYX_WEBRTC_CONNECTION_ID"))),
     callerNumber: env("TELNYX_FROM_NUMBER"), // caller ID shown on softphone calls
   },
 
