@@ -928,7 +928,6 @@ const LEGACY_CONTACT_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\(619\)\s*782\s*6916/g, brand.cellNumber],
   [/619[\s.-]*782[\s.-]*6916/g, brand.cellNumber],
   [/mike@adaxahomeloans\.com/gi, brand.fromEmailDefault],
-  [/hello@mykoal\.com/gi, brand.fromEmailDefault],
   [/noreply@mykoal\.com/gi, brand.fromEmailDefault],
 ];
 

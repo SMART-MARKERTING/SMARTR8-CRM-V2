@@ -228,6 +228,7 @@
     }
     .content { padding: 24px; max-width: 1540px; margin: 0 auto; background: var(--bg); }
     .content.pipelineWide { max-width: none; margin: 0; }
+    .content.emailWide { max-width: none; margin: 0; }
     .pageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
     .pageTitle p { margin: 6px 0 0; color: var(--muted); }
     .toolbar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
@@ -364,17 +365,21 @@
     .item.clickable { cursor: pointer; }
     .item.clickable:hover { border-color: var(--muted); background: var(--hover); }
     .empty { border: 1px dashed var(--fieldLine); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); background: var(--empty); }
-    .emailShell { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 14px; align-items: start; }
-    .emailList { max-height: calc(100vh - 256px); overflow: auto; padding: 10px; display: grid; gap: 8px; }
-    .emailRow { display: grid; gap: 6px; text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--item); color: var(--text); padding: 11px; }
+    .emailShell { display: grid; grid-template-columns: minmax(360px, 34vw) minmax(0, 1fr); gap: 14px; align-items: stretch; min-height: calc(100vh - 148px); }
+    .emailList { max-height: calc(100vh - 284px); overflow: auto; padding: 10px; display: grid; gap: 8px; }
+    .emailBulkBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .emailSelectLabel { display: inline-flex; align-items: center; gap: 7px; font-weight: 850; color: var(--muted); }
+    .emailSelectLabel input, .emailRowCheck { width: auto; margin: 0; }
+    .emailRow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--item); color: var(--text); padding: 11px; }
     .emailRow:hover { border-color: var(--muted); background: var(--hover); }
     .emailRow.active { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent); }
+    .emailRowMain { display: grid; gap: 6px; min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
     .emailRowTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .emailSubject { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .emailMeta { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .emailPreview { color: var(--muted); font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .emailReader { min-height: 540px; }
-    .emailBodyText { white-space: pre-wrap; line-height: 1.55; color: var(--text); }
+    .emailReader { min-height: calc(100vh - 148px); max-height: calc(100vh - 148px); overflow: auto; }
+    .emailBodyText { white-space: pre-wrap; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
     .emailAddressLine { display: grid; gap: 3px; margin: 12px 0; color: var(--muted); font-size: 13px; }
     .statusLine {
       min-height: 22px;
@@ -694,6 +699,7 @@
         emailBox: "inbox",
         emailMessages: [],
         emailMessageState: {},
+        emailSelectedIds: new Set(),
         activeEmailId: null,
         notifications: [],
         notificationCount: 0,
@@ -985,6 +991,7 @@
         state.page = page;
         document.body.classList.remove("navOpen");
         $("content").classList.toggle("pipelineWide", page === "pipeline");
+        $("content").classList.toggle("emailWide", page === "email");
         document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
           b.classList.toggle("active", b.dataset.nav === page);
         });
@@ -3416,6 +3423,7 @@
           '<div class="emailShell">' +
             '<section class="card"><div class="cardHead"><div><h2>Mailbox</h2><div id="emailCounter" class="sub">Loading...</div></div><div class="toolbar"><button class="btn small" data-action="email-box" data-box="inbox">Inbox</button><button class="btn small" data-action="email-box" data-box="sent">Sent</button><button class="btn small" data-action="email-box" data-box="archived">Archived</button><button class="btn small" data-action="email-box" data-box="trash">Trash</button><button class="btn small" data-action="email-box" data-box="all">All</button></div></div>' +
               '<div style="padding:10px;border-bottom:1px solid var(--line)"><input id="emailSearch" type="search" placeholder="Search sender, lead, subject..."></div>' +
+              '<div class="emailBulkBar"><label class="emailSelectLabel"><input id="emailSelectAll" type="checkbox" data-action="email-select-all"> Select visible</label><span id="emailSelectedCounter" class="badge blue">0 selected</span><button class="btn small" data-action="email-bulk-archive">Archive</button><button class="btn small" data-action="email-bulk-restore">Restore</button><button class="btn small danger" data-action="email-bulk-delete">Delete</button></div>' +
               '<div id="emailList" class="emailList"><div class="spinner"></div></div>' +
             '</section>' +
             '<section class="card pad emailReader"><div id="emailReader" class="empty">Select an email.</div></section>' +
@@ -3438,7 +3446,7 @@
             return '<option value="' + esc(c.email) + '">' + esc(c.name || c.email) + '</option>';
           }).join("");
         }
-        var log = await json("/api/email/activity?box=" + encodeURIComponent(state.emailBox || "inbox") + "&limit=250").catch(function (e) { return { emails: [], error: e.message }; });
+        var log = await json("/api/email/activity?box=" + encodeURIComponent(state.emailBox || "inbox") + "&limit=500").catch(function (e) { return { emails: [], error: e.message }; });
         if (log.error) {
           if ($("emailList")) $("emailList").innerHTML = '<div class="empty badText">' + esc(log.error) + '</div>';
           if ($("emailCounter")) $("emailCounter").textContent = "Mailbox error";
@@ -3462,6 +3470,10 @@
           });
         }
         state.emailMessages = mergeEmailMessages(log.emails || [], sentList.emails || [], receivedList.emails || []);
+        var currentIds = new Set(state.emailMessages.map(function (m) { return m.id; }));
+        Array.from(state.emailSelectedIds || []).forEach(function (id) {
+          if (!currentIds.has(id)) state.emailSelectedIds.delete(id);
+        });
         if (!state.emailMessages.some(function (m) { return m.id === state.activeEmailId; })) {
           state.activeEmailId = state.emailMessages.length ? state.emailMessages[0].id : null;
         }
@@ -3625,18 +3637,50 @@
         var failed = /failed|bounced|complained/i.test(label || "");
         return '<span class="badge ' + (failed ? "red" : inbound ? "blue" : "green") + '">' + esc(label) + '</span>';
       }
+      function emailFilteredRows() {
+        var q = inputVal("emailSearch").toLowerCase();
+        return (state.emailMessages || []).filter(function (m) {
+          var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to, m.file_folder, m.discussion_file].join(" ").toLowerCase();
+          return !q || hay.indexOf(q) >= 0;
+        });
+      }
+      function updateEmailBulkControls(rows) {
+        rows = rows || emailFilteredRows();
+        var selected = rows.filter(function (m) { return state.emailSelectedIds && state.emailSelectedIds.has(m.id); });
+        if ($("emailSelectedCounter")) $("emailSelectedCounter").textContent = selected.length + " selected";
+        var all = $("emailSelectAll");
+        if (all) {
+          all.checked = Boolean(rows.length && selected.length === rows.length);
+          all.indeterminate = Boolean(selected.length && selected.length < rows.length);
+        }
+      }
+      function toggleEmailSelected(id, checked) {
+        if (!state.emailSelectedIds) state.emailSelectedIds = new Set();
+        if (checked) state.emailSelectedIds.add(id);
+        else state.emailSelectedIds.delete(id);
+        renderEmailList();
+      }
+      function toggleVisibleEmails(checked) {
+        if (!state.emailSelectedIds) state.emailSelectedIds = new Set();
+        emailFilteredRows().forEach(function (m) {
+          if (checked) state.emailSelectedIds.add(m.id);
+          else state.emailSelectedIds.delete(m.id);
+        });
+        renderEmailList();
+      }
+      function selectedEmailIds() {
+        var current = new Set((state.emailMessages || []).map(function (m) { return m.id; }));
+        return Array.from(state.emailSelectedIds || []).filter(function (id) { return current.has(id); });
+      }
       function renderEmailList() {
         var box = $("emailList");
         if (!box) return;
         Array.prototype.forEach.call(document.querySelectorAll('[data-action="email-box"]'), function (b) {
           b.classList.toggle("primary", b.dataset.box === (state.emailBox || "inbox"));
         });
-        var q = inputVal("emailSearch").toLowerCase();
-        var rows = (state.emailMessages || []).filter(function (m) {
-          var hay = [m.subject, m.body, m.lead_name, m.email, m.from, m.to, m.file_folder, m.discussion_file].join(" ").toLowerCase();
-          return !q || hay.indexOf(q) >= 0;
-        });
+        var rows = emailFilteredRows();
         if ($("emailCounter")) $("emailCounter").textContent = rows.length + " shown in " + emailBoxName() + (state.emailResendError || state.emailReceivedError ? " | Resend list error" : "");
+        updateEmailBulkControls(rows);
         if (!rows.length) {
           var help = (state.emailResendError || state.emailReceivedError)
             ? '<div class="sub badText" style="margin-top:8px">Resend list error: ' + esc(state.emailResendError || state.emailReceivedError) + '</div>'
@@ -3647,12 +3691,16 @@
         box.innerHTML = rows.map(function (m) {
           var inbound = m.direction === "inbound";
           var contact = inbound ? (m.from || m.lead_name || m.email || "Sender") : (m.to || m.lead_name || m.email || "Recipient");
-          return '<button class="emailRow ' + (m.id === state.activeEmailId ? 'active' : '') + '" data-action="email-open" data-id="' + esc(m.id) + '">' +
-            '<div class="emailRowTop"><span class="emailSubject">' + esc(m.subject || "(no subject)") + '</span>' + emailStatusHtml(m) + '</div>' +
-            '<div class="emailMeta">' + esc(contact) + ' | ' + esc(formatDateTime(m.created_at)) + '</div>' +
-            (m.file_folder ? '<div><span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span></div>' : '') +
-            '<div class="emailPreview">' + esc(String(m.body || "").slice(0, 220)) + '</div>' +
-          '</button>';
+          var checked = state.emailSelectedIds && state.emailSelectedIds.has(m.id) ? " checked" : "";
+          return '<div class="emailRow ' + (m.id === state.activeEmailId ? 'active' : '') + '">' +
+            '<input class="emailRowCheck" type="checkbox" data-action="email-select" data-id="' + esc(m.id) + '"' + checked + ' aria-label="Select email">' +
+            '<button class="emailRowMain" data-action="email-open" data-id="' + esc(m.id) + '">' +
+              '<div class="emailRowTop"><span class="emailSubject">' + esc(m.subject || "(no subject)") + '</span>' + emailStatusHtml(m) + '</div>' +
+              '<div class="emailMeta">' + esc(contact) + ' | ' + esc(formatDateTime(m.created_at)) + '</div>' +
+              (m.file_folder ? '<div><span class="badge teal">' + esc(m.file_folder) + (m.discussion_file ? " / " + esc(m.discussion_file) : "") + '</span></div>' : '') +
+              '<div class="emailPreview">' + esc(String(m.body || "").slice(0, 260)) + '</div>' +
+            '</button>' +
+          '</div>';
         }).join("");
       }
       function renderEmailReader() {
@@ -3692,6 +3740,7 @@
         var htmlFormat = (m.meta && m.meta.html_format) || m.html_format || "";
         var htmlFormatLine = htmlFormat ? '<div><b>HTML format:</b> ' + esc(htmlFormat) + '</div>' : "";
         var scheduledLine = m.scheduled_at ? '<div><b>Scheduled:</b> ' + esc(formatDateTime(m.scheduled_at)) + '</div>' : "";
+        var contentStatus = m.content_loading ? '<div class="statusLine">Loading full email content...</div>' : (m.content_error ? '<div class="statusLine badText">Could not load full content: ' + esc(m.content_error) + '</div>' : "");
         var resendLine = (m.resend_id || m.message_id || m.last_event)
           ? '<div><b>Resend:</b> ' + esc([m.resend_id ? "id " + m.resend_id : "", m.message_id ? "message " + m.message_id : "", m.last_event ? "event " + m.last_event : "", m.resend_refreshed_at ? "refreshed " + formatDateTime(Date.parse(m.resend_refreshed_at)) : ""].filter(Boolean).join(" | ")) + '</div>'
           : "";
@@ -3700,35 +3749,122 @@
           '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + receivedForLine + htmlFormatLine + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + resendLine + '</div>' +
           '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + mailboxButtons + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a, m.direction !== "inbound"); }).join("") + '</div>' : '') +
+          contentStatus +
           '<div class="emailBodyText">' + esc(m.body || (m.direction === "inbound" ? "Use Load received content to fetch the full inbound body from Resend." : m.resend_api ? "This sent email came from Resend's team sent list. Use Load Resend content to fetch the full body." : "")) + '</div>';
+      }
+      async function openEmailMessage(id) {
+        state.activeEmailId = id;
+        renderEmailList();
+        renderEmailReader();
+        var m = (state.emailMessages || []).find(function (row) { return row.id === id; });
+        await ensureEmailFullContent(m);
+      }
+      function emailNeedsFullContent(m) {
+        if (!m || m.content_loaded || m.content_loading) return false;
+        if (!m.resend_id && !m.resend_api && !m.resend_received_api) return false;
+        if (!m.body || String(m.body).length < 500) return true;
+        if (m.direction === "inbound" && !m.raw && !m.html) return true;
+        return false;
+      }
+      function applySentEmail(m, email) {
+        email = email || {};
+        var toList = emailArray(email.to);
+        var ccList = emailArray(email.cc);
+        var bccList = emailArray(email.bcc);
+        m.subject = email.subject || m.subject;
+        m.from = email.from || m.from;
+        m.to = toList.length ? toList.join(", ") : m.to;
+        m.cc = ccList;
+        m.bcc = bccList;
+        m.message_id = email.message_id || m.message_id;
+        m.last_event = email.last_event || m.last_event;
+        m.status = email.last_event || m.status;
+        m.scheduled_at = email.scheduled_at || m.scheduled_at || "";
+        m.created_at = dateMillis(email.created_at) || m.created_at;
+        m.html = email.html || m.html || null;
+        m.body = email.text || (email.html ? htmlToText(email.html) : "") || m.body || "";
+        m.attachments = Array.isArray(email.attachments) ? email.attachments : (m.attachments || []);
+      }
+      async function ensureEmailFullContent(m) {
+        if (!emailNeedsFullContent(m)) return;
+        m.content_loading = true;
+        m.content_error = "";
+        renderEmailReader();
+        try {
+          if (m.resend_received_api) {
+            var receivedId = m.resend_id || String(m.id || "").replace(/^resend-received:/, "");
+            var receivedData = await json("/api/email/received/" + encodeURIComponent(receivedId) + "?html_format=data_uri");
+            applyReceivedEmail(m, receivedData.email || {});
+          } else if (m.resend_api) {
+            var sentId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
+            var sentData = await json("/api/email/sent/" + encodeURIComponent(sentId));
+            applySentEmail(m, sentData.email || {});
+          } else if (m.resend_id) {
+            var activityData = await json("/api/email/activity/" + encodeURIComponent(m.id) + "/resend-refresh", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}"
+            });
+            if (m.direction === "inbound") applyReceivedEmail(m, activityData.email || {});
+            else applySentEmail(m, activityData.email || {});
+            if (activityData.body) m.body = activityData.body;
+            if (activityData.subject) m.subject = activityData.subject;
+          }
+          m.content_loaded = true;
+        } catch (e) {
+          m.content_error = e && e.message ? e.message : String(e);
+        } finally {
+          m.content_loading = false;
+          renderEmailList();
+          renderEmailReader();
+        }
       }
       async function setEmailMailboxState(action) {
         var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
         if (!m) return;
-        if (action === "delete" && !confirm("Move this email to Trash?")) return;
-        if (emailIsApiOnly(m)) {
-          await json("/api/email/message-state", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: m.id, action: action })
-          });
-        } else {
-          var path = "/api/email/activity/" + encodeURIComponent(m.id);
-          var method = "POST";
-          if (action === "archive") path += "/archive";
-          else if (action === "unarchive") path += "/unarchive";
-          else if (action === "restore") path += "/restore";
-          else if (action === "delete") method = "DELETE";
-          else return;
-          await json(path, {
-            method: method,
-            headers: { "Content-Type": "application/json" },
-            body: method === "DELETE" ? undefined : "{}"
-          });
+        await applyEmailMailboxStateToIds([m.id], action);
+      }
+      function applyEmailStateLocally(ids, action) {
+        var idSet = new Set(ids);
+        var now = Date.now();
+        var isoNow = new Date(now).toISOString();
+        (state.emailMessages || []).forEach(function (m) {
+          if (!idSet.has(m.id)) return;
+          if (action === "delete") m.deleted_at = m.deleted_at || now;
+          else if (action === "restore") m.deleted_at = "";
+          else if (action === "archive") { m.email_archived_at = m.email_archived_at || isoNow; m.deleted_at = ""; }
+          else if (action === "unarchive") m.email_archived_at = "";
+        });
+      }
+      function nextVisibleEmailId(excludeIds) {
+        var exclude = new Set(excludeIds || []);
+        var rows = applyEmailMailboxState((state.emailMessages || [])).filter(function (m) { return !exclude.has(m.id); });
+        return rows.length ? rows[0].id : null;
+      }
+      async function applyEmailMailboxStateToIds(ids, action) {
+        ids = (ids || []).filter(Boolean);
+        if (!ids.length) return;
+        await json("/api/email/bulk-state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: ids, action: action })
+        });
+        applyEmailStateLocally(ids, action);
+        ids.forEach(function (id) { state.emailSelectedIds.delete(id); });
+        var activeMessage = (state.emailMessages || []).find(function (m) { return m.id === state.activeEmailId; });
+        var activeStillVisible = activeMessage ? applyEmailMailboxState([activeMessage]).length > 0 : false;
+        if (ids.indexOf(state.activeEmailId) >= 0 || !activeStillVisible) {
+          state.activeEmailId = nextVisibleEmailId(ids);
         }
-        showToast(action === "delete" ? "Email moved to Trash." : action === "archive" ? "Email archived." : action === "unarchive" ? "Email moved back." : "Email restored.");
-        state.activeEmailId = null;
-        await refreshEmailPage();
+        renderEmailList();
+        renderEmailReader();
+        showToast(action === "delete" ? ids.length + " email moved to Trash." : action === "archive" ? ids.length + " email archived." : action === "unarchive" ? ids.length + " email moved back." : ids.length + " email restored.");
+        refreshEmailPage().catch(function (e) { showToast(e && e.message ? e.message : String(e), true); });
+      }
+      async function bulkEmailMailboxState(action) {
+        var ids = selectedEmailIds();
+        if (!ids.length) { showToast("Select one or more emails first.", true); return; }
+        await applyEmailMailboxStateToIds(ids, action);
       }
       function openEmailComposer(mode) {
         mode = mode || "compose";
@@ -3803,6 +3939,7 @@
           if (!receivedId) { showToast("This received email has no Resend id.", true); return; }
           var receivedData = await json("/api/email/received/" + encodeURIComponent(receivedId) + "?html_format=data_uri");
           applyReceivedEmail(m, receivedData.email || {});
+          m.content_loaded = true;
           showToast("Received email loaded.");
           renderEmailList();
           renderEmailReader();
@@ -3858,22 +3995,8 @@
         var resendId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
         if (!resendId) return;
         var data = await json("/api/email/sent/" + encodeURIComponent(resendId));
-        var email = data.email || {};
-        var toList = emailArray(email.to);
-        var ccList = emailArray(email.cc);
-        var bccList = emailArray(email.bcc);
-        m.subject = email.subject || m.subject;
-        m.from = email.from || m.from;
-        m.to = toList.length ? toList.join(", ") : m.to;
-        m.cc = ccList;
-        m.bcc = bccList;
-        m.message_id = email.message_id || m.message_id;
-        m.last_event = email.last_event || m.last_event;
-        m.status = email.last_event || m.status;
-        m.created_at = dateMillis(email.created_at) || m.created_at;
-        m.html = email.html || m.html || null;
-        m.body = email.text || (email.html ? htmlToText(email.html) : "") || m.body || "";
-        m.attachments = Array.isArray(email.attachments) ? email.attachments : (m.attachments || []);
+        applySentEmail(m, data.email || {});
+        m.content_loaded = true;
         showToast("Resend email loaded.");
         renderEmailList();
         renderEmailReader();
@@ -4357,8 +4480,13 @@
           else if (a === "refresh-contacts") await refreshContacts();
           else if (a === "refresh-campaigns") await refreshCampaigns();
           else if (a === "refresh-email-page") await refreshEmailPage();
-          else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; await refreshEmailPage(); }
-          else if (a === "email-open") { state.activeEmailId = btn.dataset.id; renderEmailList(); renderEmailReader(); }
+          else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; state.emailSelectedIds.clear(); await refreshEmailPage(); }
+          else if (a === "email-select") toggleEmailSelected(btn.dataset.id, btn.checked);
+          else if (a === "email-select-all") toggleVisibleEmails(btn.checked);
+          else if (a === "email-bulk-archive") await bulkEmailMailboxState("archive");
+          else if (a === "email-bulk-restore") await bulkEmailMailboxState("restore");
+          else if (a === "email-bulk-delete") await bulkEmailMailboxState("delete");
+          else if (a === "email-open") await openEmailMessage(btn.dataset.id);
           else if (a === "email-compose") openEmailComposer("compose");
           else if (a === "email-reply") openEmailComposer("reply");
           else if (a === "email-reply-all") openEmailComposer("reply-all");

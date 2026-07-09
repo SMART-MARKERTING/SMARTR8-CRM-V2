@@ -3379,6 +3379,7 @@ function parseCc(raw: unknown): string[] {
 }
 
 const MANUAL_INITIATED_EMAIL_CC = "mykoal@adaxahome.com";
+const REQUIRED_EMAIL_FROM_CHOICES = ["MDESHAZO@mykoal.com", "info@mykoal.com", "hello@mykoal.com"];
 
 function withManualInitiatedCc(raw: unknown): string[] {
   const out = parseEmailList(raw);
@@ -3388,7 +3389,7 @@ function withManualInitiatedCc(raw: unknown): string[] {
 }
 
 function emailFromChoices(): string[] {
-  const raw = [config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails].filter(Boolean).join(",");
+  const raw = [config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails, ...REQUIRED_EMAIL_FROM_CHOICES].filter(Boolean).join(",");
   const seen = new Set<string>();
   const out: string[] = [];
   for (const part of raw.split(/[,\n;]+/)) {
@@ -4041,6 +4042,86 @@ crmRouter.post("/api/email/message-state", requirePass, (req, res) => {
   }
   const state = setResendMailboxState(req, id, action);
   res.json({ ok: true, id, action, state });
+});
+
+crmRouter.post("/api/email/bulk-state", requirePass, (req, res) => {
+  const action = cleanText(req.body?.action).toLowerCase();
+  if (!["archive", "unarchive", "delete", "restore"].includes(action)) {
+    res.status(400).json({ error: "action must be archive, unarchive, delete, or restore" });
+    return;
+  }
+  const rawIds: unknown[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = rawIds
+    .map((id: unknown) => cleanText(id).slice(0, 220))
+    .filter(Boolean)
+    .filter((id: string, index: number, arr: string[]) => arr.indexOf(id) === index)
+    .slice(0, 250);
+  if (!ids.length) {
+    res.status(400).json({ error: "pass ids" });
+    return;
+  }
+
+  const resendIds = ids.filter(isResendMailboxStateId);
+  const activityIds = ids.filter((id) => !isResendMailboxStateId(id));
+  const resendState: Record<string, EmailMessageStateRecord> = {};
+  for (const id of resendIds) resendState[id] = setResendMailboxState(req, id, action);
+
+  let updatedActivities = 0;
+  let skippedActivities = activityIds.length;
+  if (activityIds.length) {
+    const placeholders = activityIds.map(() => "?").join(",");
+    const owner = ownerScope(req);
+    const rows = db
+      .prepare(
+        `SELECT a.id, a.meta, a.deleted_at
+           FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
+          WHERE a.type = 'email'
+            AND a.id IN (${placeholders})
+            ${action === "restore" ? "" : "AND a.deleted_at IS NULL"}
+            ${owner ? "AND l.owner_user_id = ?" : ""}`,
+      )
+      .all(...activityIds, ...(owner ? [owner] : [])) as Array<{ id: string; meta: string | null; deleted_at: number | null }>;
+    skippedActivities = activityIds.length - rows.length;
+    const now = Date.now();
+    const isoNow = new Date(now).toISOString();
+    const author = leadActionAuthor(req);
+    const updateEmailRows = db.transaction((items: Array<{ id: string; meta: string | null }>) => {
+      for (const row of items) {
+        if (action === "delete") {
+          db.prepare(`UPDATE activities SET deleted_at = COALESCE(deleted_at, ?) WHERE id = ?`).run(now, row.id);
+          continue;
+        }
+        if (action === "restore") {
+          db.prepare(`UPDATE activities SET deleted_at = NULL WHERE id = ?`).run(row.id);
+          continue;
+        }
+        const meta = { ...(safeMeta(row.meta) || {}) };
+        if (action === "archive") {
+          meta.email_archived_at = typeof meta.email_archived_at === "string" ? meta.email_archived_at : isoNow;
+          meta.email_archived_by = author;
+          delete meta.email_unarchived_at;
+        } else if (action === "unarchive") {
+          delete meta.email_archived_at;
+          delete meta.email_archived_by;
+          meta.email_unarchived_at = isoNow;
+          meta.email_unarchived_by = author;
+        }
+        db.prepare(`UPDATE activities SET meta = ? WHERE id = ?`).run(JSON.stringify(meta), row.id);
+      }
+    });
+    updateEmailRows(rows);
+    updatedActivities = rows.length;
+  }
+
+  res.json({
+    ok: true,
+    action,
+    updated: resendIds.length + updatedActivities,
+    resend: resendIds.length,
+    activities: updatedActivities,
+    skipped: skippedActivities,
+    state: resendState,
+  });
 });
 
 crmRouter.get("/api/email/activity", requirePass, (req, res) => {

@@ -7,10 +7,10 @@ function env(key: string, fallback = ""): string {
 }
 
 const DEFAULT_EMAIL_FROM = "MDESHAZO@mykoal.com";
-const DEFAULT_EMAIL_ALIASES = "MDESHAZO@mykoal.com,info@mykoal.com";
+const DEFAULT_EMAIL_ALIASES = "MDESHAZO@mykoal.com,info@mykoal.com,hello@mykoal.com";
 
 function replaceRetiredSender(value: string, fallback = DEFAULT_EMAIL_FROM): string {
-  return /mike@adaxahomeloans\.com|hello@mykoal\.com|noreply@mykoal\.com/i.test(value) ? fallback : value;
+  return /mike@adaxahomeloans\.com|noreply@mykoal\.com/i.test(value) ? fallback : value;
 }
 
 export const config = {

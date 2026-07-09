@@ -20,7 +20,7 @@ export const brand = {
   address: "16767 N Perimeter Dr, Ste 150, Scottsdale, AZ 85260",
   states: ["AZ", "CO", "CT", "FL", "MI", "MN", "OR", "PA", "TX", "VA", "WA"],
   fromEmailDefault: "MDESHAZO@mykoal.com",
-  sendingEmails: ["MDESHAZO@mykoal.com", "info@mykoal.com"],
+  sendingEmails: ["MDESHAZO@mykoal.com", "info@mykoal.com", "hello@mykoal.com"],
 };
 
 export const statesLine = brand.states.join(", ");
