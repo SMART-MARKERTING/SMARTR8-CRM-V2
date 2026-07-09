@@ -1430,7 +1430,6 @@
           <strong style="font-size:.92rem;display:block;margin-bottom:.3rem">Outbound texting channel</strong>
           <select id="msgMode" style="width:100%">
             <option value="auto">Auto — iMessage first, fall back to SMS</option>
-            <option value="sms">SMS only (Telnyx)</option>
             <option value="imessage">iMessage only</option>
           </select>
         </label>
@@ -4349,10 +4348,9 @@
       } catch (e) { $('fwdMsg').textContent = 'Error: ' + e.message; self.checked = !on; }
     };
 
-    // ── Outbound texting channel (auto / sms / imessage), persisted server-side ──
+    // ── Outbound texting channel (auto / imessage), persisted server-side ──
     var MSG_MODE_HINTS = {
       auto: 'Tries BlueBubbles iMessage first; failed iMessage falls back through Telnyx SMS/MMS.',
-      sms: 'Every outbound text goes out as Telnyx SMS — iMessage is skipped entirely.',
       imessage: 'Only sends through BlueBubbles/iMessage. SMS fallback is disabled so provider errors stay visible.'
     };
     async function loadMsgMode() {

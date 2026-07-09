@@ -18,19 +18,18 @@ export type SendPath =
 export type MessagingMode = "auto" | "sms" | "imessage";
 
 /**
- * Effective outbound texting mode. A console toggle (stored in DB meta) wins over the
- * MESSAGING_MODE env default, so the loan officer can flip to SMS-only without a redeploy.
- * "sms" = always Telnyx SMS, "imessage" = always try iMessage first, "auto" = iMessage-first
- * with automatic SMS fallback when BlueBubbles is unreachable.
+ * Effective outbound texting mode. Legacy "sms" values are intentionally treated as
+ * "auto" so normal CRM texts cannot skip BlueBubbles. SMS is only a fallback after a
+ * concrete iMessage failure/timeout/unreachable result.
  */
 export function getMessagingMode(): MessagingMode {
   const m = (getMeta("messaging_mode") || config.messagingMode || "").toLowerCase();
-  return m === "sms" || m === "imessage" ? m : "auto";
+  return m === "imessage" ? m : "auto";
 }
 
 /** Persist the outbound texting mode (console toggle). */
 export function setMessagingMode(mode: MessagingMode): void {
-  setMeta("messaging_mode", mode);
+  setMeta("messaging_mode", mode === "sms" ? "auto" : mode);
 }
 
 export interface SendResult {
@@ -76,10 +75,10 @@ export async function sendOutbound(opts: {
     return { path: "suppressed-dnc", ok: false, detail: "recipient on DNC — not sent" };
   }
 
-  // Lane decision. "sms" = Telnyx only. "imessage" and "auto" always call
-  // BlueBubbles first; auto falls back only after that concrete result.
+  // Lane decision. Every normal outbound send attempts BlueBubbles first. SMS-only is
+  // deprecated and normalized away; Telnyx is only reached after a concrete iMessage result.
   const mode = getMessagingMode();
-  const useImessage = mode !== "sms";
+  const useImessage = true;
   if (!useImessage) {
     const why = "SMS-only mode";
     const smsFrom = smsFallbackFrom();

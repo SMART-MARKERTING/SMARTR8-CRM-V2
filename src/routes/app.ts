@@ -450,7 +450,7 @@ appRouter.post("/api/messaging-mode", requirePass, (req, res) => {
     return;
   }
   setMessagingMode(mode as MessagingMode);
-  res.json({ ok: true, mode });
+  res.json({ ok: true, mode: getMessagingMode() });
 });
 
 /** One-shot outbound SMS test that returns Telnyx's RAW response/error, bypassing the

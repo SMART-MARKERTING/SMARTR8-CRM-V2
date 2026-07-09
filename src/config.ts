@@ -21,9 +21,8 @@ export const config = {
   publicBaseUrl: env("PUBLIC_BASE_URL", "").replace(/\/+$/, ""),
 
   // Outbound text routing. "auto" (default): iMessage-first, then fall back to Telnyx SMS
-  // when iMessage doesn't deliver (BlueBubbles unreachable / failed send). "sms": always
-  // Telnyx SMS. "imessage": always iMessage. The console's "Outbound texting channel" toggle
-  // (stored in DB) overrides this at runtime, no redeploy needed.
+  // when iMessage doesn't deliver (BlueBubbles unreachable / failed send). Legacy "sms"
+  // values are treated as auto so normal outbound sends cannot skip iMessage.
   messagingMode: env("MESSAGING_MODE", "auto").toLowerCase(),
 
   // "Resend quote" targets: the website Quick-Quote email endpoint, and the options
