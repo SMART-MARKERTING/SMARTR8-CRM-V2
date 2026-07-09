@@ -2333,7 +2333,15 @@ crmRouter.get("/api/lead-pool/sample.csv", requirePass, (_req, res) => {
 
 crmRouter.get("/api/lead-pool", requirePass, (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
-  const stateFilter = normalizeStateCell(typeof req.query.state === "string" ? req.query.state : "");
+  const rawStateFilters = [
+    ...(Array.isArray(req.query.state) ? req.query.state : [req.query.state]),
+    ...(Array.isArray(req.query.states) ? req.query.states : [req.query.states]),
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .flatMap((value) => value.split(","))
+    .map((value) => normalizeStateCell(value))
+    .filter(Boolean);
+  const stateFilters = new Set(rawStateFilters);
   const tagFilter = typeof req.query.tag === "string" ? req.query.tag.trim().toLowerCase() : "";
   const limit = Math.min(parseInt(String(req.query.limit || "500"), 10) || 500, 20000);
   const ownerUserId = ownerScope(req);
@@ -2341,12 +2349,12 @@ crmRouter.get("/api/lead-pool", requirePass, (req, res) => {
   const allPool = listLeadPoolLeads({ limit: 20000, ownerUserId }).filter(isLeadPoolLead);
   const states = Array.from(new Set(allPool.map(leadPoolState).filter(Boolean))).sort();
   const tags = Array.from(new Set(allPool.flatMap((l) => l.tags || []))).sort((a, b) => a.localeCompare(b));
-  const leads = allPool
+  const filtered = allPool
     .filter((lead) => !q || leadPoolSearchBlob(lead).includes(q))
-    .filter((lead) => !stateFilter || leadPoolState(lead) === stateFilter)
-    .filter((lead) => !tagFilter || (lead.tags || []).some((t) => t.toLowerCase() === tagFilter))
-    .slice(0, limit);
-  res.json({ ok: true, leads, count: leads.length, total: allPool.length, states, tags });
+    .filter((lead) => !stateFilters.size || stateFilters.has(leadPoolState(lead)))
+    .filter((lead) => !tagFilter || (lead.tags || []).some((t) => t.toLowerCase() === tagFilter));
+  const leads = filtered.slice(0, limit);
+  res.json({ ok: true, leads, count: leads.length, total: filtered.length, allTotal: allPool.length, states, tags });
 });
 
 crmRouter.post("/api/lead-pool/import", requirePass, (req, res) => {

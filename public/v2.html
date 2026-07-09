@@ -682,6 +682,7 @@
         selectedIds: new Set(),
         leadPool: [],
         leadPoolSelectedIds: new Set(),
+        leadPoolFilterKey: "",
         theme: "light",
         stages: ["Lead-In", "Replied", "Not Replying", "Quote Sent", "App Completed", "Suspended", "Processing", "Funded", "Lost"],
         conversations: [],
@@ -1808,7 +1809,25 @@
       }
 
       function selectedPoolIds() {
-        return Array.from(state.leadPoolSelectedIds);
+        var visible = new Set((state.leadPool || []).map(function (l) { return l.id; }));
+        return Array.from(state.leadPoolSelectedIds).filter(function (id) { return visible.has(id); });
+      }
+      function poolSelectedStates() {
+        var el = $("poolState");
+        if (!el) return [];
+        return Array.from(el.selectedOptions || []).map(function (opt) { return opt.value; }).filter(Boolean);
+      }
+      function poolFilterKey(q, states, tag) {
+        return JSON.stringify({ q: q || "", states: (states || []).slice().sort(), tag: tag || "" });
+      }
+      function updatePoolSelectionSummary() {
+        var ids = selectedPoolIds();
+        if ($("poolSelectionCount")) $("poolSelectionCount").textContent = ids.length + " selected in current filter";
+        var allBox = document.querySelector('[data-action="pool-select-all"]');
+        if (allBox) {
+          allBox.checked = Boolean(state.leadPool.length && ids.length === state.leadPool.length);
+          allBox.indeterminate = Boolean(ids.length && ids.length < state.leadPool.length);
+        }
       }
       function leadPoolStateOf(lead) {
         var c = lead && lead.custom ? lead.custom : {};
@@ -1847,6 +1866,14 @@
         }).join("");
         el.value = current;
       }
+      function setMultiSelectOptions(id, values, selectedValues) {
+        var el = $(id);
+        if (!el) return;
+        var selected = new Set((selectedValues || []).map(function (v) { return String(v); }));
+        el.innerHTML = (values || []).map(function (v) {
+          return '<option value="' + esc(v) + '"' + (selected.has(String(v)) ? " selected" : "") + '>' + esc(v) + '</option>';
+        }).join("");
+      }
       async function loadLeadPool() {
         pageShell("Lead Pool", "Old-list contacts live here until you move them into active Leads.",
           '<button class="btn" data-action="download-pool-sample">Sample CSV</button><button class="btn" data-action="repair-leadpool">Repair hidden</button><button class="btn" data-action="refresh-leadpool">Refresh</button>',
@@ -1854,9 +1881,9 @@
             '<div class="grid">' +
               '<div class="grid cols2">' +
                 '<section class="card pad"><h2 style="margin-top:0">Upload old leads</h2><div class="sub" style="margin-bottom:10px">' + esc(leadPoolSampleColumns()) + '</div><input id="poolCsv" type="file" accept=".csv,text/csv"><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="import-leadpool">Upload CSV</button></div><div id="poolStatus" class="statusLine"></div></section>' +
-                '<section class="card pad"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>State<select id="poolState"><option value="">All states</option></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
+                '<section class="card pad"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>States<select id="poolState" multiple size="5"></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
               '</div>' +
-              '<section class="card"><div class="cardHead"><h2>Pool records</h2><div class="toolbar"><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
+              '<section class="card"><div class="cardHead"><div><h2>Pool records</h2><div id="poolSelectionCount" class="sub">0 selected in current filter</div></div><div class="toolbar"><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
             '</div>' +
             '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Click Open on a Lead Pool record to use the same profile view as Leads and Past Clients.</div></aside>' +
           '</div>');
@@ -1877,14 +1904,18 @@
       }
       async function refreshLeadPool() {
         var q = $("poolSearch") ? $("poolSearch").value.trim() : "";
-        var st = $("poolState") ? $("poolState").value : "";
+        var states = poolSelectedStates();
         var tag = $("poolTag") ? $("poolTag").value : "";
-        var qs = "?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : "") + (st ? "&state=" + encodeURIComponent(st) : "") + (tag ? "&tag=" + encodeURIComponent(tag) : "");
+        var nextFilterKey = poolFilterKey(q, states, tag);
+        if (state.leadPoolFilterKey && state.leadPoolFilterKey !== nextFilterKey) state.leadPoolSelectedIds.clear();
+        state.leadPoolFilterKey = nextFilterKey;
+        var qs = "?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : "") + (states.length ? "&states=" + encodeURIComponent(states.join(",")) : "") + (tag ? "&tag=" + encodeURIComponent(tag) : "");
         var data = await json("/api/lead-pool" + qs);
         state.leadPool = data.leads || [];
-        setSelectOptions("poolState", data.states || [], "All states", st);
+        setMultiSelectOptions("poolState", data.states || [], states);
         setSelectOptions("poolTag", data.tags || [], "All tags", tag);
         if ($("poolListWrap")) $("poolListWrap").innerHTML = leadPoolTable(state.leadPool, data.total || 0);
+        updatePoolSelectionSummary();
       }
       async function repairLeadPool() {
         status("poolActionMsg", "Repairing hidden Lead Pool records...");
@@ -1894,7 +1925,9 @@
       }
       function leadPoolTable(leads, total) {
         if (!leads || !leads.length) return '<div class="empty">No Lead Pool records found.</div>';
-        return '<div class="sub" style="padding:10px 14px">Showing ' + Number(leads.length || 0) + ' of ' + Number(total || leads.length || 0) + ' Lead Pool records.</div><table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
+        var selectedVisible = selectedPoolIds().length;
+        var allVisibleSelected = Boolean(leads.length && selectedVisible === leads.length);
+        return '<div class="sub" style="padding:10px 14px">Showing ' + Number(leads.length || 0) + ' of ' + Number(total || leads.length || 0) + ' filtered Lead Pool records.</div><table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"' + (allVisibleSelected ? " checked" : "") + '></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
           leads.map(function (l) {
             var name = nameOf(l), selected = state.leadPoolSelectedIds.has(l.id);
             var addr = leadAddressLine(l);
@@ -2025,7 +2058,7 @@
       function openPoolCallListModal() {
         var ids = selectedPoolIds();
         if (!ids.length) { showToast("Select Lead Pool records first.", true); return; }
-        var stateName = $("poolState") ? $("poolState").value : "";
+        var stateName = poolSelectedStates().join(" + ");
         var tagName = $("poolTag") ? $("poolTag").value : "";
         var suggested = [stateName, tagName, "Lead Pool"].filter(Boolean).join(" - ") || "Lead Pool call list";
         openModal("Create call list",
@@ -2047,7 +2080,7 @@
             source: "lead-pool",
             filters: {
               q: $("poolSearch") ? $("poolSearch").value.trim() : "",
-              state: $("poolState") ? $("poolState").value : "",
+              states: poolSelectedStates(),
               tag: $("poolTag") ? $("poolTag").value : ""
             }
           })
@@ -4604,10 +4637,10 @@
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
           else if (a === "refresh-leadpool") await refreshLeadPool();
           else if (a === "repair-leadpool") await repairLeadPool();
-          else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) $("poolState").value = ""; if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
+          else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) Array.from($("poolState").options || []).forEach(function (opt) { opt.selected = false; }); if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
           else if (a === "download-pool-sample") downloadLeadPoolSample();
           else if (a === "import-leadpool") await importLeadPoolCsv();
-          else if (a === "pool-select") { btn.checked ? state.leadPoolSelectedIds.add(btn.dataset.id) : state.leadPoolSelectedIds.delete(btn.dataset.id); }
+          else if (a === "pool-select") { btn.checked ? state.leadPoolSelectedIds.add(btn.dataset.id) : state.leadPoolSelectedIds.delete(btn.dataset.id); updatePoolSelectionSummary(); }
           else if (a === "pool-select-all") { state.leadPool.forEach(function (l) { btn.checked ? state.leadPoolSelectedIds.add(l.id) : state.leadPoolSelectedIds.delete(l.id); }); await refreshLeadPool(); }
           else if (a === "pool-call-list") openPoolCallListModal();
           else if (a === "save-pool-call-list") await savePoolCallList();
