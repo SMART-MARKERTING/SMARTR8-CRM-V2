@@ -43,6 +43,7 @@ import {
   gatherDigits,
   voiceDiag,
 } from "../services/telnyxVoice";
+import { acceptTelnyxCallSummaryEvent, processCallSummary, verifyTelnyxWebhookSignature } from "../services/callSummary";
 
 export const voiceRouter = Router();
 
@@ -641,7 +642,17 @@ function recordCallLog(e: CallLogAttempt): void {
 }
 
 voiceRouter.post("/webhooks/telnyx-voice", async (req, res) => {
+  if (!verifyTelnyxWebhookSignature(req)) {
+    res.status(401).json({ error: "invalid Telnyx webhook signature" });
+    return;
+  }
+  const summary = acceptTelnyxCallSummaryEvent(req.body);
   res.status(200).json({ received: true }); // ack fast
+  if (summary.accepted && summary.rowId) {
+    void processCallSummary(summary.rowId, { inlineTranscript: summary.inlineTranscript }).catch((err) => {
+      log.error("call summary async processing error", { rowId: summary.rowId, err: String(err) });
+    });
+  }
   const ev = (req.body ?? {}).data;
   const type: string | undefined = ev?.event_type;
   const p = ev?.payload ?? {};

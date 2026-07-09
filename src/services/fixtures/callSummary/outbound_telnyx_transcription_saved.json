@@ -1,0 +1,20 @@
+{
+  "data": {
+    "id": "evt-outbound-transcription-1",
+    "event_type": "call.recording.transcription.saved",
+    "occurred_at": "2026-07-09T16:00:00Z",
+    "payload": {
+      "call_control_id": "cc-outbound-1",
+      "call_session_id": "cs-outbound-1",
+      "recording_id": "rec-outbound-1",
+      "transcription_id": "tr-outbound-1",
+      "direction": "outbound",
+      "from": "+14802069290",
+      "to": "+19545550123",
+      "duration_secs": 240,
+      "transcription": {
+        "text": "Loan officer called about a cash-out refinance. Borrower asked which documents are needed."
+      }
+    }
+  }
+}

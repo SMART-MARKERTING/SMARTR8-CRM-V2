@@ -128,6 +128,7 @@ import { getContactMessages } from "../services/ghl";
 import { sendLeadEvent } from "../services/metaCapi";
 import { recordAudit, listAuditEvents } from "../services/audit";
 import { buildCrmReport, reportPdfBuffer } from "../services/reports";
+import { listCallSummaries, processCallSummary } from "../services/callSummary";
 import {
   handleInboundWhatsAppWebhook,
   listWhatsAppMessages,
@@ -850,6 +851,24 @@ crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) =
   }
   dismissDashboardItem("notification", notificationId);
   res.json({ ok: true, id: notificationId });
+});
+
+crmRouter.get("/api/call-summaries", requirePass, (req, res) => {
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+  res.json({ ok: true, call_summaries: listCallSummaries(limit) });
+});
+
+crmRouter.post("/api/call-summaries/:id/retry", requirePass, async (req, res) => {
+  try {
+    const row = await processCallSummary(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "call summary not found" });
+      return;
+    }
+    res.json({ ok: true, call_summary: row });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 /** Dismiss one dashboard item (reply/lead) from its panel — non-destructive.

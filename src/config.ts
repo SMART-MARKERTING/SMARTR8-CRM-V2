@@ -66,11 +66,21 @@ export const config = {
   telnyx: {
     apiBase: "https://api.telnyx.com",
     apiKey: env("TELNYX_API_KEY"),
+    publicKey: env("TELNYX_PUBLIC_KEY"),
     fromNumber: env("TELNYX_FROM_NUMBER"),
     messagingProfileId: env("TELNYX_MESSAGING_PROFILE_ID"),
     // Extra sending numbers for the dialer selector + smart call routing (E.164,
     // comma-separated). The primary FROM number is always included automatically.
     numbers: env("TELNYX_NUMBERS"),
+  },
+
+  callSummary: {
+    enabled: env("CALL_SUMMARY_ENABLED", "true") !== "false",
+    storeTranscript: env("CALL_SUMMARY_STORE_TRANSCRIPT", "false") === "true",
+    createTasks: env("CALL_SUMMARY_CREATE_TASKS", "true") !== "false",
+    aiProvider: env("AI_PROVIDER", "openai").toLowerCase(),
+    aiApiKey: env("AI_API_KEY"),
+    aiModel: env("AI_MODEL", "gpt-4o-mini"),
   },
 
   whatsapp: {

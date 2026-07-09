@@ -251,6 +251,37 @@ db.exec(`
     filters       TEXT NOT NULL DEFAULT '{}'
   );
   CREATE INDEX IF NOT EXISTS idx_power_dialer_lists_owner ON power_dialer_lists(owner_user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS call_summaries (
+    id                TEXT PRIMARY KEY,
+    telnyx_event_id   TEXT,
+    call_control_id   TEXT,
+    call_session_id   TEXT,
+    recording_id      TEXT,
+    transcription_id  TEXT,
+    crm_contact_id    TEXT,
+    lead_id           TEXT,
+    direction         TEXT,
+    from_phone        TEXT,
+    to_phone          TEXT,
+    call_started_at   INTEGER,
+    call_ended_at     INTEGER,
+    duration_seconds  INTEGER,
+    recording_url     TEXT,
+    transcript_url    TEXT,
+    transcript_text   TEXT,
+    summary_json      TEXT,
+    crm_note_id       TEXT,
+    task_id           TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    error_message     TEXT,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_call_summaries_event ON call_summaries(telnyx_event_id) WHERE telnyx_event_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_call_summaries_status ON call_summaries(status, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_call_summaries_call ON call_summaries(call_session_id, call_control_id);
+  CREATE INDEX IF NOT EXISTS idx_call_summaries_lead ON call_summaries(lead_id, updated_at DESC);
 `);
 
 // ── Multi-user accounts ──────────────────────────────────────────────────────

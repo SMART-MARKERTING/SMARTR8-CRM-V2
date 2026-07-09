@@ -1,0 +1,21 @@
+{
+  "data": {
+    "id": "evt-inbound-transcription-1",
+    "event_type": "call.transcription.saved",
+    "occurred_at": "2026-07-09T15:00:00Z",
+    "payload": {
+      "call_control_id": "cc-inbound-1",
+      "call_session_id": "cs-inbound-1",
+      "recording_id": "rec-inbound-1",
+      "transcription_id": "tr-inbound-1",
+      "direction": "inbound",
+      "from": "+16232808351",
+      "to": "+14802069290",
+      "started_at": "2026-07-09T14:50:00Z",
+      "ended_at": "2026-07-09T14:58:00Z",
+      "duration_seconds": 480,
+      "recording_url": "https://api.telnyx.com/v2/recordings/rec-inbound-1/actions/download",
+      "transcript": "Borrower asked about a HELOC for home improvements and wants a follow up tomorrow."
+    }
+  }
+}

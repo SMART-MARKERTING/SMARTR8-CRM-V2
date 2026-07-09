@@ -19,7 +19,8 @@ routes each message to the right channel:
 It registers as a **GHL custom conversation provider**, so the GHL "send" button
 replaces the n8n form as your front door — while the routing logic lives here in code.
 
-> New here? Read `CLAUDE.md` (project brief) and `docs/architecture.md` (endpoints + gotchas).
+> New here? Read `CLAUDE.md` (project brief), `docs/architecture.md` (endpoints + gotchas),
+> and `docs/telnyx-call-summary-mvp.md` for post-call AI summaries.
 
 ---
 

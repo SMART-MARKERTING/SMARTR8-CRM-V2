@@ -1,0 +1,18 @@
+{
+  "data": {
+    "id": "evt-recording-only-1",
+    "event_type": "call.recording.saved",
+    "occurred_at": "2026-07-09T17:00:00Z",
+    "payload": {
+      "call_control_id": "cc-recording-only-1",
+      "call_session_id": "cs-recording-only-1",
+      "recording_id": "rec-recording-only-1",
+      "direction": "inbound",
+      "from": "+16025550123",
+      "to": "+14802069290",
+      "recording_urls": {
+        "mp3": "https://api.telnyx.com/v2/recordings/rec-recording-only-1/actions/download"
+      }
+    }
+  }
+}
