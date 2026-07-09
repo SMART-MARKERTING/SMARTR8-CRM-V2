@@ -2466,7 +2466,7 @@
 
       async function loadDialer() {
         var pop = document.body.classList.contains("popoutMode");
-        pageShell("Dialer", "CRM direct calling, cell bridge, inbound forwarding, call merge, and recent call activity.", '<button class="btn" data-action="popout-dialer">' + (pop ? "Already popped out" : "Pop out") + '</button><button class="btn" data-action="connect-crm-line">Connect CRM line</button><button class="btn" data-action="refresh-call-log">Refresh log</button>',
+        pageShell("Dialer", "CRM direct calling, cell bridge, inbound forwarding, call merge, and recent call activity.", '<button class="btn" data-action="popout-dialer">' + (pop ? "Already popped out" : "Pop out") + '</button><button class="btn" data-action="connect-crm-line">Connect CRM line</button><button class="btn" data-action="repair-crm-line">Repair CRM line</button><button class="btn" data-action="refresh-call-log">Refresh log</button>',
           '<div class="grid cols2">' +
             '<section class="card pad"><h2 style="margin-top:0">Place call</h2><audio id="remoteAudio" autoplay></audio><div id="crmLineStatus" class="statusLine">CRM line not connected.</div><label>Phone number<input id="dialPhone" type="tel" placeholder="+16232808351"></label><div class="fieldGrid"><label>Call path<select id="dialPath"><option value="crm">CRM direct</option><option value="cell">Cell bridge</option></select></label><label>Call from<select id="dialFrom"><option value="">Auto</option></select></label></div><div class="dialPad" style="margin-top:10px">' +
               ["1","2","3","4","5","6","7","8","9","*","0","#"].map(function (n) { return '<button class="btn dialKey" data-action="dial-key" data-key="' + n + '">' + n + '</button>'; }).join("") +
@@ -2537,7 +2537,13 @@
           state.dialerClient = null;
           state.crmLineReady = false;
         }
-        var token = await json("/webrtc/token", { method: "POST" });
+        var token;
+        try {
+          token = await json("/webrtc/token", { method: "POST" });
+        } catch (e) {
+          status("crmLineStatus", "CRM line setup failed: " + (e.message || String(e)), "badText");
+          return false;
+        }
         var client = new SDK({ login_token: token.token });
         state.dialerClient = client;
         try { client.remoteElement = "remoteAudio"; } catch (e) {}
@@ -2573,6 +2579,25 @@
         });
         client.connect();
         return readyPromise;
+      }
+      async function repairCrmLine() {
+        status("crmLineStatus", "Repairing CRM line setup...");
+        try {
+          var data = await json("/calls/enable-sip-uri", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resetCredential: true })
+          });
+          var msg = data.ok ? "CRM line repaired. Connect CRM line again." : "CRM line still needs setup: " + JSON.stringify(data).slice(0, 220);
+          status("crmLineStatus", msg, data.ok ? "okText" : "badText");
+          if (state.dialerClient) {
+            try { state.dialerClient.disconnect(); } catch (e) {}
+            state.dialerClient = null;
+            state.crmLineReady = false;
+          }
+        } catch (e) {
+          status("crmLineStatus", "Repair failed: " + (e.message || String(e)), "badText");
+        }
       }
       async function dialCrmDirect(phone) {
         if (!state.dialerClient || !state.crmLineReady) await connectCrmLine();
@@ -2673,7 +2698,7 @@
       async function loadPowerDialer() {
         pageShell("Power Dialer", "Progressive dialing with answering-machine detection before CRM/cell bridge.", '<button class="btn" data-action="refresh-power-status">Status</button>',
           '<div class="grid cols2">' +
-            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Call list<select id="powerList"><option value="">Search / manual selection</option></select></label><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto smart local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="load-power-list">Load list</button><button class="btn danger" data-action="delete-power-list">Delete list</button><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Call list<select id="powerList"><option value="">Search / manual selection</option></select></label><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto smart local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="load-power-list">Load list</button><button class="btn" data-action="edit-power-list">Edit list</button><button class="btn" data-action="replace-power-list">Replace with selected</button><button class="btn danger" data-action="delete-power-list">Delete list</button><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
             '<section class="card pad"><h2 style="margin-top:0">Queue status</h2><div id="powerStatus" class="list"><div class="empty">No status loaded.</div></div></section>' +
           '</div>' +
           '<section class="card"><div class="cardHead"><div><h2>Dial list</h2><div id="powerListHint" class="sub">Search leads or load a call list.</div></div><div class="toolbar"><button class="btn small" data-action="save-power-selection">Save selected as list</button><button class="btn small" data-action="refresh-power-leads">Refresh</button></div></div><div id="powerLeadWrap" class="tableWrap"></div></section>' +
@@ -2697,6 +2722,7 @@
       async function refreshPowerLeads() {
         var q = $("powerSearch") ? $("powerSearch").value.trim() : "";
         state.powerDialerActiveListId = "";
+        state.powerDialerSelectedIds.clear();
         if ($("powerList")) $("powerList").value = "";
         var data = await json("/api/leads?limit=250&includeContacts=1" + (q ? "&q=" + encodeURIComponent(q) : ""));
         state.powerDialerLeads = data.leads || [];
@@ -2717,13 +2743,61 @@
       async function deletePowerList() {
         var id = $("powerList") ? $("powerList").value : "";
         if (!id) { status("powerMsg", "Choose a call list first.", "warnText"); return; }
-        if (!confirm("Delete this Power Dialer call list? Leads will not be deleted.")) return;
+        status("powerMsg", "Deleting call list...");
         await json("/calls/power-dialer/lists/" + encodeURIComponent(id), { method: "DELETE" });
         state.powerDialerActiveListId = "";
         state.powerDialerSelectedIds.clear();
         await loadPowerLists();
         await refreshPowerLeads();
         status("powerMsg", "Call list deleted.", "okText");
+      }
+      function currentPowerList() {
+        var id = $("powerList") ? $("powerList").value : state.powerDialerActiveListId;
+        return (state.powerDialerLists || []).find(function (l) { return l.id === id; }) || null;
+      }
+      function openEditPowerListModal() {
+        var list = currentPowerList();
+        if (!list) { status("powerMsg", "Choose a call list first.", "warnText"); return; }
+        var ids = Array.from(state.powerDialerSelectedIds);
+        openModal("Edit call list",
+          '<p class="muted">Rename the list or replace its members with the checked rows currently shown in Power Dialer.</p>' +
+          '<label>List name<input id="powerEditListName" value="' + esc(list.name || "Power Dialer list") + '"></label>' +
+          '<label style="display:flex;align-items:center;gap:8px;margin-top:10px"><input id="powerEditReplace" type="checkbox" style="width:auto"> Replace members with checked rows</label>' +
+          '<div class="warnBox">' + ids.length + ' checked rows available for replacement.</div>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="save-edited-power-list">Save changes</button></div><div id="powerListMsg" class="statusLine"></div>');
+      }
+      async function saveEditedPowerList() {
+        var list = currentPowerList();
+        if (!list) { status("powerListMsg", "Choose a call list first.", "warnText"); return; }
+        var body = { name: inputVal("powerEditListName") || list.name };
+        if ($("powerEditReplace") && $("powerEditReplace").checked) body.ids = Array.from(state.powerDialerSelectedIds);
+        status("powerListMsg", "Saving changes...");
+        var data = await json("/calls/power-dialer/lists/" + encodeURIComponent(list.id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        closeModal();
+        state.powerDialerActiveListId = data.list && data.list.id ? data.list.id : list.id;
+        await loadPowerLists();
+        if (state.powerDialerActiveListId) await loadPowerList();
+        status("powerMsg", "Call list updated.", "okText");
+      }
+      async function replacePowerListWithSelected() {
+        var list = currentPowerList();
+        if (!list) { status("powerMsg", "Choose a call list first.", "warnText"); return; }
+        var ids = Array.from(state.powerDialerSelectedIds);
+        if (!ids.length) { status("powerMsg", "Check the rows you want in this list first.", "warnText"); return; }
+        status("powerMsg", "Replacing call list members...");
+        var data = await json("/calls/power-dialer/lists/" + encodeURIComponent(list.id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: ids })
+        });
+        state.powerDialerActiveListId = data.list && data.list.id ? data.list.id : list.id;
+        await loadPowerLists();
+        await loadPowerList();
+        status("powerMsg", "Call list members updated.", "okText");
       }
       function openSavePowerSelectionModal() {
         var ids = Array.from(state.powerDialerSelectedIds);
@@ -4688,6 +4762,7 @@
           else if (a === "send-bulk-vm") await sendBulkVm();
           else if (a === "popout-dialer") popoutDialer();
           else if (a === "connect-crm-line") await connectCrmLine();
+          else if (a === "repair-crm-line") await repairCrmLine();
           else if (a === "dial-key") { if ($("dialPhone")) $("dialPhone").value += btn.dataset.key || ""; }
           else if (a === "dial-backspace") { if ($("dialPhone")) $("dialPhone").value = $("dialPhone").value.slice(0, -1); }
           else if (a === "dial-clear") { if ($("dialPhone")) $("dialPhone").value = ""; }
@@ -4700,12 +4775,15 @@
           else if (a === "dial-selected-lead") await dialSelectedLead();
           else if (a === "refresh-power-leads") await refreshPowerLeads();
           else if (a === "load-power-list") await loadPowerList();
+          else if (a === "edit-power-list") openEditPowerListModal();
+          else if (a === "replace-power-list") await replacePowerListWithSelected();
           else if (a === "delete-power-list") await deletePowerList();
           else if (a === "save-power-selection") openSavePowerSelectionModal();
           else if (a === "save-power-call-list") await savePowerCallList();
+          else if (a === "save-edited-power-list") await saveEditedPowerList();
           else if (a === "power-save-disposition") await savePowerDisposition(btn.dataset.id);
           else if (a === "power-select") { btn.checked ? state.powerDialerSelectedIds.add(btn.dataset.id) : state.powerDialerSelectedIds.delete(btn.dataset.id); }
-          else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); await refreshPowerLeads(); }
+          else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads); }
           else if (a === "start-power-dialer") await startPowerDialer();
           else if (a === "stop-power-dialer") await stopPowerDialer();
           else if (a === "refresh-power-status") await refreshPowerStatus();
