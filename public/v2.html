@@ -1084,13 +1084,63 @@
         if (!rows || !rows.length) return '<div class="empty">No missed calls, inbound texts, or inbound emails right now.</div>';
         return '<div class="notificationList">' + rows.map(function (n) {
           var leadBtn = n.leadId ? '<button class="btn small" data-action="open-lead" data-id="' + esc(n.leadId) + '">Open lead</button>' : '<span class="badge amber">No lead match</span>';
+          var taskBtn = n.leadId ? '<button class="btn small primary" data-action="notification-task" data-notification-id="' + esc(n.id) + '">Add task</button>' : '';
           return '<div class="notificationItem">' +
             '<span class="notificationIcon">' + esc(notificationIcon(n.kind)) + '</span>' +
             '<div><b>' + esc(n.title || "Notification") + '</b><div class="sub">' + esc([n.name, n.contact].filter(Boolean).join(" | ")) + '</div>' +
             '<div class="sub">' + esc(when(n.at)) + (n.preview ? " | " + esc(String(n.preview).slice(0, 160)) : "") + '</div></div>' +
-            '<div class="toolbar" style="justify-content:flex-end">' + leadBtn + '</div>' +
+            '<div class="toolbar" style="justify-content:flex-end">' + taskBtn + leadBtn + '<button class="btn small danger" data-action="notification-delete" data-notification-id="' + esc(n.id) + '">Delete</button></div>' +
           '</div>';
         }).join("") + '</div>';
+      }
+      function notificationById(notificationId) {
+        return (state.notifications || []).find(function (n) { return n.id === notificationId; }) || null;
+      }
+      function notificationTaskTitle(n) {
+        var base = n && n.title ? n.title : "Notification";
+        var who = n && (n.name || n.contact) ? " - " + (n.name || n.contact) : "";
+        return "Follow up: " + base + who;
+      }
+      function openNotificationTask(notificationId) {
+        var n = notificationById(notificationId);
+        if (!n || !n.leadId) { showToast("This notification is not matched to a lead yet.", true); return; }
+        var due = localDateInput(Date.now() + 60 * 60 * 1000);
+        openModal("Add task from notification",
+          '<div class="item"><b>' + esc(n.title || "Notification") + '</b><div class="sub">' + esc([n.name, n.contact].filter(Boolean).join(" | ")) + '</div><div class="sub">' + esc(n.preview || "") + '</div></div>' +
+          '<label>Task title<input id="notificationTaskTitle" value="' + esc(notificationTaskTitle(n)) + '"></label>' +
+          '<div class="fieldGrid"><label>Due date/time<input id="notificationTaskDue" type="datetime-local" value="' + esc(due) + '"></label><label>CC Email<input id="notificationTaskCc" placeholder="optional@example.com"></label></div>' +
+          '<label>Description<textarea id="notificationTaskDescription" rows="4">' + esc(n.preview || "") + '</textarea></label>' +
+          '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="notifications">Back</button><button class="btn primary" data-action="notification-save-task" data-notification-id="' + esc(notificationId) + '">Add to tasks</button></div><div id="notificationTaskMsg" class="statusLine"></div>');
+      }
+      async function saveNotificationTask(notificationId) {
+        var n = notificationById(notificationId);
+        if (!n || !n.leadId) { status("notificationTaskMsg", "This notification is not matched to a lead.", "warnText"); return; }
+        var title = inputVal("notificationTaskTitle") || notificationTaskTitle(n);
+        var dueRaw = inputVal("notificationTaskDue");
+        var due = dueRaw ? new Date(dueRaw).getTime() : null;
+        status("notificationTaskMsg", "Adding task...");
+        await json("/api/leads/" + encodeURIComponent(n.leadId) + "/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title,
+            due_date: due && !isNaN(due) ? due : null,
+            cc_email: inputVal("notificationTaskCc"),
+            description: inputVal("notificationTaskDescription")
+          })
+        });
+        showToast("Notification added to tasks.");
+        await openNotifications();
+      }
+      async function deleteNotification(notificationId) {
+        if (!notificationId) return;
+        await json("/api/notifications/" + encodeURIComponent(notificationId), { method: "DELETE" });
+        state.notifications = (state.notifications || []).filter(function (n) { return n.id !== notificationId; });
+        await refreshNotificationCount();
+        if ($("modalBody") && !$("modalShade").classList.contains("hidden")) {
+          $("modalBody").innerHTML = renderNotifications(state.notifications);
+        }
+        showToast("Notification deleted.");
       }
       async function setMessagingMode(mode) {
         await json("/api/messaging-mode", {
@@ -4266,6 +4316,9 @@
           if (a === "mobile-menu") document.body.classList.toggle("navOpen");
           else if (a === "toggle-theme") toggleTheme();
           else if (a === "notifications") await openNotifications();
+          else if (a === "notification-delete") await deleteNotification(btn.dataset.notificationId);
+          else if (a === "notification-task") openNotificationTask(btn.dataset.notificationId);
+          else if (a === "notification-save-task") await saveNotificationTask(btn.dataset.notificationId);
           else if (a === "toggle-lead-chrome") toggleLeadChrome();
           else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
           else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); try { localStorage.removeItem("sp_token"); } catch (x) {} location.reload(); }

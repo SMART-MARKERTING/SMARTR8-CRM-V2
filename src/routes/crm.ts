@@ -725,6 +725,7 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
     const owner = ownerScope(req);
     const ownerWhere = owner ? "AND l.owner_user_id = @owner" : "";
     const ownerCallWhere = owner ? "AND c.lead_id IN (SELECT id FROM leads WHERE owner_user_id = @owner)" : "";
+    const dismissedNotifications = dismissedDashboardIds("notification");
     const missedCalls = db
       .prepare(
         `SELECT c.id, c.created_at, c.phone, c.name, c.lead_id, l.first_name, l.last_name, l.email
@@ -784,6 +785,7 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
         };
       }),
     ]
+      .filter((n) => !dismissedNotifications.has(n.id))
       .sort((a, b) => b.at - a.at)
       .slice(0, limit);
     res.json({ ok: true, count: notifications.length, notifications });
@@ -791,6 +793,63 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
     log.error("notifications error", { err: String(err) });
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+/** True when a generated Notification Center item still exists and belongs to this user. */
+function notificationVisibleToRequest(req: Request, notificationId: string): boolean {
+  const [kind, sourceId] = notificationId.split(":");
+  if (!kind || !sourceId || !/^(call|email|message)$/.test(kind)) return false;
+  const owner = ownerScope(req);
+  if (kind === "call") {
+    const row = db
+      .prepare(
+        `SELECT c.id
+           FROM call_log c
+           LEFT JOIN leads l ON l.id = c.lead_id
+          WHERE c.id = @id
+            AND c.deleted_at IS NULL
+            AND c.direction = 'inbound'
+            AND c.outcome = 'missed'
+            ${owner ? "AND c.lead_id IN (SELECT id FROM leads WHERE owner_user_id = @owner)" : ""}
+          LIMIT 1`,
+      )
+      .get({ id: sourceId, owner: owner || "" }) as { id: string } | undefined;
+    return Boolean(row);
+  }
+  const row = db
+    .prepare(
+      `SELECT a.id
+         FROM activities a
+         JOIN leads l ON l.id = a.lead_id
+        WHERE a.id = @id
+          AND a.deleted_at IS NULL
+          AND l.deleted_at IS NULL
+          AND a.direction = 'inbound'
+          AND (
+            a.type IN ('sms','imessage','whatsapp')
+            OR a.channel IN ('sms','imessage','whatsapp')
+            OR a.type = 'email'
+            OR a.channel = 'email'
+          )
+          ${owner ? "AND l.owner_user_id = @owner" : ""}
+        LIMIT 1`,
+    )
+    .get({ id: sourceId, owner: owner || "" }) as { id: string } | undefined;
+  return Boolean(row);
+}
+
+crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) => {
+  const notificationId = cleanText(req.params.notificationId);
+  if (!notificationId) {
+    res.status(400).json({ error: "notification id required" });
+    return;
+  }
+  if (!notificationVisibleToRequest(req, notificationId)) {
+    res.status(404).json({ error: "notification not found" });
+    return;
+  }
+  dismissDashboardItem("notification", notificationId);
+  res.json({ ok: true, id: notificationId });
 });
 
 /** Dismiss one dashboard item (reply/lead) from its panel — non-destructive.
