@@ -2,11 +2,30 @@ import { config } from "../config";
 import { GhlContact } from "./ghl";
 import { isOnDnc } from "./dnc";
 
-export type GateReason = "on-DNC" | "no-consent" | "outside-hours" | "unknown-timezone" | "no-phone";
+export type GateReason =
+  | "on-DNC"
+  | "no-consent"
+  | "no-sms-consent"
+  | "outside-hours"
+  | "unknown-timezone"
+  | "no-phone";
 
 export interface GateResult {
   allowed: boolean;
   reason?: GateReason;
+}
+
+export interface SmsConsentContact {
+  phone?: string | null;
+  sms_consent?: number | boolean | null;
+  consent_at?: number | null;
+}
+
+export interface SmsEligibilityResult extends GateResult {
+  channel: "sms";
+  checked_at: number;
+  consentRecordUsed?: "sms_consent+consent_at";
+  dncResult?: "clear" | "blocked";
 }
 
 /** Local hour (0-23) for an IANA timezone, or null if missing/invalid. */
@@ -42,6 +61,30 @@ export async function checkAutomatedCall(contact: GhlContact): Promise<GateResul
   const tags = contact.tags ?? [];
   if (!tags.includes(config.compliance.consentTag)) return { allowed: false, reason: "no-consent" };
   return withinCallingHours(contact.timezone);
+}
+
+export function hasAffirmativeSmsConsent(contact: SmsConsentContact): boolean {
+  const consentFlag = contact.sms_consent === true || contact.sms_consent === 1;
+  return consentFlag && typeof contact.consent_at === "number" && contact.consent_at > 0;
+}
+
+/** Automated marketing SMS needs affirmative consent plus a timestamped audit record. */
+export async function checkAutomatedSms(contact: SmsConsentContact): Promise<SmsEligibilityResult> {
+  const checked_at = Date.now();
+  if (!contact.phone) return { allowed: false, reason: "no-phone", channel: "sms", checked_at };
+  if (await isOnDnc(contact.phone)) {
+    return { allowed: false, reason: "on-DNC", channel: "sms", checked_at, dncResult: "blocked" };
+  }
+  if (!hasAffirmativeSmsConsent(contact)) {
+    return { allowed: false, reason: "no-sms-consent", channel: "sms", checked_at, dncResult: "clear" };
+  }
+  return {
+    allowed: true,
+    channel: "sms",
+    checked_at,
+    consentRecordUsed: "sms_consent+consent_at",
+    dncResult: "clear",
+  };
 }
 
 /** Manual click-to-call: DNC only. Consent + hours are exempt (a human is dialing). */

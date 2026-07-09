@@ -530,6 +530,10 @@ export function updateLead(
   if (patch.sms_consent !== undefined) {
     sets.push(`sms_consent = @sms_consent`);
     params.sms_consent = patch.sms_consent ? 1 : 0;
+    if (patch.sms_consent && !existing.consent_at) {
+      sets.push(`consent_at = @consent_at_auto`);
+      params.consent_at_auto = Date.now();
+    }
   }
   if (patch.email_unsubscribed !== undefined) {
     sets.push(`email_unsubscribed = @email_unsubscribed`);
