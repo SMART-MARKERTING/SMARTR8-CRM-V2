@@ -84,7 +84,7 @@ import {
 } from "../services/automations";
 import { categorize } from "../services/tagging";
 import { addToDnc, removeFromDnc, isOnDnc } from "../services/dnc";
-import { withinCallingHours } from "../services/compliance";
+import { checkAutomatedSms, withinCallingHours } from "../services/compliance";
 import { auditSources, purgeImported, revertImportDamage, dedupeContacts } from "../services/importCleanup";
 import { reactToMessage, BlueBubblesReaction } from "../services/bluebubbles";
 import { buildMismo34, mismoFilename } from "../services/mismo";
@@ -2520,6 +2520,20 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
     if (pk && sentPhones.has(pk)) { skipped++; note("duplicate number"); continue; }
     if ((lead.tags || []).some((t) => /opt[_-]?out|dnc|do[_-]?not[_-]?contact|^stop$/i.test(t))) { skipped++; note("opted out / DNC"); continue; }
     const personalized = renderLeadMergeTemplate(message, lead);
+    const smsGate = await checkAutomatedSms(lead);
+    if (!smsGate.allowed) {
+      skipped++;
+      note(smsGate.reason || "blocked by SMS eligibility");
+      logActivity(lead.id, {
+        type: "sms",
+        direction: "outbound",
+        channel: "sms",
+        body: personalized,
+        status: `skipped:${smsGate.reason}`,
+        meta: { decision: smsGate, blast: true },
+      });
+      continue;
+    }
     try {
       const result = await sendOutbound({ phone: lead.phone, message: personalized });
       const channel = result.path.startsWith("imessage") ? "imessage" : "sms";
@@ -2593,6 +2607,18 @@ async function sendLeadTextFollowup(
   if (!lead.phone) return { skipped: true, reason: "no phone" };
   const message = renderLeadMergeTemplate(template, lead).trim();
   if (!message) return { skipped: true, reason: "empty message" };
+  const smsGate = await checkAutomatedSms(lead);
+  if (!smsGate.allowed) {
+    logActivity(lead.id, {
+      type: "sms",
+      direction: "outbound",
+      channel: "sms",
+      body: message,
+      status: `skipped:${smsGate.reason}`,
+      meta: { decision: smsGate, author, voicemailFollowup: true, blast },
+    });
+    return { skipped: true, reason: smsGate.reason || "blocked by SMS eligibility" };
+  }
   try {
     const result = await sendOutbound({ phone: lead.phone, message });
     const channel = result.path.startsWith("imessage") ? "imessage" : "sms";
@@ -2602,7 +2628,7 @@ async function sendLeadTextFollowup(
       channel,
       body: message,
       status: result.ok ? "voicemail-followup-sent" : `failed:${result.path}`,
-      meta: { detail: result.detail, author, voicemailFollowup: true, blast },
+      meta: { detail: result.detail, author, voicemailFollowup: true, blast, decision: smsGate },
     });
     return result.ok
       ? { ok: true, path: result.path, detail: result.detail }

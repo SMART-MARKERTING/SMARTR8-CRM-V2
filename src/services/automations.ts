@@ -4,12 +4,11 @@ import { config } from "../config";
 import { log } from "../logger";
 import { Lead, getLead, findLead, leadName, logActivity, logActivityOnce, addLeadTag, updateLead, resolveLeadTimezone } from "./leads";
 import { sendOutbound } from "./router";
-import { isOnDnc } from "./dnc";
 import { sendEmail, emailConfigured } from "./email";
 import { dropVoicemail, voicemailConfigured } from "./voicemail";
 import { getDefaultVoicemailAudioUrl } from "./voicemailSettings";
 import { generateVoicemailAudio } from "./elevenLabs";
-import { withinCallingHours } from "./compliance";
+import { checkAutomatedSms, withinCallingHours } from "./compliance";
 import { smsWindowForTz } from "../util/areaCodeTz";
 import { signToken } from "../util/token";
 import { brand, emailSignatureText, emailFooterText, renderBrandedEmailHtml } from "../brand";
@@ -580,22 +579,20 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
 
     case "send_text": {
       if (!lead.phone) return { status: "skipped", detail: "lead has no phone" };
-      // SMS consent is recorded on the lead (sms_consent / consent_at / timeline) but no
-      // longer gates drip texts — the owner texts every lead unless they're on the
-      // Do-Not-Contact list. DNC (STOP keyword, IVR opt-out, or the console's DNC button)
-      // is the one hard suppression; surface the skip on the timeline so it's visible.
-      if (await isOnDnc(lead.phone)) {
+      const message = render(step.message, lead);
+      if (!message) return { status: "skipped", detail: "empty message" };
+      const smsGate = await checkAutomatedSms(lead);
+      if (!smsGate.allowed) {
         logActivity(lead.id, {
           type: "sms",
           direction: "outbound",
           channel: "sms",
-          body: render(step.message, lead),
-          status: "skipped:dnc",
+          body: message,
+          status: `skipped:${smsGate.reason}`,
+          meta: { decision: smsGate, automation: true },
         });
-        return { status: "skipped", detail: "on Do-Not-Contact list" };
+        return { status: "skipped", detail: smsGate.reason || "blocked by SMS eligibility" };
       }
-      const message = render(step.message, lead);
-      if (!message) return { status: "skipped", detail: "empty message" };
       // TCPA quiet hours: 8 AM..9 PM in the lead's timezone (address first, then area
       // code, then conservative). Outside the window → reschedule to the next start.
       const tz = resolveLeadTimezone(lead);
@@ -675,19 +672,35 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
         });
         const followup = render(step.followupText || step.message, lead).trim();
         if (followup) {
-          const sr = await sendOutbound({ phone: lead.phone, message: followup });
-          const channel = sr.path.startsWith("imessage") ? "imessage" : "sms";
-          try {
-            logActivityOnce(lead.id, {
-              type: channel,
-              direction: "outbound",
-              channel,
-              body: followup,
-              status: sr.ok ? "voicemail-followup-sent" : `failed:${sr.path}`,
-              meta: { detail: sr.detail, voicemailFollowup: true },
-            });
-          } catch (err) {
-            log.warn("voicemail_drop: follow-up logActivity failed (not retrying voicemail)", { leadId: lead.id, err: String(err) });
+          const smsGate = await checkAutomatedSms(lead);
+          if (!smsGate.allowed) {
+            try {
+              logActivityOnce(lead.id, {
+                type: "sms",
+                direction: "outbound",
+                channel: "sms",
+                body: followup,
+                status: `skipped:${smsGate.reason}`,
+                meta: { decision: smsGate, voicemailFollowup: true },
+              });
+            } catch (err) {
+              log.warn("voicemail_drop: follow-up skip logActivity failed", { leadId: lead.id, err: String(err) });
+            }
+          } else {
+            const sr = await sendOutbound({ phone: lead.phone, message: followup });
+            const channel = sr.path.startsWith("imessage") ? "imessage" : "sms";
+            try {
+              logActivityOnce(lead.id, {
+                type: channel,
+                direction: "outbound",
+                channel,
+                body: followup,
+                status: sr.ok ? "voicemail-followup-sent" : `failed:${sr.path}`,
+                meta: { detail: sr.detail, voicemailFollowup: true, decision: smsGate },
+              });
+            } catch (err) {
+              log.warn("voicemail_drop: follow-up logActivity failed (not retrying voicemail)", { leadId: lead.id, err: String(err) });
+            }
           }
         }
         return { status: "done", detail: r.ccid };
