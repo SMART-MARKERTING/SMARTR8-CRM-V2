@@ -22,7 +22,11 @@ function jsonHeaders(): Record<string, string> {
 async function readCredId(): Promise<string | null> {
   try {
     const raw = await fs.readFile(CRED_FILE, "utf8");
-    return (JSON.parse(raw) as { id?: string }).id ?? null;
+    const parsed = JSON.parse(raw) as { id?: string; connectionId?: string };
+    if (parsed.connectionId && config.webrtc.sipConnectionId && parsed.connectionId !== config.webrtc.sipConnectionId) {
+      return null;
+    }
+    return parsed.id ?? null;
   } catch {
     return null;
   }
@@ -30,7 +34,11 @@ async function readCredId(): Promise<string | null> {
 
 async function writeCredId(id: string): Promise<void> {
   await fs.mkdir(path.dirname(CRED_FILE), { recursive: true });
-  await fs.writeFile(CRED_FILE, JSON.stringify({ id }, null, 2), "utf8");
+  await fs.writeFile(CRED_FILE, JSON.stringify({ id, connectionId: config.webrtc.sipConnectionId || null }, null, 2), "utf8");
+}
+
+export async function resetWebrtcCredentialCache(): Promise<void> {
+  await fs.rm(CRED_FILE, { force: true }).catch(() => {});
 }
 
 /** Reusable telephony-credential id, created on the SIP connection if we don't have one. */
@@ -60,20 +68,47 @@ async function getOrCreateCredentialId(): Promise<string> {
  * The credential's SIP username, used to build the dial target for ringing the
  * registered WebRTC app: sip:<username>@sip.telnyx.com. Cached alongside the id.
  */
+async function buildWebrtcSipUri(): Promise<string | null> {
+  const credId = await getOrCreateCredentialId();
+  const res = await fetch(`${TELNYX_V2}/telephony_credentials/${credId}`, { headers: jsonHeaders() });
+  const raw = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(`Telnyx get credential failed ${res.status}: ${raw}`);
+  }
+  const data = (raw ? JSON.parse(raw) : {}) as { data?: { sip_username?: string } };
+  const user = data.data?.sip_username;
+  return user ? `sip:${user}@sip.telnyx.com` : null;
+}
+
 export async function getWebrtcSipUri(): Promise<string | null> {
   try {
-    const credId = await getOrCreateCredentialId();
-    const res = await fetch(`${TELNYX_V2}/telephony_credentials/${credId}`, { headers: jsonHeaders() });
-    if (!res.ok) {
-      log.warn(`Telnyx get credential failed ${res.status}: ${await res.text().catch(() => "")}`);
-      return null;
-    }
-    const data = (await res.json()) as { data?: { sip_username?: string } };
-    const user = data.data?.sip_username;
-    return user ? `sip:${user}@sip.telnyx.com` : null;
+    return await buildWebrtcSipUri();
   } catch (err) {
     log.warn("getWebrtcSipUri error", { err: String(err) });
     return null;
+  }
+}
+
+export async function getWebrtcDiagnostic(): Promise<Record<string, unknown>> {
+  const cachedCredentialId = await readCredId();
+  if (!config.telnyx.apiKey) return { ok: false, error: "TELNYX_API_KEY is not set" };
+  if (!config.webrtc.sipConnectionId) return { ok: false, error: `TELNYX_SIP_CONNECTION_ID not set. ${SIP_CONNECTION_HELP}` };
+  try {
+    const sipUri = await buildWebrtcSipUri();
+    return {
+      ok: Boolean(sipUri),
+      sipUri,
+      sipUriCalling: await getSipUriCallingPref(),
+      credentialCached: Boolean(cachedCredentialId),
+      sipConnectionIdConfigured: true,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: String(err),
+      credentialCached: Boolean(cachedCredentialId),
+      sipConnectionIdConfigured: true,
+    };
   }
 }
 

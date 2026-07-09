@@ -29,7 +29,13 @@ import {
   onInboundLegHangup,
   getInboundTrace,
 } from "../services/inboundRouter";
-import { getWebrtcSipUri, ensureSipUriCalling, getSipUriCallingPref } from "../services/telnyxWebrtc";
+import {
+  getWebrtcSipUri,
+  ensureSipUriCalling,
+  getSipUriCallingPref,
+  getWebrtcDiagnostic,
+  resetWebrtcCredentialCache,
+} from "../services/telnyxWebrtc";
 import { isVoicemailCall, handleVoicemailEvent } from "../services/voicemail";
 import {
   placeCall,
@@ -187,13 +193,8 @@ voiceRouter.get("/calls/diag", async (req, res) => {
     config.telnyx.apiKey && config.voice.applicationId
       ? await voiceDiag()
       : { skipped: "set TELNYX_API_KEY and TELNYX_VOICE_APP_ID or TELNYX_CONNECTION_ID first" };
-  // Resolve the softphone SIP URI we dial for inbound app-ring (null => can't ring app).
-  let webrtcSipUri: string | null = null;
-  try {
-    webrtcSipUri = await getWebrtcSipUri();
-  } catch {
-    webrtcSipUri = null;
-  }
+  const webrtc = await getWebrtcDiagnostic();
+  const webrtcSipUri = typeof webrtc.sipUri === "string" ? webrtc.sipUri : null;
   // Current SIP-URI-calling preference on the connection (must be "unrestricted"/"internal"
   // for our app-ring leg to reach the registered console).
   const sipUriCalling = await getSipUriCallingPref();
@@ -201,6 +202,7 @@ voiceRouter.get("/calls/diag", async (req, res) => {
     env,
     telnyx,
     inboundMode: config.inbound.mode, // must be "app-then-cell" to ring the app
+    webrtc,
     webrtcSipUri, // the sip: we dial to ring the console; null = lookup failed
     sipUriCalling, // "disabled" => app can't be rung; hit /calls/enable-sip-uri to fix
     inboundTrace: getInboundTrace(), // step-by-step of the last inbound calls
@@ -220,6 +222,14 @@ voiceRouter.get("/calls/enable-sip-uri", async (req, res) => {
   }
   const result = await ensureSipUriCalling();
   res.json(result);
+});
+
+voiceRouter.post("/calls/enable-sip-uri", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { resetCredential?: boolean };
+  if (body.resetCredential !== false) await resetWebrtcCredentialCache();
+  const sipUriCalling = await ensureSipUriCalling();
+  const webrtc = await getWebrtcDiagnostic();
+  res.json({ ok: Boolean(sipUriCalling.ok && webrtc.ok), sipUriCalling, webrtc });
 });
 
 /** Automated outbound: queue contacts for sequenced, gated, throttled dialing. */
@@ -492,7 +502,69 @@ voiceRouter.get("/calls/power-dialer/lists/:id", requirePass, (req, res) => {
   res.json({ ok: true, list: listSummary(row), leads });
 });
 
+voiceRouter.patch("/calls/power-dialer/lists/:id", requirePass, (req, res) => {
+  const row = db.prepare(`SELECT * FROM power_dialer_lists WHERE id = ?`).get(req.params.id) as ReturnType<typeof powerDialerListRows>[number] | undefined;
+  if (!row || !powerDialerListRows(req).some((item) => item.id === row.id)) {
+    res.status(404).json({ error: "call list not found" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as { name?: string; ids?: string[]; source?: string; filters?: Record<string, unknown> };
+  const hasName = Object.prototype.hasOwnProperty.call(body, "name");
+  const name = (hasName ? cleanText(body.name) : row.name).slice(0, 120);
+  if (!name) {
+    res.status(400).json({ error: "name the call list" });
+    return;
+  }
+
+  let ids = safeParse<string[]>(row.lead_ids, []);
+  if (Array.isArray(body.ids)) {
+    ids = Array.from(new Set(body.ids.filter((id) => typeof id === "string")))
+      .filter((id) => canAccessLead(req, getLead(id)))
+      .slice(0, 5000);
+    if (!ids.length) {
+      res.status(400).json({ error: "select at least one callable lead" });
+      return;
+    }
+  }
+
+  const source = Object.prototype.hasOwnProperty.call(body, "source") ? cleanText(body.source, "manual").slice(0, 80) : row.source;
+  const filters = Object.prototype.hasOwnProperty.call(body, "filters")
+    ? JSON.stringify(body.filters && typeof body.filters === "object" ? body.filters : {})
+    : row.filters;
+  const now = Date.now();
+  db.prepare(
+    `UPDATE power_dialer_lists
+        SET updated_at = @now,
+            name = @name,
+            source = @source,
+            lead_ids = @leadIds,
+            filters = @filters
+      WHERE id = @id`,
+  ).run({
+    id: row.id,
+    now,
+    name,
+    source,
+    leadIds: JSON.stringify(ids),
+    filters,
+  });
+  const updated = db.prepare(`SELECT * FROM power_dialer_lists WHERE id = ?`).get(row.id) as ReturnType<typeof powerDialerListRows>[number];
+  const leads = ids.map((id) => getLead(id)).filter((lead): lead is Lead => canAccessLead(req, lead));
+  res.json({ ok: true, list: listSummary(updated), leads });
+});
+
 voiceRouter.delete("/calls/power-dialer/lists/:id", requirePass, (req, res) => {
+  const allowed = powerDialerListRows(req).some((row) => row.id === req.params.id);
+  if (!allowed) {
+    res.status(404).json({ error: "call list not found" });
+    return;
+  }
+  db.prepare(`DELETE FROM power_dialer_lists WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true });
+});
+
+voiceRouter.post("/calls/power-dialer/lists/:id/delete", requirePass, (req, res) => {
   const allowed = powerDialerListRows(req).some((row) => row.id === req.params.id);
   if (!allowed) {
     res.status(404).json({ error: "call list not found" });
