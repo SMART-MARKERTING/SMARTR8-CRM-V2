@@ -229,6 +229,7 @@
     .content { padding: 24px; max-width: 1540px; margin: 0 auto; background: var(--bg); }
     .content.pipelineWide { max-width: none; margin: 0; }
     .content.emailWide { max-width: none; margin: 0; }
+    .content.leadPoolWide { max-width: none; margin: 0; }
     .pageHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
     .pageTitle p { margin: 6px 0 0; color: var(--muted); }
     .toolbar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
@@ -348,6 +349,12 @@
     .popoutMode .content { padding: 14px; max-width: 620px; }
     .popoutMode .pageHead { margin-bottom: 12px; }
     .splitShell { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 14px; align-items: start; }
+    .leadPoolShell { display: grid; gap: 14px; }
+    .leadPoolTop { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(520px, 1.15fr); gap: 14px; align-items: stretch; }
+    .leadPoolFilters .fieldGrid { grid-template-columns: minmax(250px, 1.15fr) minmax(190px, .8fr) minmax(150px, .65fr) minmax(190px, .8fr); align-items: end; }
+    .leadPoolTable { min-width: 1120px; }
+    .leadPoolTable th:last-child, .leadPoolTable td:last-child { width: 260px; }
+    .poolActionCell .toolbar { flex-wrap: nowrap; justify-content: flex-end; }
     .drawer {
       position: sticky;
       top: 82px;
@@ -576,7 +583,8 @@
     }
     .mobileMenu { display: none; }
     @media (max-width: 1120px) {
-      .cols2, .cols3, .splitShell, .emailShell { grid-template-columns: 1fr; }
+      .cols2, .cols3, .splitShell, .emailShell, .leadPoolTop { grid-template-columns: 1fr; }
+      .leadPoolFilters .fieldGrid { grid-template-columns: 1fr; }
       .drawer { position: static; max-height: none; }
       .leadProfileGrid { grid-template-columns: 1fr; }
     }
@@ -993,6 +1001,7 @@
         document.body.classList.remove("navOpen");
         $("content").classList.toggle("pipelineWide", page === "pipeline");
         $("content").classList.toggle("emailWide", page === "email");
+        $("content").classList.toggle("leadPoolWide", page === "leadpool");
         document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
           b.classList.toggle("active", b.dataset.nav === page);
         });
@@ -1457,13 +1466,11 @@
         var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
         var name = nameOf(lead);
         var addr = leadAddressParts(lead);
-        var telHref = phoneHref(lead.phone || "");
-        var telButton = telHref ? '<a class="btn call" href="' + esc(telHref) + '">Call phone</a>' : '<button class="btn" disabled>No phone</button>';
         var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
             '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
-            '<div class="leadQuickBar">' + telButton + '<button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
@@ -1752,14 +1759,21 @@
         if (state.page === "calendar") await refreshCalendar();
       }
 
-      async function openLeadDialer() {
+      async function openLeadDialer(autoCall) {
         var lead = state.selectedLead;
         if (!lead) return;
         closeModal();
         await route("dialer");
         if ($("dialPhone") && lead.phone) $("dialPhone").value = lead.phone;
+        if ($("dialPath")) $("dialPath").value = "crm";
         renderDialLead();
-        if (lead.phone) status("dialLeadMsg", "Ready to call " + lead.phone + ".", "okText");
+        if (lead.phone) status("dialLeadMsg", "Ready to call " + lead.phone + " from CRM.", "okText");
+        if (autoCall && lead.phone) {
+          status("dialLeadMsg", "Dialing " + lead.phone + " from CRM...");
+          await dialCrmDirect(lead.phone);
+          status("dialLeadMsg", "CRM call started.", "okText");
+          await loadCallLog();
+        }
       }
 
       async function toggleTask(todoId, done) {
@@ -1877,15 +1891,14 @@
       async function loadLeadPool() {
         pageShell("Lead Pool", "Old-list contacts live here until you move them into active Leads.",
           '<button class="btn" data-action="download-pool-sample">Sample CSV</button><button class="btn" data-action="repair-leadpool">Repair hidden</button><button class="btn" data-action="refresh-leadpool">Refresh</button>',
-          '<div class="splitShell">' +
+          '<div class="leadPoolShell">' +
             '<div class="grid">' +
-              '<div class="grid cols2">' +
+              '<div class="leadPoolTop">' +
                 '<section class="card pad"><h2 style="margin-top:0">Upload old leads</h2><div class="sub" style="margin-bottom:10px">' + esc(leadPoolSampleColumns()) + '</div><input id="poolCsv" type="file" accept=".csv,text/csv"><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="import-leadpool">Upload CSV</button></div><div id="poolStatus" class="statusLine"></div></section>' +
-                '<section class="card pad"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>States<select id="poolState" multiple size="5"></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
+                '<section class="card pad leadPoolFilters"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>States<select id="poolState" multiple size="5"></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
               '</div>' +
               '<section class="card"><div class="cardHead"><div><h2>Pool records</h2><div id="poolSelectionCount" class="sub">0 selected in current filter</div></div><div class="toolbar"><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
             '</div>' +
-            '<aside id="poolDrawer" class="drawer card pad"><div class="empty">Click Open on a Lead Pool record to use the same profile view as Leads and Past Clients.</div></aside>' +
           '</div>');
         if ($("poolSearch")) $("poolSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshLeadPool(); });
         await loadLeadPoolCampaigns();
@@ -1927,7 +1940,7 @@
         if (!leads || !leads.length) return '<div class="empty">No Lead Pool records found.</div>';
         var selectedVisible = selectedPoolIds().length;
         var allVisibleSelected = Boolean(leads.length && selectedVisible === leads.length);
-        return '<div class="sub" style="padding:10px 14px">Showing ' + Number(leads.length || 0) + ' of ' + Number(total || leads.length || 0) + ' filtered Lead Pool records.</div><table class="table"><thead><tr><th><input type="checkbox" data-action="pool-select-all"' + (allVisibleSelected ? " checked" : "") + '></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th></th></tr></thead><tbody>' +
+        return '<div class="sub" style="padding:10px 14px">Showing ' + Number(leads.length || 0) + ' of ' + Number(total || leads.length || 0) + ' filtered Lead Pool records.</div><table class="table leadPoolTable"><thead><tr><th><input type="checkbox" data-action="pool-select-all"' + (allVisibleSelected ? " checked" : "") + '></th><th>Contact</th><th>State</th><th>Tags</th><th>Source</th><th>Updated</th><th>Actions</th></tr></thead><tbody>' +
           leads.map(function (l) {
             var name = nameOf(l), selected = state.leadPoolSelectedIds.has(l.id);
             var addr = leadAddressLine(l);
@@ -1938,7 +1951,7 @@
               '<td>' + (l.tags || []).map(function (t) { return '<span class="badge blue">' + esc(t) + '</span>'; }).join(" ") + '</td>' +
               '<td>' + esc(l.source || "lead-pool") + '</td>' +
               '<td>' + esc(when(l.updated_at || l.created_at)) + '</td>' +
-              '<td><div class="toolbar"><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button><button class="btn small primary" data-action="promote-pool" data-id="' + esc(l.id) + '">Move to Leads</button><button class="btn small danger" data-action="delete-pool" data-id="' + esc(l.id) + '">Delete</button></div></td>' +
+              '<td class="poolActionCell"><div class="toolbar"><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button><button class="btn small primary" data-action="promote-pool" data-id="' + esc(l.id) + '">Move to Leads</button><button class="btn small danger" data-action="delete-pool" data-id="' + esc(l.id) + '">Delete</button></div></td>' +
             '</tr>';
           }).join("") + '</tbody></table><div class="sub" style="padding:10px 12px">Showing ' + leads.length + ' of ' + Number(total || leads.length) + ' pool records.</div>';
       }
@@ -4709,14 +4722,14 @@
           else if (a === "delete-lead") await deleteCurrentLead();
           else if (a === "sms-consent") { await json("/api/leads/" + state.selectedLead.id + "/sms-consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: true }) }); state.selectedLead.sms_consent = true; revealSmsConsentInline("leadSmsConsentState"); showToast("SMS consent recorded."); await openLead(state.selectedLead.id); }
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
-          else if (a === "open-lead-dialer") await openLeadDialer();
+          else if (a === "open-lead-dialer") await openLeadDialer(false);
           else if (a === "send-lead-text") await leadAction("text");
           else if (a === "send-lead-email") await leadAction("email");
           else if (a === "send-lead-whatsapp") await sendLeadWhatsApp("text");
           else if (a === "send-lead-whatsapp-template") await sendLeadWhatsApp("template");
           else if (a === "send-lead-whatsapp-quote") await sendLeadWhatsApp("quote");
           else if (a === "add-note") await leadAction("note");
-          else if (a === "call-lead") await leadAction("call");
+          else if (a === "call-lead") await openLeadDialer(true);
           else if (a === "voicemail-lead") await leadAction("vm");
           else if (a === "run-flow") await leadAction("runflow");
           else if (a === "start-app") await leadAction("start");

@@ -35,7 +35,7 @@ async function writeCredId(id: string): Promise<void> {
 async function getOrCreateCredentialId(): Promise<string> {
   const existing = await readCredId();
   if (existing) return existing;
-  if (!config.webrtc.sipConnectionId) throw new Error("TELNYX_SIP_CONNECTION_ID not set");
+  if (!config.webrtc.sipConnectionId) throw new Error("TELNYX_SIP_CONNECTION_ID/TELNYX_CONNECTION_ID/TELNYX_VOICE_APP_ID not set");
   const res = await fetch(`${TELNYX_V2}/telephony_credentials`, {
     method: "POST",
     headers: jsonHeaders(),
@@ -78,7 +78,7 @@ export async function getWebrtcSipUri(): Promise<string | null> {
  */
 export async function ensureSipUriCalling(): Promise<{ ok: boolean; preference?: string; detail?: string }> {
   const connId = config.webrtc.sipConnectionId;
-  if (!connId) return { ok: false, detail: "TELNYX_SIP_CONNECTION_ID not set" };
+  if (!connId) return { ok: false, detail: "TELNYX_SIP_CONNECTION_ID/TELNYX_CONNECTION_ID/TELNYX_VOICE_APP_ID not set" };
   try {
     const res = await fetch(`${TELNYX_V2}/credential_connections/${connId}`, {
       method: "PATCH",
