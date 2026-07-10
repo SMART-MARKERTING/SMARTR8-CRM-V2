@@ -717,6 +717,103 @@
     .appSection { margin-bottom: 18px; }
     .appSectionTitle { margin: 0 0 16px; font-size: 18px; color: #344158; }
 
+    .desktopPhoneButton, .desktopPhoneDrawer { display: none; }
+    @media (min-width: 821px) {
+      .content.dashboardWide, .content.messagesWide, .content.contactsWide { max-width: none; margin: 0; }
+      .content.dashboardWide { padding: 20px 24px 28px; }
+      .content.messagesWide { padding: 0; overflow: hidden; }
+      .content.messagesWide .pageHead { display: none; }
+      .content.contactsWide { padding: 20px 24px; }
+      .navBtn[data-nav="dialer"] { display: none; }
+
+      .desktopPhoneButton { display: grid; font-size: 19px; border-color: #dbe4ef; color: var(--blue); }
+      .desktopPhoneButton.active { color: #fff; background: var(--blue); border-color: var(--blue); }
+      .desktopPhoneDrawer {
+        display: block;
+        position: fixed;
+        z-index: 70;
+        top: 68px;
+        right: 18px;
+        width: 390px;
+        max-height: calc(100vh - 86px);
+        overflow: hidden;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 20px 55px rgba(15,23,42,.22);
+      }
+      .desktopPhoneDrawer.hidden { display: none; }
+      .phoneDrawerHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); }
+      .phoneDrawerBody { padding: 14px 16px; max-height: calc(100vh - 205px); overflow-y: auto; }
+      .phoneNumberInput { font-size: 20px; font-weight: 850; text-align: center; min-height: 48px; }
+      .phoneDialPad { width: 250px; margin: 14px auto; }
+      .phoneDialPad .dialKey { min-height: 48px; border-radius: 999px; background: var(--soft); border-color: transparent; }
+      .phoneDrawerTabs { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--panel); }
+      .phoneTab { border: 0; background: transparent; min-height: 58px; color: var(--muted); font-size: 11px; font-weight: 850; }
+      .phoneTab.active { color: var(--blue); background: var(--blueSoft); }
+      .quickCallRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--tableLine); }
+
+      .desktopDashboard { display: grid; gap: 14px; }
+      .dashboardKpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+      .dashboardKpi { padding: 15px 17px; min-height: 104px; display: grid; align-content: space-between; }
+      .dashboardKpiTop { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 850; }
+      .dashboardKpi b { font-size: 28px; }
+      .dashboardKpi small { color: var(--muted); }
+      .dashboardMainGrid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(330px, .8fr); gap: 14px; align-items: stretch; }
+      .dashboardPanel { min-height: 0; overflow: hidden; }
+      .dashboardPanelBody { padding: 14px 16px; }
+      .stageBarRow { display: grid; grid-template-columns: 118px minmax(0, 1fr) 40px; gap: 10px; align-items: center; margin: 10px 0; }
+      .stageBarLabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 800; }
+      .stageBarTrack { height: 9px; border-radius: 999px; background: var(--soft); overflow: hidden; }
+      .stageBarFill { height: 100%; border-radius: inherit; background: var(--blue); }
+      .stageBarValue { text-align: right; font-size: 12px; font-weight: 900; }
+      .dashboardFeed { max-height: 310px; overflow-y: auto; }
+      .dashboardFeedRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--tableLine); }
+      .dashboardFeedRow:last-child { border-bottom: 0; }
+      .dashboardLowerGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      .dashboardCompactTable .table th, .dashboardCompactTable .table td { padding: 9px 12px; }
+
+      .desktopConversationShell {
+        display: grid;
+        grid-template-columns: 320px minmax(520px, 1fr) 340px;
+        height: calc(100vh - 76px);
+        min-height: 640px;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: var(--panel);
+      }
+      .desktopConversationShell .conversationListPane { min-width: 0; overflow: hidden; display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: #fff; }
+      .desktopConversationShell #convList { overflow-y: auto; min-height: 0; }
+      .desktopConversationShell .conversationThreadPane { padding: 0; min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-right: 1px solid var(--line); background: #f7f9fc; }
+      .conversationThreadHead { min-height: 66px; padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; }
+      .conversationThreadIdentity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .desktopConversationShell .thread { height: auto; min-height: 0; overflow-y: auto; padding: 22px; background: #f7f9fc; }
+      .conversationComposer { padding: 12px 14px; border-top: 1px solid var(--line); background: #fff; }
+      .conversationChannelBar { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+      .conversationChannelSelect { width: auto; min-width: 165px; padding: 7px 10px; font-weight: 850; }
+      .conversationComposer textarea { min-height: 70px; max-height: 160px; }
+      .conversationContactPane { min-width: 0; overflow-y: auto; background: #fff; }
+      .contactPaneHead { padding: 16px; border-bottom: 1px solid var(--line); }
+      .contactPaneBody { padding: 14px 16px; display: grid; gap: 12px; }
+      .contactDetailGroup { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .contactDetailGroup h3 { margin: 0; padding: 10px 12px; font-size: 12px; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+      .contactDetailRow { padding: 9px 12px; border-top: 1px solid var(--tableLine); }
+      .contactDetailRow span { display: block; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+      .contactDetailRow b { display: block; margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; }
+      .conversationRow.active { background: var(--blueSoft); box-shadow: inset 3px 0 0 var(--blue); }
+
+      .contactsDesktopTable { min-width: 1380px; }
+      .contactsDesktopTable th, .contactsDesktopTable td { padding: 8px 10px; font-size: 12px; }
+      .contactsDesktopTable .leadCell { min-width: 190px; }
+      .contactsDesktopTable .avatar { width: 28px; height: 28px; font-size: 10px; }
+    }
+    @media (min-width: 821px) and (max-width: 1199px) {
+      .desktopConversationShell { grid-template-columns: 270px minmax(0, 1fr); }
+      .conversationContactPane { display: none; }
+      .dashboardKpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
     @media (max-width: 820px) {
       body { background: #fff; }
       .app { display: block; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
@@ -848,6 +945,7 @@
         <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
         <input id="topSearch" class="globalSearch" type="search" placeholder="Search leads, conversations, phone numbers..." />
         <div class="topActions">
+          <button id="desktopPhoneButton" class="btn iconBtn desktopPhoneButton" title="Phone" aria-label="Phone" data-action="toggle-phone-drawer">&#9742;</button>
           <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Notifications" data-action="notifications">!<span id="notificationCount" class="notifyDot hidden">0</span></button>
           <span id="msgModeBadge" class="badge blue">auto</span>
           <button id="themeToggle" class="btn small" data-action="toggle-theme">Dark</button>
@@ -856,6 +954,28 @@
           <span id="userName" class="userPill">Admin</span>
         </div>
       </header>
+      <aside id="desktopPhoneDrawer" class="desktopPhoneDrawer hidden" aria-label="Phone drawer">
+        <div class="phoneDrawerHead"><div><b>Phone</b><div id="quickLineStatus" class="sub">CRM line is not connected.</div></div><button class="btn small" data-action="toggle-phone-drawer">Close</button></div>
+        <div class="phoneDrawerBody">
+          <audio id="quickRemoteAudio" autoplay></audio>
+          <div id="quickPhoneKeypadPanel">
+            <label>Call from<select id="quickDialFrom"><option value="">Auto smart local line</option></select></label>
+            <input id="quickDialPhone" class="phoneNumberInput" type="tel" placeholder="Enter a number" style="margin-top:10px">
+            <div class="dialPad phoneDialPad">
+              <button class="btn dialKey" data-action="quick-dial-key" data-key="1">1</button><button class="btn dialKey" data-action="quick-dial-key" data-key="2">2</button><button class="btn dialKey" data-action="quick-dial-key" data-key="3">3</button>
+              <button class="btn dialKey" data-action="quick-dial-key" data-key="4">4</button><button class="btn dialKey" data-action="quick-dial-key" data-key="5">5</button><button class="btn dialKey" data-action="quick-dial-key" data-key="6">6</button>
+              <button class="btn dialKey" data-action="quick-dial-key" data-key="7">7</button><button class="btn dialKey" data-action="quick-dial-key" data-key="8">8</button><button class="btn dialKey" data-action="quick-dial-key" data-key="9">9</button>
+              <button class="btn dialKey" data-action="quick-dial-key" data-key="*">*</button><button class="btn dialKey" data-action="quick-dial-key" data-key="0">0</button><button class="btn dialKey" data-action="quick-dial-key" data-key="#">#</button>
+            </div>
+            <div class="toolbar" style="justify-content:center"><button class="btn call" data-action="quick-dial-call">Call</button><button class="btn danger" data-action="quick-dial-end">End</button><button class="btn" data-action="quick-dial-backspace">Backspace</button></div>
+            <div id="quickDialMsg" class="statusLine"></div>
+          </div>
+          <div id="quickPhoneRecentPanel" class="hidden"><div id="quickCallLog"><div class="empty">Open Recent to load calls.</div></div></div>
+          <div id="quickPhoneContactsPanel" class="hidden"><div id="quickPhoneContact" class="empty">Open a lead to make it available here.</div></div>
+          <div id="quickPhoneSettingsPanel" class="hidden"><div class="list"><button class="btn primary" data-action="connect-crm-line">Connect CRM line</button><button class="btn" data-action="popout-dialer">Pop out full phone</button><button class="btn" data-nav="dialer">Open full phone workspace</button></div></div>
+        </div>
+        <div class="phoneDrawerTabs"><button class="phoneTab active" data-action="quick-phone-tab" data-tab="keypad">Keypad</button><button class="phoneTab" data-action="quick-phone-tab" data-tab="recent">Recent</button><button class="phoneTab" data-action="quick-phone-tab" data-tab="contacts">Contact</button><button class="phoneTab" data-action="quick-phone-tab" data-tab="settings">Settings</button></div>
+      </aside>
       <div id="content" class="content"></div>
     </main>
 
@@ -1236,6 +1356,9 @@
         $("content").classList.toggle("pipelineWide", page === "pipeline");
         $("content").classList.toggle("emailWide", page === "email");
         $("content").classList.toggle("leadPoolWide", page === "leadpool");
+        $("content").classList.toggle("dashboardWide", page === "dashboard");
+        $("content").classList.toggle("messagesWide", page === "messages");
+        $("content").classList.toggle("contactsWide", page === "contacts");
         document.querySelectorAll(".navBtn[data-nav]").forEach(function (b) {
           b.classList.toggle("active", b.dataset.nav === page);
         });
@@ -1430,6 +1553,10 @@
           showToast("That section is not enabled for this user.", true);
           page = firstAccessiblePage();
         }
+        if (page === "dialer" && $("desktopPhoneDrawer")) {
+          $("desktopPhoneDrawer").classList.add("hidden");
+          if ($("desktopPhoneButton")) $("desktopPhoneButton").classList.remove("active");
+        }
         setActivePage(page);
         if (page === "dashboard") return loadDashboard();
         if (page === "leads") return loadLeadsView();
@@ -1462,7 +1589,7 @@
       }
 
       async function loadDashboard() {
-        pageShell("Home", "Today in your LoanGenius workspace.", '<button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
+        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your LoanGenius workspace.", '<button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
         var dash = {}, leadsData = {}, todoData = {};
         var loadErrors = [];
         try { dash = await json("/api/dashboard"); } catch (e) { loadErrors.push("dashboard"); }
@@ -1476,6 +1603,41 @@
         var appointments = openTodos.filter(function (t) { return Number(t.due_date) >= new Date().setHours(0,0,0,0) && Number(t.due_date) < new Date().setHours(24,0,0,0); });
         var dashBody = $("dashBody");
         if (!dashBody || state.page !== "dashboard") return;
+        if (isDesktopLayout()) {
+          var today = dash.today || {};
+          var byStage = dash.byStage || {};
+          var activeCount = Object.keys(byStage).reduce(function (sum, key) { return sum + Number(byStage[key] || 0); }, 0) || Number(stats.active || leads.length || 0);
+          var stageMax = Math.max.apply(Math, [1].concat(Object.keys(byStage).map(function (key) { return Number(byStage[key] || 0); })));
+          var stageRows = state.stages.map(function (stage) {
+            var count = Number(byStage[stage] || 0);
+            return '<div class="stageBarRow"><div class="stageBarLabel">' + esc(stage) + '</div><div class="stageBarTrack"><div class="stageBarFill" style="width:' + Math.max(count ? 4 : 0, Math.round(count / stageMax * 100)) + '%"></div></div><div class="stageBarValue">' + count + '</div></div>';
+          }).join("");
+          var taskRows = openTodos.slice(0, 8).map(function (todo) {
+            return '<div class="dashboardFeedRow"><div><b>' + esc(todoTitle(todo)) + '</b><div class="sub">' + esc(todo.lead_name || todo.leadName || "CRM task") + (todo.due_date ? " | " + esc(formatDateTime(todo.due_date)) : "") + '</div></div>' + (todo.lead_id ? '<button class="btn small" data-action="open-lead" data-id="' + esc(todo.lead_id) + '">Open</button>' : '') + '</div>';
+          }).join("") || '<div class="empty">No open tasks.</div>';
+          var replyRows = (dash.recentReplies || []).slice(0, 8).map(function (reply) {
+            return '<div class="dashboardFeedRow"><div><b>' + esc(reply.name || "Borrower") + '</b><div class="sub">' + esc(String(reply.body || "").slice(0, 110)) + '</div></div><button class="btn small" data-action="dashboard-open-thread" data-id="' + esc(reply.leadId || "") + '">Reply</button></div>';
+          }).join("") || '<div class="empty">No recent replies.</div>';
+          dashBody.className = "desktopDashboard";
+          dashBody.innerHTML =
+            (loadErrors.length ? '<div class="warnBox">Some live data could not be loaded: ' + esc(loadErrors.join(", ")) + '.</div>' : '') +
+            '<div class="dashboardKpis">' +
+              dashboardKpi("Active opportunities", activeCount, "Across the live pipeline", "blue") +
+              dashboardKpi("New leads", Number((dash.week && dash.week.newLeads) || 0), "Last 7 days", "green") +
+              dashboardKpi("Unread messages", Number(messages.unread || messages.unreadMessages || dash.unreadMessages || dash.recentReplies && dash.recentReplies.length || 0), "Needs a response", "purple") +
+              dashboardKpi("Appointments", appointments.length, "Scheduled today", "amber") +
+            '</div>' +
+            '<div class="dashboardMainGrid">' +
+              '<section class="card dashboardPanel"><div class="cardHead"><div><h2>Pipeline overview</h2><div class="sub">Current opportunities by stage</div></div><button class="btn small" data-nav="pipeline">Open pipeline</button></div><div class="dashboardPanelBody">' + stageRows + '</div></section>' +
+              '<section class="card dashboardPanel"><div class="cardHead"><div><h2>Today</h2><div class="sub">Communication activity</div></div></div><div class="dashboardPanelBody"><div class="grid cols2">' + dashboardMiniStat("Texts sent", today.textsSent || 0) + dashboardMiniStat("Texts received", today.textsReceived || 0) + dashboardMiniStat("Calls out", today.callsOutbound || 0) + dashboardMiniStat("Missed calls", today.callsMissed || 0) + '</div><div class="item" style="margin-top:12px"><span class="sub">Commission this month</span><b style="display:block;font-size:24px;margin-top:4px">' + esc(money(commission.thisMonth || 0)) + '</b><span class="sub">' + Number(commission.thisMonthCount || 0) + ' funded | ' + esc(money(commission.processing || 0)) + ' processing</span></div></div></section>' +
+            '</div>' +
+            '<div class="dashboardLowerGrid">' +
+              '<section class="card dashboardPanel"><div class="cardHead"><div><h2>Tasks</h2><div class="sub">Open follow-up work</div></div><button class="btn small" data-nav="tasks">View all</button></div><div class="dashboardPanelBody dashboardFeed">' + taskRows + '</div></section>' +
+              '<section class="card dashboardPanel"><div class="cardHead"><div><h2>Recent replies</h2><div class="sub">Latest inbound conversations</div></div><button class="btn small" data-nav="messages">Open inbox</button></div><div class="dashboardPanelBody dashboardFeed">' + replyRows + '</div></section>' +
+            '</div>' +
+            '<section class="card dashboardPanel dashboardCompactTable"><div class="cardHead"><div><h2>Recent contacts</h2><div class="sub">Latest active lead records</div></div><button class="btn small" data-nav="leads">Open leads</button></div><div class="tableWrap">' + leadsTable(leads.slice(0, 10), false, null, true) + '</div></section>';
+          return;
+        }
         dashBody.innerHTML =
           (loadErrors.length ? '<div class="warnBox">Some live data could not be loaded: ' + esc(loadErrors.join(", ")) + '. Refresh or check provider status.</div>' : '') +
           '<div class="grid cols3 dashboardMetrics">' +
@@ -1498,6 +1660,15 @@
       }
       function metric(label, value, sub) {
         return '<section class="card metric"><span>' + esc(label) + '</span><b>' + esc(value) + '</b><div class="sub">' + esc(sub) + '</div></section>';
+      }
+      function isDesktopLayout() {
+        return window.matchMedia && window.matchMedia("(min-width: 821px)").matches;
+      }
+      function dashboardKpi(label, value, sub, tone) {
+        return '<section class="card dashboardKpi"><div class="dashboardKpiTop"><span>' + esc(label) + '</span><span class="badge ' + esc(tone || "blue") + '">Live</span></div><b>' + esc(value) + '</b><small>' + esc(sub) + '</small></section>';
+      }
+      function dashboardMiniStat(label, value) {
+        return '<div class="item"><span class="sub">' + esc(label) + '</span><b style="display:block;font-size:20px;margin-top:4px">' + esc(value) + '</b></div>';
       }
 
       async function loadLeadsView() {
@@ -1583,9 +1754,9 @@
         $("contactsWrap").innerHTML = contacts.length ? contactTable(contacts) : '<div class="empty">No contacts found.</div>';
       }
       function contactTable(contacts) {
-        return '<table class="table"><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Section</th><th>Last contact</th><th></th></tr></thead><tbody>' +
+        return '<table class="table contactsDesktopTable"><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Section</th><th>Stage</th><th>Tags</th><th>Source</th><th>Address</th><th>Last contact</th><th></th></tr></thead><tbody>' +
           contacts.map(function (c) {
-            return '<tr class="rowBtn" data-action="open-lead" data-id="' + esc(c.id) + '"><td><div class="leadCell"><span class="avatar">' + esc(initials(c.name)) + '</span><div><div class="leadName">' + esc(c.name || "Contact") + '</div><div class="sub">' + esc(c.source || "") + '</div></div></div></td><td>' + esc(c.phone || "-") + '</td><td>' + esc(c.email || "-") + '</td><td>' + esc(c.address || "-") + '</td><td><span class="badge ' + (c.scope === "Past Client" ? "purple" : c.scope === "Lead Pool" ? "amber" : c.scope === "Lead" ? "blue" : "green") + '">' + esc(c.scope || "Contact") + '</span></td><td>' + esc(when(c.last_contact_at)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(c.id) + '">Open</button></td></tr>';
+            return '<tr class="rowBtn" data-action="open-lead" data-id="' + esc(c.id) + '"><td><div class="leadCell"><span class="avatar">' + esc(initials(c.name)) + '</span><div><div class="leadName">' + esc(c.name || "Contact") + '</div></div></div></td><td>' + esc(c.phone || "-") + '</td><td>' + esc(c.email || "-") + '</td><td><span class="badge ' + (c.scope === "Past Client" ? "purple" : c.scope === "Lead Pool" ? "amber" : c.scope === "Lead" ? "blue" : "green") + '">' + esc(c.scope || "Contact") + '</span></td><td>' + esc(c.pipeline_stage || c.stage || "-") + '</td><td>' + (Array.isArray(c.tags) ? c.tags : []).slice(0, 3).map(function (tag) { return '<span class="badge blue" style="margin-right:3px">' + esc(tag) + '</span>'; }).join("") + '</td><td>' + esc(c.source || "-") + '</td><td>' + esc(c.address || "-") + '</td><td>' + esc(when(c.last_contact_at)) + '</td><td><button class="btn small" data-action="open-lead" data-id="' + esc(c.id) + '">Open</button></td></tr>';
           }).join("") + '</tbody></table>';
       }
       function duplicateKindLabel(kind) {
@@ -2891,6 +3062,10 @@
       });
 
       async function loadMessages() {
+        if (isDesktopLayout()) return loadMessagesDesktop();
+        return loadMessagesMobile();
+      }
+      async function loadMessagesMobile() {
         pageShell("Conversations", "Team inbox across SMS, iMessage, email, and WhatsApp.", '<button class="btn" data-action="refresh">Refresh</button>',
           '<section id="conversationShell" class="card conversationShell"><div class="conversationListPane"><div class="cardHead"><div style="width:100%"><h2>Team inbox</h2><input id="conversationSearch" type="search" placeholder="Search conversations" style="margin-top:12px"></div></div><div class="conversationFilters"><button class="btn small primary">Recent</button><button class="btn small">Unread</button><button class="btn small">Starred</button><button class="btn small">Assigned to me</button></div><div id="convList"></div></div>' +
           '<div class="conversationThreadPane"><div class="toolbar" style="justify-content:space-between;margin-bottom:12px"><button class="btn small" data-action="back-conversations">Back</button><h2 style="margin:0">Conversation</h2><button class="btn small" data-action="refresh-thread">Refresh</button></div><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button><button class="btn small" data-action="conv-compose-mode" data-mode="whatsapp">WhatsApp</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Type and send via SMS..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div><div id="convWhatsappPanel" class="grid hidden" style="margin-top:10px"><label>To WhatsApp<input id="waPhone" placeholder="+16232808351"></label><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="waBody" rows="6">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div></div></section>');
@@ -2905,6 +3080,59 @@
           document.querySelectorAll(".conversationRow").forEach(function (row) { row.classList.toggle("hidden", row.textContent.toLowerCase().indexOf(q) < 0); });
         });
       }
+      async function loadMessagesDesktop() {
+        pageShell("Conversations", "", "",
+          '<section id="conversationShell" class="desktopConversationShell">' +
+            '<div class="conversationListPane"><div class="cardHead"><div style="width:100%"><div class="toolbar" style="justify-content:space-between"><div><h2>Conversations</h2><div class="sub">Team inbox</div></div><button class="btn small" data-action="refresh">Refresh</button></div><input id="conversationSearch" type="search" placeholder="Search conversations" style="margin-top:12px"></div></div><div class="conversationFilters"><button class="btn small primary">Recent</button><button class="btn small">Unread</button><button class="btn small">Starred</button></div><div id="convList"><div class="spinner"></div></div></div>' +
+            '<div class="conversationThreadPane"><div class="conversationThreadHead"><div class="conversationThreadIdentity"><span id="conversationThreadAvatar" class="avatar">LG</span><div style="min-width:0"><b id="conversationThreadTitle">Select a conversation</b><div id="conversationThreadSub" class="sub">Messages appear here</div></div></div><div class="toolbar"><button id="conversationCallButton" class="btn small hidden" data-action="conversation-call">Call</button><button id="conversationOpenButton" class="btn small hidden" data-action="conversation-open-contact">Open contact</button><button class="btn small" data-action="refresh-thread">Refresh</button></div></div>' +
+              '<div id="thread" class="thread"><div class="empty">Choose a conversation from the left.</div></div>' +
+              '<div class="conversationComposer"><div class="conversationChannelBar"><select id="convChannelSelect" class="conversationChannelSelect"><option value="text">Text / iMessage first</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select><span id="conversationRecipient" class="sub">No contact selected</span></div>' +
+                '<div id="convTextPanel"><input id="msgPhone" type="hidden"><textarea id="msgBody" placeholder="Type a message..."></textarea><div class="toolbar" style="justify-content:space-between;margin-top:8px"><span class="sub">iMessage is attempted first, then SMS fallback.</span><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div>' +
+                '<div id="convEmailPanel" class="hidden"><div class="fieldGrid"><label>To<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label></div><textarea id="convEmailBody" rows="5" style="margin-top:8px">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea><div class="toolbar" style="justify-content:flex-end;margin-top:8px"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div>' +
+                '<div id="convWhatsappPanel" class="hidden"><input id="waPhone" type="hidden"><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><div class="fieldGrid" style="margin-top:8px"><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>Message<textarea id="waBody" rows="3">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label></div><div class="toolbar" style="justify-content:flex-end;margin-top:8px"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div>' +
+              '</div></div>' +
+            '<aside class="conversationContactPane"><div class="contactPaneHead"><b>Contact details</b><div class="sub">Profile, stage, tags, and loan context</div></div><div id="conversationContactBody" class="contactPaneBody"><div class="empty">Select a conversation to view the contact.</div></div></aside>' +
+          '</section>');
+        var data = await json("/api/conversations");
+        state.conversations = data.conversations || [];
+        renderConversationList();
+        if ($("conversationSearch")) $("conversationSearch").addEventListener("input", filterConversationList);
+        if (state.activeThread && state.conversations.some(function (row) { return String(row.contactId) === String(state.activeThread); })) {
+          var active = state.conversations.find(function (row) { return String(row.contactId) === String(state.activeThread); });
+          await openThread(active.contactId, active.phone, active.email);
+        }
+      }
+      function renderConversationList() {
+        if (!$("convList")) return;
+        $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
+          var label = c.name || c.phone || c.email || "Conversation";
+          var active = String(c.contactId) === String(state.activeThread || "");
+          return '<button class="conversationRow clickable' + (active ? ' active' : '') + '" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><span class="avatar">' + esc(initials(label)) + '</span><span class="conversationRowBody"><b class="conversationName">' + esc(label) + '</b><span class="conversationPreview">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "No messages yet") + '</span></span><span class="conversationTime">' + esc(when(c.lastMessageAt || c.updatedAt || c.updated_at)) + '</span></button>';
+        }).join("") : '<div class="empty">No conversations yet.</div>';
+      }
+      function filterConversationList() {
+        var q = String((this && this.value) || "").toLowerCase();
+        document.querySelectorAll(".conversationRow").forEach(function (row) { row.classList.toggle("hidden", row.textContent.toLowerCase().indexOf(q) < 0); });
+      }
+      function renderConversationContact(contact) {
+        var box = $("conversationContactBody");
+        if (!box) return;
+        if (!contact) { box.innerHTML = '<div class="empty">No CRM contact is linked to this conversation.</div>'; return; }
+        var custom = contact.custom || {};
+        var addr = leadAddressParts(contact);
+        var tags = contact.tags || [];
+        var details = [
+          ["Phone", contact.phone || "-"], ["Email", contact.email || "-"], ["Owner", contact.owner || contact.owner_name || "Admin"],
+          ["Source", contact.source || "-"], ["Stage", contact.pipeline_stage || contact.status || "Lead-In"], ["Address", leadAddressLine(contact) || "-"],
+          ["Loan type", contact.loan_type || custom.loan_type || custom.loanType || "-"], ["Loan amount", custom.loan_amount || custom.loanAmount || "-"],
+          ["Property value", custom.property_value || custom.home_value || custom.value || "-"], ["Purpose", custom.loan_purpose || custom.purpose || "-"]
+        ];
+        box.innerHTML =
+          '<div class="leadCell"><span class="avatar">' + esc(initials(nameOf(contact))) + '</span><div><b>' + esc(nameOf(contact)) + '</b><div class="sub">' + esc(contact.pipeline_stage || contact.status || "Contact") + '</div></div></div>' +
+          '<div class="toolbar"><button class="btn primary" data-action="conversation-open-contact">Open full profile</button><button class="btn" data-action="conversation-call">Call</button></div>' +
+          (tags.length ? '<div><div class="sub">Tags</div><div style="margin-top:6px">' + tags.map(function (tag) { return '<span class="badge blue" style="margin:0 4px 4px 0">' + esc(tag) + '</span>'; }).join("") + '</div></div>' : '') +
+          '<div class="contactDetailGroup"><h3>Contact and loan details</h3>' + details.map(function (item) { return '<div class="contactDetailRow"><span>' + esc(item[0]) + '</span><b>' + esc(item[1]) + '</b></div>'; }).join("") + '</div>';
+      }
       function setConversationMode(mode) {
         var isEmail = mode === "email";
         var isWhatsapp = mode === "whatsapp";
@@ -2914,6 +3142,7 @@
         document.querySelectorAll('[data-action="conv-compose-mode"]').forEach(function (b) {
           b.classList.toggle("primary", b.dataset.mode === mode);
         });
+        if ($("convChannelSelect")) $("convChannelSelect").value = mode;
       }
       async function openThread(id, phone, email) {
         state.activeThread = id || null;
@@ -2924,6 +3153,7 @@
         if ($("waPhone")) $("waPhone").value = phone || "";
         var data = await json("/api/messages/" + encodeURIComponent(id));
         state.activeThreadContact = data.contact || null;
+        if (data.contact) state.selectedLead = data.contact;
         if ($("waPhone")) $("waPhone").value = (data.contact && (data.contact.whatsapp_phone || data.contact.phone)) || phone || "";
         if ($("waOptInWarning")) {
           var ok = data.contact && data.contact.whatsapp_opt_in_status;
@@ -2935,6 +3165,18 @@
           return '<div class="bubble ' + dir + '">' + esc(m.body || "") + '<div class="sub">' + esc(m.channel || "") + ' ' + esc(m.status || "") + '</div></div>';
         }).join("") : '<div class="empty">No messages logged yet.</div>';
         $("thread").scrollTop = $("thread").scrollHeight;
+        if (isDesktopLayout()) {
+          var contact = data.contact || {};
+          var displayName = data.contact ? nameOf(data.contact) : (phone || email || "Conversation");
+          if ($("conversationThreadAvatar")) $("conversationThreadAvatar").textContent = initials(displayName);
+          if ($("conversationThreadTitle")) $("conversationThreadTitle").textContent = displayName;
+          if ($("conversationThreadSub")) $("conversationThreadSub").textContent = [contact.phone || phone, contact.email || email, contact.pipeline_stage].filter(Boolean).join(" | ") || "CRM conversation";
+          if ($("conversationRecipient")) $("conversationRecipient").textContent = contact.phone || contact.email || phone || email || "No recipient";
+          if ($("conversationCallButton")) $("conversationCallButton").classList.toggle("hidden", !(contact.phone || phone));
+          if ($("conversationOpenButton")) $("conversationOpenButton").classList.toggle("hidden", !data.contact);
+          renderConversationContact(data.contact || null);
+          renderConversationList();
+        }
       }
       async function sendThread() {
         var message = $("msgBody").value.trim();
@@ -2964,6 +3206,7 @@
           body: JSON.stringify({ to: to, subject: subject, body: body })
         });
         status("convEmailStatus", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+        if (data.ok && state.activeThread) await openThread(state.activeThread, inputVal("msgPhone"), to);
       }
 
       async function sendWhatsAppThread(kind) {
@@ -3050,9 +3293,9 @@
       }
       async function connectCrmLine() {
         var SDK = telnyxSDK();
-        if (!SDK) { status("crmLineStatus", "Telnyx SDK is still loading.", "warnText"); return; }
-        if (state.dialerClient && state.crmLineReady) { status("crmLineStatus", "CRM line ready.", "okText"); return; }
-        status("crmLineStatus", "Connecting CRM line...");
+        if (!SDK) { setCrmLineStatus("Telnyx SDK is still loading.", "warnText"); return; }
+        if (state.dialerClient && state.crmLineReady) { setCrmLineStatus("CRM line ready.", "okText"); return; }
+        setCrmLineStatus("Connecting CRM line...");
         if (state.dialerClient) {
           try { state.dialerClient.disconnect(); } catch (e) {}
           state.dialerClient = null;
@@ -3062,24 +3305,24 @@
         try {
           token = await json("/webrtc/token", { method: "POST" });
         } catch (e) {
-          status("crmLineStatus", "CRM line setup failed: " + (e.message || String(e)), "badText");
+          setCrmLineStatus("CRM line setup failed: " + (e.message || String(e)), "badText");
           return false;
         }
         var client = new SDK({ login_token: token.token });
         state.dialerClient = client;
-        try { client.remoteElement = "remoteAudio"; } catch (e) {}
+        try { client.remoteElement = $("quickRemoteAudio") ? "quickRemoteAudio" : "remoteAudio"; } catch (e) {}
         var readyResolve;
         var readyPromise = new Promise(function (resolve) { readyResolve = resolve; });
         var readyTimer = setTimeout(function () { if (readyResolve) readyResolve(false); }, 9000);
         client.on("telnyx.ready", function () {
           state.crmLineReady = true;
           clearTimeout(readyTimer);
-          status("crmLineStatus", "CRM line ready.", "okText");
+          setCrmLineStatus("CRM line ready.", "okText");
           if (readyResolve) readyResolve(true);
         });
         client.on("telnyx.error", function (ev) {
           state.crmLineReady = false;
-          status("crmLineStatus", "CRM line error: " + JSON.stringify((ev && ev.error) || ev).slice(0, 160), "badText");
+          setCrmLineStatus("CRM line error: " + JSON.stringify((ev && ev.error) || ev).slice(0, 160), "badText");
         });
         client.on("telnyx.notification", function (n) {
           if (n.type !== "callUpdate" || !n.call) return;
@@ -3091,7 +3334,8 @@
             $("incomingCallBox").className = "item";
             $("incomingCallBox").innerHTML = '<b>' + esc(incoming ? "Incoming call" : "Active call") + '</b><div class="sub">' + esc(who + " | " + st) + '</div>';
           }
-          status("crmLineStatus", "Call: " + st, /hangup|destroy/i.test(st) ? "" : "okText");
+          setCrmLineStatus("Call: " + st, /hangup|destroy/i.test(st) ? "" : "okText");
+          if ($("quickDialMsg")) status("quickDialMsg", who + " | " + st, /hangup|destroy/i.test(st) ? "" : "okText");
           if (incoming && state.page === "powerdialer") {
             setTimeout(function () { autoAnswerPowerDialerCall(n.call, 0); }, 150);
           }
@@ -3142,45 +3386,55 @@
         }
       }
       async function dialCrmDirect(phone) {
+        var options = arguments.length > 1 && arguments[1] ? arguments[1] : {};
         if (!state.dialerClient || !state.crmLineReady) await connectCrmLine();
         if (!state.dialerClient || !state.crmLineReady) throw new Error("CRM line is not connected yet.");
-        var from = $("dialFrom") ? $("dialFrom").value : "";
+        var fromId = options.fromId || "dialFrom";
+        var statusId = options.statusId || "dialMsg";
+        var from = $(fromId) ? $(fromId).value : "";
         if (!from) {
           try {
             var route = await json("/api/route-from/" + encodeURIComponent(phone));
             from = route.from || "";
           } catch (e) {}
         }
-        status("dialMsg", "Dialing from CRM...");
+        status(statusId, "Dialing from CRM...");
         state.activeCall = state.dialerClient.newCall({ destinationNumber: phone, callerNumber: from || undefined, callerName: from || undefined, audio: true, video: false });
-        status("dialMsg", "CRM call started.", "okText");
+        status(statusId, "CRM call started.", "okText");
       }
       async function dialNumber(phone) {
+        var options = arguments.length > 1 && arguments[1] ? arguments[1] : {};
+        var statusId = options.statusId || "dialMsg";
         phone = String(phone || "").trim();
-        if (!phone) { status("dialMsg", "Enter a phone number first.", "warnText"); return; }
-        if (($("dialPath") && $("dialPath").value) === "crm") {
-          await dialCrmDirect(phone);
+        if (!phone) { status(statusId, "Enter a phone number first.", "warnText"); return; }
+        var callPath = options.path || (($("dialPath") && $("dialPath").value) || "crm");
+        if (callPath === "crm") {
+          await dialCrmDirect(phone, options);
         } else {
-          status("dialMsg", "Starting cell bridge...");
+          status(statusId, "Starting cell bridge...");
           var data = await json("/calls/click-to-call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: phone }) });
-          status("dialMsg", JSON.stringify(data).slice(0, 260), data.ok ? "okText" : "warnText");
+          status(statusId, JSON.stringify(data).slice(0, 260), data.ok ? "okText" : "warnText");
         }
         await loadCallLog();
+      }
+      function setCrmLineStatus(message, tone) {
+        status("crmLineStatus", message, tone);
+        status("quickLineStatus", message, tone);
       }
       function answerActiveCall() {
         if (state.activeCall && state.activeCall.answer) {
           state.activeCall.answer();
-          status("crmLineStatus", "Answered.", "okText");
+          setCrmLineStatus("Answered.", "okText");
         } else {
-          status("crmLineStatus", "No incoming call to answer.", "warnText");
+          setCrmLineStatus("No incoming call to answer.", "warnText");
         }
       }
       function endActiveCall() {
         if (state.activeCall && state.activeCall.hangup) {
           state.activeCall.hangup();
-          status("crmLineStatus", "Ending call...");
+          setCrmLineStatus("Ending call...");
         } else {
-          status("crmLineStatus", "No active call.", "warnText");
+          setCrmLineStatus("No active call.", "warnText");
         }
       }
       async function mergeCaller() {
@@ -3235,6 +3489,54 @@
       function popoutDialer() {
         var url = location.origin + location.pathname + "?popout=dialer";
         window.open(url, "smartr8Dialer", "popup=yes,width=460,height=760,menubar=no,toolbar=no,location=no,status=no");
+      }
+
+      async function togglePhoneDrawer() {
+        var drawer = $("desktopPhoneDrawer");
+        if (!drawer || !isDesktopLayout()) { await route("dialer"); return; }
+        var opening = drawer.classList.contains("hidden");
+        drawer.classList.toggle("hidden", !opening);
+        if ($("desktopPhoneButton")) $("desktopPhoneButton").classList.toggle("active", opening);
+        if (!opening) return;
+        if ($("quickDialPhone") && state.selectedLead && state.selectedLead.phone && !$("quickDialPhone").value) $("quickDialPhone").value = state.selectedLead.phone;
+        renderQuickPhoneContact();
+        await loadDialerNumbers("quickDialFrom");
+        setCrmLineStatus(state.crmLineReady ? "CRM line ready." : "CRM line is not connected.", state.crmLineReady ? "okText" : "");
+      }
+      async function showQuickPhoneTab(tab) {
+        ["keypad", "recent", "contacts", "settings"].forEach(function (name) {
+          var id = "quickPhone" + name.charAt(0).toUpperCase() + name.slice(1) + "Panel";
+          if ($(id)) $(id).classList.toggle("hidden", name !== tab);
+        });
+        document.querySelectorAll(".phoneTab").forEach(function (button) { button.classList.toggle("active", button.dataset.tab === tab); });
+        if (tab === "recent") await loadQuickCallLog();
+        if (tab === "contacts") renderQuickPhoneContact();
+      }
+      async function quickDialCall() {
+        var phone = inputVal("quickDialPhone");
+        await dialNumber(phone, { path: "crm", fromId: "quickDialFrom", statusId: "quickDialMsg" });
+        await loadQuickCallLog();
+      }
+      function renderQuickPhoneContact() {
+        var box = $("quickPhoneContact");
+        if (!box) return;
+        var lead = state.selectedLead;
+        if (!lead) { box.className = "empty"; box.innerHTML = "Open a lead to make it available here."; return; }
+        box.className = "item";
+        box.innerHTML = '<div class="leadCell"><span class="avatar">' + esc(initials(nameOf(lead))) + '</span><div><b>' + esc(nameOf(lead)) + '</b><div class="sub">' + esc(lead.phone || "No phone") + '</div><div class="sub">' + esc(lead.email || "") + '</div></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="quick-call-selected">Call</button><button class="btn" data-action="open-lead" data-id="' + esc(lead.id) + '">Open profile</button></div>';
+      }
+      async function loadQuickCallLog() {
+        var box = $("quickCallLog");
+        if (!box) return;
+        box.innerHTML = '<div class="spinner"></div>';
+        try {
+          var data = await json("/api/calls/log");
+          var calls = data.calls || [];
+          box.innerHTML = calls.length ? calls.slice(0, 20).map(function (call) {
+            var phone = call.phone || call.from || call.to || "";
+            return '<div class="quickCallRow"><div><b>' + esc(call.name || call.contact || phone || "Call") + '</b><div class="sub">' + esc([call.direction, call.outcome || call.status, formatDateTime(call.created_at)].filter(Boolean).join(" | ")) + '</div></div>' + (phone ? '<button class="btn small" data-action="quick-call-number" data-phone="' + esc(phone) + '">Call</button>' : '') + '</div>';
+          }).join("") : '<div class="empty">No recent calls.</div>';
+        } catch (e) { box.innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>'; }
       }
 
       async function loadPowerDialer() {
@@ -5440,6 +5742,10 @@
         return data;
       }
 
+      document.addEventListener("change", function (e) {
+        if (e.target && e.target.id === "convChannelSelect") setConversationMode(e.target.value || "text");
+      });
+
       document.addEventListener("click", async function (e) {
         var nav = e.target.closest("[data-nav]");
         if (nav) { e.preventDefault(); route(nav.dataset.nav); return; }
@@ -5448,6 +5754,14 @@
         var a = btn.dataset.action;
         try {
           if (a === "mobile-menu") document.body.classList.toggle("navOpen");
+          else if (a === "toggle-phone-drawer") await togglePhoneDrawer();
+          else if (a === "quick-phone-tab") await showQuickPhoneTab(btn.dataset.tab || "keypad");
+          else if (a === "quick-dial-key") { if ($("quickDialPhone")) $("quickDialPhone").value += btn.dataset.key || ""; }
+          else if (a === "quick-dial-backspace") { if ($("quickDialPhone")) $("quickDialPhone").value = $("quickDialPhone").value.slice(0, -1); }
+          else if (a === "quick-dial-call") await quickDialCall();
+          else if (a === "quick-dial-end") endActiveCall();
+          else if (a === "quick-call-number") { if ($("quickDialPhone")) $("quickDialPhone").value = btn.dataset.phone || ""; await showQuickPhoneTab("keypad"); await quickDialCall(); }
+          else if (a === "quick-call-selected") { if (state.selectedLead && state.selectedLead.phone) { if ($("quickDialPhone")) $("quickDialPhone").value = state.selectedLead.phone; await showQuickPhoneTab("keypad"); await quickDialCall(); } }
           else if (a === "open-app") await route(btn.dataset.page);
           else if (a === "mobile-search") {
             openModal("Search LoanGenius", '<label>Search leads, conversations, phone numbers, or email<input id="mobileGlobalSearch" type="search" placeholder="Start typing..."></label><button class="btn primary" data-action="run-mobile-search">Search</button>');
@@ -5465,6 +5779,15 @@
           else if (a === "quick-dial") { closeModal(); await route("dialer"); }
           else if (a === "quick-message") { closeModal(); await route("messages"); }
           else if (a === "back-conversations") { if ($("conversationShell")) $("conversationShell").classList.remove("threadOpen"); }
+          else if (a === "dashboard-open-thread") { await route("messages"); await openThread(btn.dataset.id, "", ""); }
+          else if (a === "conversation-open-contact") { if (state.activeThreadContact) await openLead(state.activeThreadContact.id); }
+          else if (a === "conversation-call") {
+            if (!state.activeThreadContact || !state.activeThreadContact.phone) throw new Error("This contact does not have a phone number.");
+            state.selectedLead = state.activeThreadContact;
+            if ($("quickDialPhone")) $("quickDialPhone").value = state.activeThreadContact.phone;
+            if ($("desktopPhoneDrawer") && $("desktopPhoneDrawer").classList.contains("hidden")) await togglePhoneDrawer();
+            await showQuickPhoneTab("keypad");
+          }
           else if (a === "toggle-theme") toggleTheme();
           else if (a === "notifications") await openNotifications();
           else if (a === "notification-delete") await deleteNotification(btn.dataset.notificationId);
@@ -5715,7 +6038,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","leadCampaignMsg","bulkCampaignMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","leadCampaignMsg","bulkCampaignMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","quickDialMsg","quickLineStatus","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 
