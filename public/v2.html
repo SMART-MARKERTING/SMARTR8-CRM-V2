@@ -194,7 +194,12 @@
       backdrop-filter: blur(10px);
     }
     .topTitleWrap { min-width: 180px; }
-    .globalSearch { max-width: 560px; flex: 1; }
+    .globalSearchWrap { max-width: 560px; flex: 1; position: relative; }
+    .globalSearch { max-width: none; width: 100%; }
+    .globalSearchResults { position: absolute; top: calc(100% + 7px); left: 0; right: 0; max-height: 430px; overflow-y: auto; padding: 7px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); z-index: 90; }
+    .globalSearchRow { width: 100%; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px; border: 0; border-radius: 8px; color: var(--text); background: transparent; text-align: left; }
+    .globalSearchRow:hover { background: var(--hover); }
+    .globalSearchRow .avatar { width: 32px; height: 32px; font-size: 10px; }
     .topActions { display: flex; align-items: center; gap: 10px; }
     .iconBtn { width: 38px; min-width: 38px; padding: 0; display: grid; place-items: center; }
     .notifyBtn { position: relative; }
@@ -631,6 +636,7 @@
       .topbar { padding: 0 12px; }
       .content { padding: 16px; }
       .globalSearch { display: none; }
+      .globalSearchWrap { display: none; }
       .fieldGrid { grid-template-columns: 1fr; }
       .modal.fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
       .tableWrap { overflow-x: auto; }
@@ -943,7 +949,7 @@
       <header class="topbar">
         <button class="btn ghost mobileMenu" data-action="mobile-menu">Menu</button>
         <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
-        <input id="topSearch" class="globalSearch" type="search" placeholder="Search leads, conversations, phone numbers..." />
+        <div class="globalSearchWrap"><input id="topSearch" class="globalSearch" type="search" autocomplete="off" placeholder="Search every contact, conversation, phone number..." /><div id="globalSearchResults" class="globalSearchResults hidden"></div></div>
         <div class="topActions">
           <button id="desktopPhoneButton" class="btn iconBtn desktopPhoneButton" title="Phone" aria-label="Phone" data-action="toggle-phone-drawer">&#9742;</button>
           <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Notifications" data-action="notifications">!<span id="notificationCount" class="notifyDot hidden">0</span></button>
@@ -1045,9 +1051,12 @@
         notifications: [],
         notificationCount: 0,
         notificationTimer: null,
+        globalSearchTimer: null,
+        globalSearchRows: [],
         emailFromOptions: [],
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
+        leadStageCountsCache: null,
         favoritePages: [],
         dialerClient: null,
         crmLineReady: false,
@@ -1210,6 +1219,27 @@
         if (!el) return;
         el.className = "statusLine " + (tone || "");
         el.textContent = msg || "";
+      }
+      async function runGlobalSearch() {
+        var input = $("topSearch");
+        var box = $("globalSearchResults");
+        if (!input || !box) return;
+        var q = input.value.trim();
+        if (q.length < 2) { box.classList.add("hidden"); box.innerHTML = ""; state.globalSearchRows = []; return; }
+        var data = await json("/api/contacts/all?limit=20&q=" + encodeURIComponent(q));
+        state.globalSearchRows = data.contacts || [];
+        box.innerHTML = state.globalSearchRows.length ? state.globalSearchRows.map(function (contact) {
+          return '<button class="globalSearchRow" data-action="global-search-open" data-id="' + esc(contact.id) + '"><span class="avatar">' + esc(initials(contact.name)) + '</span><span><b>' + esc(contact.name || "Contact") + '</b><span class="sub" style="display:block">' + esc([contact.phone, contact.email, contact.address].filter(Boolean).join(" | ")) + '</span></span><span class="badge ' + (contact.scope === "Past Client" ? "purple" : contact.scope === "Lead Pool" ? "amber" : "blue") + '">' + esc(contact.scope || "Contact") + '</span></button>';
+        }).join("") : '<div class="empty">No matching contacts anywhere in the CRM.</div>';
+        box.classList.remove("hidden");
+      }
+      function scheduleGlobalSearch() {
+        clearTimeout(state.globalSearchTimer);
+        state.globalSearchTimer = setTimeout(function () { runGlobalSearch().catch(function (e) { showToast(e.message || String(e), true); }); }, 180);
+      }
+      async function openGlobalSearchResult(id) {
+        if ($("globalSearchResults")) $("globalSearchResults").classList.add("hidden");
+        await openLead(id);
       }
       var pageLabels = {
         dashboard: "Dashboard",
@@ -1590,11 +1620,14 @@
 
       async function loadDashboard() {
         pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your LoanGenius workspace.", '<button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
-        var dash = {}, leadsData = {}, todoData = {};
         var loadErrors = [];
-        try { dash = await json("/api/dashboard"); } catch (e) { loadErrors.push("dashboard"); }
-        try { leadsData = await json("/api/leads?limit=10"); } catch (e) { loadErrors.push("leads"); }
-        try { todoData = await json("/api/todos"); } catch (e) { loadErrors.push("tasks"); }
+        var results = await Promise.all([
+          json("/api/dashboard").catch(function () { loadErrors.push("dashboard"); return {}; }),
+          json("/api/leads?limit=10").catch(function () { loadErrors.push("leads"); return {}; }),
+          json("/api/todos").catch(function () { loadErrors.push("tasks"); return {}; })
+        ]);
+        var dash = results[0] || {}, leadsData = results[1] || {}, todoData = results[2] || {};
+        if (dash.byStage) state.leadStageCountsCache = { at: Date.now(), counts: dash.byStage };
         var leads = leadsData.leads || [];
         var stats = leadsData.stats || {};
         var messages = dash.messages || {};
@@ -1740,7 +1773,7 @@
       }
       async function refreshContacts() {
         var q = $("contactsSearch") ? $("contactsSearch").value.trim() : "";
-        var data = await json("/api/contacts/all?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : ""));
+        var data = await json("/api/contacts/all?limit=500" + (q ? "&q=" + encodeURIComponent(q) : ""));
         var contacts = data.contacts || [];
         var counts = data.counts || {};
         if ($("contactsSummary")) {
@@ -1751,7 +1784,7 @@
             '<div class="scopeTile"><span>Past Clients</span><b>' + Number(counts["Past Client"] || 0) + '</b></div>';
         }
         if (!$("contactsWrap")) return;
-        $("contactsWrap").innerHTML = contacts.length ? contactTable(contacts) : '<div class="empty">No contacts found.</div>';
+        $("contactsWrap").innerHTML = contacts.length ? '<div class="sub" style="padding:10px 14px">Showing up to 500 records. Search finds contacts across Leads, Lead Pool, Past Clients, and contact-only records.</div>' + contactTable(contacts) : '<div class="empty">No contacts found.</div>';
       }
       function contactTable(contacts) {
         return '<table class="table contactsDesktopTable"><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Section</th><th>Stage</th><th>Tags</th><th>Source</th><th>Address</th><th>Last contact</th><th></th></tr></thead><tbody>' +
@@ -1858,14 +1891,18 @@
       }
       async function renderLeadStatusTabs(q) {
         var counts = {};
-        try {
-          var all = await json("/api/leads?limit=20000" + (q ? "&q=" + encodeURIComponent(q) : ""));
-          (all.leads || []).forEach(function (l) {
-            var s = l.pipeline_stage || "Lead-In";
-            counts[s] = (counts[s] || 0) + 1;
-            counts.All = (counts.All || 0) + 1;
-          });
-        } catch (e) {
+        if (!q) {
+          try {
+            var cached = state.leadStageCountsCache && Date.now() - state.leadStageCountsCache.at < 30000 ? state.leadStageCountsCache.counts : null;
+            if (!cached) {
+              var snapshot = await json("/api/dashboard");
+              cached = snapshot.byStage || {};
+              state.leadStageCountsCache = { at: Date.now(), counts: cached };
+            }
+            Object.keys(cached).forEach(function (stage) { counts[stage] = Number(cached[stage] || 0); counts.All = (counts.All || 0) + counts[stage]; });
+          } catch (e) {}
+        }
+        if (q || !counts.All) {
           state.leads.forEach(function (l) {
             var s = l.pipeline_stage || "Lead-In";
             counts[s] = (counts[s] || 0) + 1;
@@ -1910,10 +1947,11 @@
         var name = nameOf(lead);
         var addr = leadAddressParts(lead);
         var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
+        var activateButton = lead.past_client ? '<button class="btn primary" data-action="activate-lead">Move to active Leads</button>' : '';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
             '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
-            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + activateButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
@@ -2267,14 +2305,29 @@
         status("leadSaveMsg", "Saved.", "okText");
         if (state.page === "leads") await loadLeads();
         else if (state.page === "leadpool") await refreshLeadPool();
-        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
+        else if (state.page === "contacts") await refreshContacts();
+        else if (["pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
+        await openLead(lead.id);
+      }
+
+      async function activateCurrentLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("leadActionMsg", "Moving to active Leads...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/activate", { method: "POST" });
+        state.selectedLead = data.lead;
+        state.leadStageCountsCache = null;
+        showToast("Moved to active Leads.");
+        if (state.page === "pastclients") await loadLeadBucket("pastclients");
+        else if (state.page === "contacts") await refreshContacts();
         await openLead(lead.id);
       }
 
       async function refreshOpenLeadLists() {
         if (state.page === "leads" && $("leadListWrap")) await loadLeads();
         else if (state.page === "leadpool") await refreshLeadPool();
-        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
+        else if (state.page === "contacts") await refreshContacts();
+        else if (["pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
       }
 
       async function addTagsToCurrentLead() {
@@ -2322,7 +2375,8 @@
         closeModal();
         showToast("Lead deleted.");
         if (state.page === "leadpool") await refreshLeadPool();
-        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
+        else if (state.page === "contacts") await refreshContacts();
+        else if (["pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
         else if ($("leadListWrap")) await loadLeads();
       }
 
@@ -4576,7 +4630,7 @@
         var messageStatePromise = json("/api/email/message-state").catch(function () { return { state: {} }; });
         var contactsPromise = state.emailContactsLoaded
           ? Promise.resolve(null)
-          : json("/api/contacts/all?limit=20000").catch(function () { return { contacts: [] }; });
+          : json("/api/contacts/all?limit=2000").catch(function () { return { contacts: [] }; });
         var logPromise = json("/api/email/activity?box=" + encodeURIComponent(boxName) + "&limit=500").catch(function (e) { return { emails: [], error: e.message }; });
         var sentPromise = boxName !== "inbox"
           ? json("/api/email/sent?limit=100").catch(function (e) {
@@ -4605,7 +4659,7 @@
         if ($("emailFromOptions")) $("emailFromOptions").innerHTML = (state.emailFromOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
         if ($("emailFolderOptions")) $("emailFolderOptions").innerHTML = (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
         if (contacts && $("emailContactOptions")) {
-          $("emailContactOptions").innerHTML = (contacts.contacts || []).filter(function (c) { return c.email; }).slice(0, 5000).map(function (c) {
+          $("emailContactOptions").innerHTML = (contacts.contacts || []).filter(function (c) { return c.email; }).slice(0, 1000).map(function (c) {
             return '<option value="' + esc(c.email) + '">' + esc(c.name || c.email) + '</option>';
           }).join("");
           state.emailContactsLoaded = true;
@@ -5755,6 +5809,7 @@
         try {
           if (a === "mobile-menu") document.body.classList.toggle("navOpen");
           else if (a === "toggle-phone-drawer") await togglePhoneDrawer();
+          else if (a === "global-search-open") await openGlobalSearchResult(btn.dataset.id);
           else if (a === "quick-phone-tab") await showQuickPhoneTab(btn.dataset.tab || "keypad");
           else if (a === "quick-dial-key") { if ($("quickDialPhone")) $("quickDialPhone").value += btn.dataset.key || ""; }
           else if (a === "quick-dial-backspace") { if ($("quickDialPhone")) $("quickDialPhone").value = $("quickDialPhone").value.slice(0, -1); }
@@ -5970,6 +6025,7 @@
           else if (a === "refresh-call-log") await loadCallLog();
           else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
           else if (a === "save-lead") await saveCurrentLead();
+          else if (a === "activate-lead") await activateCurrentLead();
           else if (a === "add-task") await addTaskToLead();
           else if (a === "book-lead-appointment") await bookLeadAppointment();
           else if (a === "toggle-task") await toggleTask(btn.dataset.id, btn.checked);
@@ -6056,11 +6112,14 @@
 
       $("loginBtn").addEventListener("click", submitLogin);
       $("loginPass").addEventListener("keydown", function (e) { if (e.key === "Enter") submitLogin(); });
+      $("topSearch").addEventListener("input", scheduleGlobalSearch);
       $("topSearch").addEventListener("keydown", function (e) {
+        if (e.key === "Escape") { if ($("globalSearchResults")) $("globalSearchResults").classList.add("hidden"); return; }
         if (e.key === "Enter") {
-          route("leads").then(function () {
-            $("leadSearch").value = $("topSearch").value;
-            loadLeads();
+          if ($("globalSearchResults")) $("globalSearchResults").classList.add("hidden");
+          route("contacts").then(function () {
+            if ($("contactsSearch")) $("contactsSearch").value = $("topSearch").value;
+            refreshContacts();
           });
         }
       });
