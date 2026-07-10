@@ -1,8 +1,8 @@
 # CRM V2 rebuild checkpoint
 
-Status: local preview branch only. No production deployment or remote push has been performed.
+Status: production releases are published from `main` to the Render service.
 
-Branch: `codex/crm-v2-rebuild-preview`
+Branch: `main`
 
 ## Visual direction
 
@@ -32,7 +32,7 @@ The responsive LoanGenius shell uses the supplied mobile CRM screenshots as an i
 - Duplicate website submissions update the existing lead without restarting active campaigns.
 - Password minimum increased to 12 characters for new and changed passwords.
 
-## Integration changes required before release
+## Integration requirements
 
 - The website lead worker must send `LEAD_WEBHOOK_SECRET` through the `x-lead-secret` header. Query-string and body secrets are rejected.
 - Legacy CRM sync must use `x-crm-sync-secret` or `x-legacy-sync-secret`.
@@ -40,10 +40,11 @@ The responsive LoanGenius shell uses the supplied mobile CRM screenshots as an i
 
 ## Deployment controls
 
-- Render automatic deployment is disabled in the blueprint.
+- Render automatic deployment is enabled for verified commits published to `main`.
 - Builds use `npm ci` for lockfile-reproducible installs.
 - The health endpoint checks SQLite and reports HTTP 503 when the database is unavailable.
-- Production promotion remains blocked until authenticated preview QA and owner approval.
+- The July 2026 mobile pass removes duplicate page titles, prevents clipped action bars,
+  repairs conversation and Email layouts, and adds persistent notification clearing.
 
 ## Verification
 
