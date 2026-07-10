@@ -2972,7 +2972,9 @@ crmRouter.get("/api/leads/:id", requirePass, async (req, res) => {
   // dnc: is this lead's number on the Do-Not-Contact list (texts, calls, voicemail all
   // suppressed)? Drives the console's ✅ / ❌ contactability badge.
   const dnc = lead.phone ? await isOnDnc(lead.phone) : false;
-  res.json({ lead, dnc, notes: listNotes(lead.id), activities: listActivities(lead.id) });
+  const requestedLimit = typeof req.query.activityLimit === "string" ? parseInt(req.query.activityLimit, 10) : 100;
+  const activityLimit = Math.max(10, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 100, 100));
+  res.json({ lead, dnc, notes: listNotes(lead.id), activities: listActivities(lead.id, activityLimit) });
 });
 
 /** Lead-intelligence foundation status. No secret values are returned. */
