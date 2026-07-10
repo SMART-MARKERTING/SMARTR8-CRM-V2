@@ -16,6 +16,7 @@ import { startCallNowPoller } from "./services/callNowPoller";
 import { seedCampaigns, startAutomationWorker } from "./services/automations";
 import { seedAdminIfEmpty } from "./services/auth";
 import { handleResendInboundWebhook } from "./services/resendInbound";
+import { db } from "./store/db";
 
 const app = express();
 const publicDir = path.resolve(process.cwd(), "public");
@@ -79,8 +80,15 @@ app.get(["/health", "/v2/health"], async (_req, res) => {
   } catch {
     bluebubbles = false;
   }
-  res.json({
-    ok: true,
+  let database = false;
+  try {
+    database = Boolean(db.prepare("SELECT 1 AS ok").get());
+  } catch {
+    database = false;
+  }
+  res.status(database ? 200 : 503).json({
+    ok: database,
+    database,
     bluebubbles,
     time: new Date().toISOString(),
     commit: process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION || null,

@@ -88,7 +88,7 @@ export class UserError extends Error {}
 export function createUser(opts: { username: string; password: string; name?: string; role?: Role; permissions?: unknown }): User {
   const username = opts.username.trim();
   if (!username) throw new UserError("username is required");
-  if (!opts.password || opts.password.length < 6) throw new UserError("password must be at least 6 characters");
+  if (!opts.password || opts.password.length < 12) throw new UserError("password must be at least 12 characters");
   if (getUserRowByUsername(username)) throw new UserError("that username is taken");
   const id = crypto.randomUUID();
   const salt = crypto.randomBytes(16).toString("hex");
@@ -111,7 +111,7 @@ export function createUser(opts: { username: string; password: string; name?: st
 }
 
 export function setPassword(userId: string, password: string): void {
-  if (!password || password.length < 6) throw new UserError("password must be at least 6 characters");
+  if (!password || password.length < 12) throw new UserError("password must be at least 12 characters");
   const salt = crypto.randomBytes(16).toString("hex");
   db.prepare(`UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?`).run(hashPassword(password, salt), salt, userId);
 }

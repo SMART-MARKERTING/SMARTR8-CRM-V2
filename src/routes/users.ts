@@ -32,7 +32,11 @@ const sessionLimiter = rateLimit({ name: "auth-session", max: 1200, windowMs: 5 
 const accountLimiter = rateLimit({ name: "auth-account", max: 60, windowMs: 5 * 60_000 });
 const adminUserLimiter = rateLimit({ name: "admin-users", max: 240, windowMs: 5 * 60_000 });
 
-/** Sign in with username + password → returns a session token + the user. */
+function sessionCookie(token: string, secure: boolean): string {
+  return `lg_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
+}
+
+/** Sign in with username + password → creates a secure server session. */
 usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
   const username = (req.body?.username ?? "").toString();
   const password = (req.body?.password ?? "").toString();
@@ -50,7 +54,8 @@ usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
   }
   const token = createSession(user.id);
   log.info("login", { userId: user.id, username: user.username });
-  res.json({ ok: true, token, user });
+  res.setHeader("Set-Cookie", sessionCookie(token, req.secure || process.env.NODE_ENV === "production"));
+  res.json({ ok: true, user });
 });
 
 /** Who am I (validates the current session). */
@@ -81,11 +86,9 @@ usersRouter.post("/api/auth/portal-verify", accountLimiter, requirePass, (req, r
 
 /** Sign out (invalidate the current session token). */
 usersRouter.post("/api/auth/logout", sessionLimiter, requirePass, (req, res) => {
-  const token =
-    req.get("x-session-token") ||
-    (req.get("authorization")?.toLowerCase().startsWith("bearer ") ? req.get("authorization")!.slice(7).trim() : "") ||
-    (typeof req.body?.token === "string" ? req.body.token : "");
+  const token = tokenFrom(req);
   if (token) deleteSession(token);
+  res.setHeader("Set-Cookie", "lg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
   res.json({ ok: true });
 });
 

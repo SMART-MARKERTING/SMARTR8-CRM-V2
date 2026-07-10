@@ -5,10 +5,11 @@ services:
     name: loangenius-v2
     runtime: node
     plan: starter
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /v2/health
-    autoDeploy: true
+    # Production releases are promoted manually after preview QA and approval.
+    autoDeploy: false
     # Persistent disk so OAuth tokens survive restarts/redeploys.
     disk:
       name: tokens

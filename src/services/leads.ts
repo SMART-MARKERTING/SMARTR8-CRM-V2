@@ -266,10 +266,9 @@ export function createLead(input: LeadInput): Lead {
     category: input.category ?? null,
     category_reason: input.category_reason ?? null,
     campaign: input.campaign ?? null,
-    // Texting is on by default; suppression is the per-number DNC list, not this flag.
-    // sms_consent remains the *record* of an explicit opt-in (form / verbal / signed),
-    // so consent_at is only stamped when consent was actually given.
-    sms_consent: input.sms_consent === false ? 0 : 1,
+    // SMS marketing eligibility is opt-in. A phone number by itself is not evidence
+    // of consent; only an explicit intake or audited operator action may set this.
+    sms_consent: input.sms_consent === true ? 1 : 0,
     consent_at: input.consent_at ?? (input.consent || input.sms_consent === true ? now : null),
     contact_only: input.contact_only ? 1 : 0,
   });
@@ -618,7 +617,7 @@ export function updateLead(
 export function setSmsConsent(
   id: string,
   on: boolean,
-  opts: { note?: string; author?: string } = {},
+  opts: { note?: string; author?: string; method?: string; source?: string; disclosureVersion?: string } = {},
 ): Lead | null {
   const existing = getLead(id);
   if (!existing) return null;
@@ -637,7 +636,13 @@ export function setSmsConsent(
       ? `SMS consent recorded${opts.note ? `: ${opts.note}` : ""}`
       : `SMS consent withdrawn${opts.note ? `: ${opts.note}` : ""}`,
     status: on ? "opted-in" : "opted-out",
-    meta: { author: opts.author ?? null, source: "manual" },
+    meta: {
+      author: opts.author ?? null,
+      source: opts.source ?? "manual",
+      method: opts.method ?? null,
+      disclosure_version: opts.disclosureVersion ?? null,
+      recorded_at: now,
+    },
   });
   scheduleLegacyCrmSync(id, "sms_consent");
   return getLead(id);

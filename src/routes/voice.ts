@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { config } from "../config";
 import { log } from "../logger";
 import { toE164 } from "../util/phone";
-import { requirePass, requireFeatureForCurrentPath } from "../util/auth";
+import { requirePass, requireAdmin, requireFeatureForCurrentPath } from "../util/auth";
 import { upsertContact, logCall } from "../services/ghl";
 import { addToDnc, listDnc, isOnDnc } from "../services/dnc";
 import { enqueueAutomated, queueStatus } from "../services/callQueue";
@@ -65,7 +65,7 @@ const OPTOUT_PROMPT =
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
 // POST — API / curl. Body: { contactId } or { phone }.
-voiceRouter.post("/calls/click-to-call", async (req, res) => {
+voiceRouter.post("/calls/click-to-call", requirePass, async (req, res) => {
   try {
     const r = await startClickToCall((req.body ?? {}) as { contactId?: string; phone?: string });
     if ("error" in r) res.status(r.status).json({ error: r.error });
@@ -142,7 +142,7 @@ voiceRouter.get("/calls/conference/:name", requirePass, (req, res) => {
 // GET — clickable from a GHL Custom Link, e.g.
 //   https://<host>/calls/click-to-call?contactId={{contact.id}}
 // Returns a small confirmation page; your cell rings and bridges to the contact.
-voiceRouter.get("/calls/click-to-call", async (req, res) => {
+voiceRouter.get("/calls/click-to-call", requirePass, async (req, res) => {
   const contactId = typeof req.query.contactId === "string" ? req.query.contactId : undefined;
   const phone = typeof req.query.phone === "string" ? req.query.phone : undefined;
   const page = (title: string, msg: string) =>
@@ -168,7 +168,7 @@ voiceRouter.get("/calls/click-to-call", async (req, res) => {
 //   https://<host>/calls/diag
 // Add ?place=1 to actually attempt the outbound call to MY_CELL_NUMBER (rings your
 // cell) — bypasses GHL so it isolates whether Telnyx itself accepts the call.
-voiceRouter.get("/calls/diag", async (req, res) => {
+voiceRouter.get("/calls/diag", requireAdmin, async (req, res) => {
   if (req.query.place === "1") {
     if (!config.voice.myCell) {
       res.status(500).json({ placeAttempt: { ok: false, error: "MY_CELL_NUMBER not set" } });
@@ -215,13 +215,8 @@ voiceRouter.get("/calls/diag", async (req, res) => {
   });
 });
 
-// One-click: allow inbound SIP URI calls on the connection so the app-ring leg works.
-// GET so it's clickable; passcode-gated via ?pass=.
-voiceRouter.get("/calls/enable-sip-uri", async (req, res) => {
-  if (!config.app.passcode || req.query.pass !== config.app.passcode) {
-    res.status(401).json({ error: "add ?pass=YOUR_PASSCODE" });
-    return;
-  }
+// Admin diagnostic: allow inbound SIP URI calls on the connection.
+voiceRouter.get("/calls/enable-sip-uri", requireAdmin, async (_req, res) => {
   const result = await ensureSipUriCalling();
   res.json(result);
 });
@@ -235,7 +230,7 @@ voiceRouter.post("/calls/enable-sip-uri", requirePass, async (req, res) => {
 });
 
 /** Automated outbound: queue contacts for sequenced, gated, throttled dialing. */
-voiceRouter.post("/calls/automated", (req, res) => {
+voiceRouter.post("/calls/automated", requirePass, (req, res) => {
   const body = (req.body ?? {}) as { contactIds?: string[] };
   const ids = Array.isArray(body.contactIds) ? body.contactIds.filter((x) => typeof x === "string") : [];
   if (!ids.length) {
@@ -246,7 +241,7 @@ voiceRouter.post("/calls/automated", (req, res) => {
   res.json({ ok: true, accepted: ids.length, queueDepth: depth });
 });
 
-voiceRouter.get("/calls/queue", (_req, res) => {
+voiceRouter.get("/calls/queue", requirePass, (_req, res) => {
   res.json(queueStatus());
 });
 
@@ -899,7 +894,7 @@ voiceRouter.post("/api/calls/log/:id/restore", requirePass, (req, res) => {
 });
 
 /** DNC: add a number (auto-called on opt-out too). */
-voiceRouter.post("/dnc", async (req, res) => {
+voiceRouter.post("/dnc", requirePass, async (req, res) => {
   const body = (req.body ?? {}) as { phone?: string; reason?: string };
   if (!body.phone) {
     res.status(400).json({ error: "pass phone" });
@@ -909,7 +904,7 @@ voiceRouter.post("/dnc", async (req, res) => {
   res.json({ ok: true, added: toE164(body.phone) });
 });
 
-voiceRouter.get("/dnc", async (_req, res) => {
+voiceRouter.get("/dnc", requirePass, async (_req, res) => {
   res.json({ numbers: await listDnc() });
 });
 

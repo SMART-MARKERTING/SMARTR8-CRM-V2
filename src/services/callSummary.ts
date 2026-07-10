@@ -714,7 +714,12 @@ function telnyxPublicKeyObject() {
 }
 
 export function verifyTelnyxWebhookSignature(req: Request): boolean {
-  if (!config.telnyx.publicKey) return true;
+  // Never accept an unsigned provider webhook. A missing key is a configuration
+  // error, not permission to bypass verification.
+  if (!config.telnyx.publicKey) {
+    log.warn("Telnyx webhook rejected: TELNYX_PUBLIC_KEY is not configured");
+    return false;
+  }
   const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
   const timestamp = headerValue(req, "telnyx-timestamp");
   const signature = headerValue(req, "telnyx-signature-ed25519");

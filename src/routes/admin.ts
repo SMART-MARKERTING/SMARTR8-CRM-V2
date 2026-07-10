@@ -1,25 +1,18 @@
 import { Router } from "express";
 import { config } from "../config";
 import { log } from "../logger";
+import { requireAdmin } from "../util/auth";
 
 export const adminRouter = Router();
 
 const RENDER_API = "https://api.render.com/v1";
-
-function gate(pass: unknown): boolean {
-  return Boolean(config.app.passcode) && pass === config.app.passcode;
-}
 
 /**
  * What commit is actually running, and (if RENDER_API_TOKEN + RENDER_SERVICE_ID are
  * set) the latest deploy's status. Lets us see from the browser whether a push has
  * gone live without digging through the Render dashboard.
  */
-adminRouter.get("/admin/deploy", async (req, res) => {
-  if (!gate(req.query.pass)) {
-    res.status(401).json({ error: "add ?pass=YOUR_PASSCODE" });
-    return;
-  }
+adminRouter.get("/admin/deploy", requireAdmin, async (_req, res) => {
   const out: Record<string, unknown> = {
     runningCommit: config.render.gitCommit || "(RENDER_GIT_COMMIT not set)",
     hasApiToken: Boolean(config.render.apiToken),
@@ -50,11 +43,7 @@ adminRouter.get("/admin/deploy", async (req, res) => {
 });
 
 /** Trigger a fresh deploy of the latest commit (clears build cache off). */
-adminRouter.get("/admin/redeploy", async (req, res) => {
-  if (!gate(req.query.pass)) {
-    res.status(401).json({ error: "add ?pass=YOUR_PASSCODE" });
-    return;
-  }
+adminRouter.post("/admin/redeploy", requireAdmin, async (_req, res) => {
   if (!config.render.apiToken || !config.render.serviceId) {
     res.status(503).json({ error: "RENDER_API_TOKEN / RENDER_SERVICE_ID not set" });
     return;

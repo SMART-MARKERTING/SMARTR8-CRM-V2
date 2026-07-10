@@ -12,14 +12,19 @@ declare global {
   }
 }
 
-/** Pull a session token from the header, Authorization bearer, query, or body. */
+/** Pull a session token from the secure cookie or explicit API headers. Tokens are
+ * intentionally not accepted in URLs or request bodies because those are commonly logged. */
 export function tokenFrom(req: Request): string | undefined {
+  const cookieHeader = req.get("cookie") || "";
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("lg_session="));
+  if (sessionCookie) return decodeURIComponent(sessionCookie.slice("lg_session=".length));
   const h = req.get("x-session-token");
   if (h) return h;
   const bearer = req.get("authorization");
   if (bearer && bearer.toLowerCase().startsWith("bearer ")) return bearer.slice(7).trim();
-  if (typeof req.query.token === "string") return req.query.token;
-  if (req.body && typeof req.body.token === "string") return req.body.token;
   return undefined;
 }
 
@@ -34,9 +39,7 @@ export function resolveUser(req: Request): User | null {
     if (u) return u;
   }
   const provided =
-    req.get("x-app-passcode") ||
-    (typeof req.query.pass === "string" ? req.query.pass : undefined) ||
-    (req.body && typeof req.body.pass === "string" ? req.body.pass : undefined);
+    req.get("x-app-passcode");
   return adminFromPasscode(provided);
 }
 

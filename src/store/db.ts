@@ -430,15 +430,14 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_updated ON automation_jobs(status, 
 // the ORDER BY ... LIMIT without a full table sort (matters once the book is thousands deep).
 db.exec(`CREATE INDEX IF NOT EXISTS idx_leads_recent ON leads(COALESCE(last_activity_at, created_at) DESC)`);
 
-// One-time backfill (owner decision): texting is on for every existing record — the
-// per-number DNC list is the only suppression. sms_consent stays as the opt-in *record*
-// going forward (consent_at is NOT fabricated here; only the textable flag is set).
+// Repair the earlier "textable by default" migration. A consent flag without a
+// timestamp has no auditable affirmative record and must not be treated as opted in.
 {
-  const MARKER = "migration:sms_textable_backfill:v1";
+  const MARKER = "migration:sms_consent_requires_timestamp:v2";
   if (!getMeta(MARKER)) {
-    const r = db.prepare(`UPDATE leads SET sms_consent = 1 WHERE sms_consent = 0`).run();
+    const r = db.prepare(`UPDATE leads SET sms_consent = 0 WHERE sms_consent = 1 AND consent_at IS NULL`).run();
     setMeta(MARKER, String(Date.now()));
-    if ((r.changes ?? 0) > 0) log.info("CRM migration: marked existing leads textable", { updated: r.changes });
+    if ((r.changes ?? 0) > 0) log.info("CRM migration: removed unaudited SMS consent flags", { updated: r.changes });
   }
 }
 

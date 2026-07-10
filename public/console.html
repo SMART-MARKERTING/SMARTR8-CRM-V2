@@ -1830,7 +1830,7 @@
         <strong style="font-size:.9rem">Change password</strong>
         <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem">
           <input id="cpCurrent" type="password" placeholder="Current password" autocomplete="current-password" />
-          <input id="cpNew" type="password" placeholder="New password (min 6 chars)" autocomplete="new-password" />
+          <input id="cpNew" type="password" placeholder="New password (min 12 chars)" autocomplete="new-password" />
           <input id="cpConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password" />
           <div class="row" style="justify-content:flex-end"><button class="primary" id="cpSave" style="flex:0 0 auto">Update password</button></div>
           <p id="cpMsg" class="muted" style="margin:0;font-size:.78rem"></p>
@@ -1850,7 +1850,7 @@
         <div class="ldGrid" style="margin-top:.5rem">
           <label class="fld">Name<input id="nuName" type="text" placeholder="Full name" /></label>
           <label class="fld">Username<input id="nuUsername" type="text" placeholder="username" autocomplete="off" /></label>
-          <label class="fld">Password<input id="nuPassword" type="password" placeholder="min 6 chars" autocomplete="new-password" /></label>
+          <label class="fld">Password<input id="nuPassword" type="password" placeholder="min 12 chars" autocomplete="new-password" /></label>
           <label class="fld">Role<select id="nuRole"><option value="user">User</option><option value="admin">Admin</option></select></label>
         </div>
         <div class="row" style="justify-content:flex-end;margin-top:.5rem"><button class="primary" id="nuAdd" style="flex:0 0 auto">Add user</button></div>
@@ -2076,17 +2076,13 @@
     // is installable as an app.
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }
     var token = '';
-    try {
-      token = localStorage.getItem('sp_token') || '';
-    } catch (e) {
-      setBootStatus('Browser storage is blocked. Buttons are loaded, but sign-in cannot persist until storage is allowed.', true);
-    }
+    try { localStorage.removeItem('sp_token'); } catch (e) {}
     var currentUser = null; // { id, username, name, role }
     var currentContactId = null, pollTimer = null;
 
     function api(path, opts) {
       opts = opts || {};
-      opts.headers = Object.assign({ 'x-session-token': token }, opts.headers || {});
+      opts.headers = Object.assign({}, opts.headers || {});
       if (!opts.cache) opts.cache = 'no-store'; // always fetch fresh (dashboard counts, lists, etc.)
       return fetch(path, opts);
     }
@@ -2127,8 +2123,7 @@
         var r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
         var d = await r.json();
         if (!r.ok) { gateLog(d.error || ('Error ' + r.status)); return; }
-        token = d.token; currentUser = d.user;
-        try { localStorage.setItem('sp_token', token); } catch (e) { setBootStatus('Signed in, but browser storage is blocked so the session will not persist after refresh.', true); }
+        token = ''; currentUser = d.user;
         $('loginPass').value = '';
         enterApp();
       } catch (e) { gateLog('Error: ' + e.message); }
@@ -2145,7 +2140,7 @@
       var cur = $('cpCurrent').value, n = $('cpNew').value, c = $('cpConfirm').value;
       if (!cur || !n) { $('cpMsg').textContent = 'Fill in all fields.'; return; }
       if (n !== c) { $('cpMsg').textContent = 'New passwords do not match.'; return; }
-      if (n.length < 6) { $('cpMsg').textContent = 'New password must be at least 6 characters.'; return; }
+      if (n.length < 12) { $('cpMsg').textContent = 'New password must be at least 12 characters.'; return; }
       $('cpSave').disabled = true; $('cpMsg').textContent = 'Updating…';
       try {
         var r = await api('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: cur, password: n }) });
@@ -2157,7 +2152,6 @@
     };
     async function doSignOut() {
       try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) {}
-      try { localStorage.removeItem('sp_token'); } catch (e) {}
       token = ''; currentUser = null;
       location.reload();
     }
@@ -2501,7 +2495,7 @@
           card.appendChild(meta);
           var rp = document.createElement('button'); rp.className = 'secondary'; rp.textContent = 'Reset password'; rp.style.cssText = 'flex:0 0 auto';
           rp.onclick = async function () {
-            var p = prompt('New password for ' + u.username + ' (min 6 chars):'); if (!p) return;
+            var p = prompt('New password for ' + u.username + ' (min 12 chars):'); if (!p) return;
             var rr = await api('/api/users/' + u.id + '/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: p }) });
             var dd = await rr.json(); alert(rr.ok ? 'Password updated.' : ('Error: ' + (dd.error || rr.status)));
           };
@@ -2659,7 +2653,7 @@
       docs.forEach(function (doc) {
         var row = document.createElement('div');
         row.className = 'card';
-        var url = (doc.downloadUrl || ('/api/documents/' + encodeURIComponent(doc.id) + '/download')) + '?token=' + encodeURIComponent(token);
+        var url = doc.downloadUrl || ('/api/documents/' + encodeURIComponent(doc.id) + '/download');
         row.innerHTML =
           '<div class="meta"><div class="name">' + esc(doc.original_name || 'Document') + '</div><div class="sub">' + esc(docTypeLabel(doc.doc_type)) + ' · ' + esc(new Date(doc.created_at || Date.now()).toLocaleString()) + ' · ' + esc(Math.round((doc.size || 0) / 1024) + ' KB') + '</div></div>' +
           '<a class="secondary" href="' + esc(url) + '" target="_blank" rel="noopener" style="text-decoration:none;flex:0 0 auto">Download</a>' +
@@ -3251,7 +3245,7 @@
       if (!ok) return;
       msgEl.style.color = ''; msgEl.textContent = 'Writing audit trail...';
       if (!(await auditPortalLoanFile(portalSelectedLeadId, msgEl))) return;
-      var url = '/api/leads/' + encodeURIComponent(portalSelectedLeadId) + '/mismo?token=' + encodeURIComponent(token);
+      var url = '/api/leads/' + encodeURIComponent(portalSelectedLeadId) + '/mismo';
       var a = document.createElement('a');
       a.href = url; a.rel = 'noopener';
       document.body.appendChild(a); a.click(); a.remove();
@@ -5955,7 +5949,7 @@
         return;
       }
       // Plain navigation download (session token goes in the query since we can't set headers here).
-      var url = '/api/leads/' + currentLead.id + '/mismo?token=' + encodeURIComponent(token);
+      var url = '/api/leads/' + currentLead.id + '/mismo';
       var a = document.createElement('a');
       a.href = url; a.rel = 'noopener';
       document.body.appendChild(a); a.click(); a.remove();
@@ -6192,16 +6186,13 @@
       } catch (e) { $('fmMsg').textContent = 'Error: ' + e.message; }
     };
 
-    // Restore a saved session: validate the token, then enter the app (else fall back to login).
-    if (token) {
-      (async function () {
-        try {
-          var r = await api('/api/auth/me');
-          if (r.ok) { var d = await r.json(); currentUser = d.user; enterApp(); }
-          else { try { localStorage.removeItem('sp_token'); } catch (e) {} token = ''; }
-        } catch (e) {}
-      })();
-    }
+    // Restore the HttpOnly cookie session, then enter the app (else keep the login gate).
+    (async function () {
+      try {
+        var r = await api('/api/auth/me');
+        if (r.ok) { var d = await r.json(); currentUser = d.user; enterApp(); }
+      } catch (e) {}
+    })();
     markBootReady();
   </script>
 </body>

@@ -163,7 +163,7 @@ crmRouter.use((req, res, next) => {
 crmRouter.use(requireFeatureForCurrentPath);
 
 // ── Public website lead intake ───────────────────────────────────────────────
-// Point your site's form/webhook at:  POST https://<host>/webhooks/lead?key=SECRET
+// Point the website worker at POST /webhooks/lead with x-lead-secret.
 // Body is flexible: first_name/last_name (or name), email, phone, source, plus any
 // extra fields (captured into `custom`). Creates the lead and fires `lead_created`.
 
@@ -309,10 +309,7 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
     res.status(503).json({ error: "LEAD_WEBHOOK_SECRET not set on the server" });
     return;
   }
-  const provided =
-    (typeof req.query.key === "string" ? req.query.key : undefined) ||
-    req.get("x-lead-secret") ||
-    (req.body && typeof req.body.key === "string" ? req.body.key : undefined);
+  const provided = req.get("x-lead-secret");
   if (provided !== expected) {
     res.status(401).json({ error: "bad lead secret" });
     return;
@@ -365,8 +362,7 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
     source: pickStr(body, ["source"]) ?? "website",
     timezone: pickStr(body, ["timezone"]),
     consent: body.consent === undefined ? true : Boolean(body.consent), // website opt-in implies email consent
-    // Texting is on by default (suppression = the DNC list). An explicit smsOptIn:"yes"
-    // additionally stamps consent_at so the express-consent record is kept on file.
+    // Only an explicit SMS opt-in records consent and a timestamp.
     sms_consent: smsOptIn && Boolean(phone) ? true : undefined,
     category: tag.category,
     category_reason: tag.reason,
@@ -404,15 +400,9 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
         body: `Re-submitted via ${input.source}`,
         meta: input.custom,
       });
-      // Fire the drip even for a duplicate so the text/email goes out regardless of
-      // duplicate status. Cancel any in-flight steps first so the sequence restarts
-      // cleanly instead of stacking concurrent drips. (send_text still gates on the
-      // DNC list + quiet hours — this never bypasses those.)
-      stopLeadAutomations(existing.id, "re-submitted — restarting drip");
       const fresh = getLead(existing.id)!;
-      const restarted = fireTrigger("lead_created", fresh);
       const diag = diagnoseEnrollment("lead_created", fresh);
-      res.json({ ok: true, leadId: existing.id, duplicate: true, automationStarted: restarted, note: diag.note ?? undefined });
+      res.json({ ok: true, leadId: existing.id, duplicate: true, automationStarted: 0, note: diag.note ?? "Existing lead updated; active campaigns were not restarted." });
       return;
     }
 
@@ -1944,9 +1934,7 @@ crmRouter.post("/api/sync/legacy-crm", (req, res) => {
   }
   const provided =
     req.get("x-crm-sync-secret") ||
-    req.get("x-legacy-sync-secret") ||
-    (typeof req.query.key === "string" ? req.query.key : undefined) ||
-    (req.body && typeof req.body.secret === "string" ? req.body.secret : undefined);
+    req.get("x-legacy-sync-secret");
   if (provided !== expected) {
     res.status(401).json({ error: "bad sync secret" });
     return;
@@ -2517,10 +2505,12 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
   // Guard against texting the same person twice in one blast when duplicate lead records
   // share a phone number (last-10-digit key). One number → one message per request.
   const sentPhones = new Set<string>();
+  const owner = ownerScope(req);
   const phoneKey = (p: string | null) => { const d = String(p || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; };
   for (const id of ids) {
     const lead = getLead(id);
     if (!lead) { skipped++; note("not found"); continue; }
+    if (owner && lead.owner_user_id !== owner) { skipped++; note("not assigned"); continue; }
     if (!lead.phone) { skipped++; note("no phone"); continue; }
     const pk = phoneKey(lead.phone);
     if (pk && sentPhones.has(pk)) { skipped++; note("duplicate number"); continue; }
@@ -2832,10 +2822,12 @@ crmRouter.post("/api/leads/email-blast", requirePass, async (req, res) => {
   const reasons: Record<string, number> = {};
   const note = (k: string) => { reasons[k] = (reasons[k] || 0) + 1; };
   const emailed = new Set<string>();
+  const owner = ownerScope(req);
 
   for (const id of ids) {
     const lead = getLead(id);
     if (!lead) { skipped++; note("not found"); continue; }
+    if (owner && lead.owner_user_id !== owner) { skipped++; note("not assigned"); continue; }
     const email = (lead.email || "").trim();
     if (!email) { skipped++; note("no email"); continue; }
     const emailKey = email.toLowerCase();
@@ -2869,8 +2861,10 @@ crmRouter.post("/api/leads/bulk-delete", requirePass, (req, res) => {
   const body = (req.body ?? {}) as { ids?: string[] };
   const ids = Array.isArray(body.ids) ? body.ids : [];
   let deleted = 0;
+  const owner = ownerScope(req);
   for (const id of ids) {
-    if (!getLead(id)) continue;
+    const lead = getLead(id);
+    if (!lead || (owner && lead.owner_user_id !== owner)) continue;
     deleteLead(id);
     deleted++;
   }
@@ -4651,8 +4645,7 @@ crmRouter.post("/api/email/activity/:activityId/cancel", requirePass, async (req
   res.json({ ok: true, activityId: activity.id, id: result.id || resendId, status: "canceled" });
 });
 
-/** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline.
- *  Body: { on?, note?, author? }. */
+/** Admin-only: record (or withdraw) SMS consent for a lead. Audited on the timeline. */
 crmRouter.post("/api/leads/:id/sms-consent", requireAdmin, (req, res) => {
   const lead = getLead(req.params.id);
   if (!lead) {
@@ -4661,8 +4654,25 @@ crmRouter.post("/api/leads/:id/sms-consent", requireAdmin, (req, res) => {
   }
   const on = req.body?.on !== false; // default true (recording consent)
   const note = (req.body?.note ?? "").toString().trim() || undefined;
-  const author = (req.body?.author ?? "").toString().trim() || undefined;
-  const updated = setSmsConsent(lead.id, on, { note, author });
+  const method = (req.body?.method ?? "").toString().trim().toLowerCase();
+  const source = (req.body?.source ?? "manual").toString().trim().toLowerCase();
+  const disclosureVersion = (req.body?.disclosureVersion ?? "").toString().trim();
+  const allowedMethods = new Set(["written", "web-form", "verbal-recorded", "signed-document"]);
+  if (on && (!note || note.length < 8)) {
+    res.status(400).json({ error: "describe when and how the borrower granted SMS consent" });
+    return;
+  }
+  if (on && !allowedMethods.has(method)) {
+    res.status(400).json({ error: "choose a supported consent method" });
+    return;
+  }
+  const updated = setSmsConsent(lead.id, on, {
+    note,
+    method,
+    source,
+    disclosureVersion: disclosureVersion || "manual-v1",
+    author: req.authUser?.username,
+  });
   res.json({ ok: true, lead: updated });
 });
 

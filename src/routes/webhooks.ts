@@ -8,6 +8,7 @@ import { handleLeadReply } from "../services/automations";
 import { findLead, createLead, logActivity, logActivityOnce } from "../services/leads";
 import { forwardInbound } from "../services/textingMcpForward";
 import { log } from "../logger";
+import { requireAdmin } from "../util/auth";
 
 export const webhooksRouter = Router();
 
@@ -192,22 +193,12 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
  * Either GET (clickable in a browser) or POST registers it; idempotent (skips if
  * already present). Returns a friendly HTML page for GET, JSON for POST.
  */
-webhooksRouter.all("/bluebubbles/register", async (req, res) => {
+webhooksRouter.all("/bluebubbles/register", requireAdmin, async (req, res) => {
   const wantsHtml = req.method === "GET";
   const page = (title: string, body: string) =>
     `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<body style="font-family:system-ui;max-width:34rem;margin:auto;padding:2rem;line-height:1.5">` +
     `<h2>${title}</h2>${body}</body>`;
-
-  const provided = req.get("x-app-passcode") || (typeof req.query.pass === "string" ? req.query.pass : "");
-  if (!config.app.passcode) {
-    if (wantsHtml) return res.status(503).send(page("Not configured", "<p>APP_PASSCODE not set on the server.</p>"));
-    return res.status(503).json({ error: "APP_PASSCODE not set on the server" });
-  }
-  if (provided !== config.app.passcode) {
-    if (wantsHtml) return res.status(401).send(page("Locked", "<p>Add <code>?pass=YOUR_PASSCODE</code> to the URL.</p>"));
-    return res.status(401).json({ error: "bad passcode" });
-  }
 
   const base = publicBaseUrl();
   if (!base) {
