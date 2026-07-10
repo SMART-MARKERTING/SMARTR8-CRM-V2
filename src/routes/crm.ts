@@ -132,6 +132,7 @@ import { recordAudit, listAuditEvents } from "../services/audit";
 import { buildCrmReport, reportPdfBuffer } from "../services/reports";
 import { listCallSummaries, processCallSummary } from "../services/callSummary";
 import { leadAgentStatus, listLeadAgentRuns, maybeRunLeadAgent, runLeadAgent } from "../services/leadAgent";
+import { normalizeLeadIntakePayload } from "../services/leadIntakeNormalizer";
 import {
   handleInboundWhatsAppWebhook,
   listWhatsAppMessages,
@@ -316,7 +317,7 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
     return;
   }
 
-  const body = (req.body ?? {}) as Record<string, unknown>;
+  const body = normalizeLeadIntakePayload((req.body ?? {}) as Record<string, unknown>);
   log.info("lead intake received", {
     source: typeof body.source === "string" ? body.source : undefined,
     hasEmail: typeof body.email === "string" && body.email.trim().length > 0,
