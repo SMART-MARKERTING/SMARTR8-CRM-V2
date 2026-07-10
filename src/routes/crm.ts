@@ -78,6 +78,8 @@ import {
   leadCampaignState,
   enrollLeadInAutomation,
   advancePhase,
+  skipPhase,
+  unenrollLeadFromAutomation,
   rewindPhase,
   diagnoseEnrollment,
   markPastClient,
@@ -2528,6 +2530,51 @@ crmRouter.post("/api/lead-pool/enroll", requirePass, (req, res) => {
   res.json({ ok: true, enrolled, skipped });
 });
 
+type BulkCampaignAction = "enroll" | "unenroll" | "stop" | "resume" | "run" | "skip" | "back";
+
+/** Permission-scoped campaign controls shared by Leads and Lead Pool bulk actions. */
+crmRouter.post("/api/leads/campaign/bulk", requirePass, (req, res) => {
+  const body = (req.body ?? {}) as { ids?: string[]; action?: BulkCampaignAction; automationId?: string };
+  const ids = Array.isArray(body.ids) ? Array.from(new Set(body.ids.filter((id): id is string => typeof id === "string" && !!id))).slice(0, 5000) : [];
+  const action = body.action;
+  const automationId = typeof body.automationId === "string" ? body.automationId : "";
+  const allowed = new Set<BulkCampaignAction>(["enroll", "unenroll", "stop", "resume", "run", "skip", "back"]);
+  if (!ids.length) { res.status(400).json({ error: "no contacts selected" }); return; }
+  if (!action || !allowed.has(action)) { res.status(400).json({ error: "choose a valid campaign action" }); return; }
+  if (action === "enroll" && !automationId) { res.status(400).json({ error: "choose a campaign" }); return; }
+  if (automationId && !getAutomation(automationId)) { res.status(404).json({ error: "campaign not found" }); return; }
+
+  const owner = ownerScope(req);
+  let succeeded = 0;
+  let skipped = 0;
+  const failed: Array<{ id: string; error: string }> = [];
+  for (const id of ids) {
+    const lead = getLead(id);
+    if (!lead || (owner && lead.owner_user_id !== owner)) { skipped++; continue; }
+    try {
+      let ok = false;
+      if (action === "enroll") ok = enrollLeadInAutomation(id, automationId);
+      else if (action === "unenroll") ok = unenrollLeadFromAutomation(id, automationId || undefined) >= 0;
+      else if (action === "stop") {
+        stopLeadAutomations(id, "stopped from bulk campaign control");
+        ok = leadCampaignState(id).status === "stopped";
+        if (ok) logActivity(id, { type: "automation", direction: "system", channel: "system", body: "Workflow stopped from bulk campaign control", status: "stopped" });
+      }
+      else if (action === "resume") {
+        ok = resumeLeadAutomations(id) > 0;
+        if (ok) logActivity(id, { type: "automation", direction: "system", channel: "system", body: "Workflow resumed from bulk campaign control", status: "running" });
+      }
+      else if (action === "run") ok = advancePhase(id);
+      else if (action === "skip") ok = skipPhase(id);
+      else if (action === "back") ok = rewindPhase(id);
+      if (ok) succeeded++; else skipped++;
+    } catch (err) {
+      failed.push({ id, error: String(err) });
+    }
+  }
+  res.json({ ok: failed.length === 0, requested: ids.length, succeeded, skipped, failed });
+});
+
 /** Bulk text blast to selected leads (manual operator action). Skips no-phone and opted-out/DNC.
  *  Personalizes lead merge fields. Paced; capped per request. */
 crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
@@ -4894,22 +4941,43 @@ crmRouter.get("/api/leads/:id/campaign", requirePass, (req, res) => {
 crmRouter.post("/api/leads/:id/campaign/stop", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
-  res.json({ ok: true, paused: stopLeadAutomations(lead.id, "stopped from console") });
+  const paused = stopLeadAutomations(lead.id, "stopped from console");
+  const stopped = leadCampaignState(lead.id).status === "stopped";
+  if (stopped) logActivity(lead.id, { type: "automation", direction: "system", channel: "system", body: "Workflow stopped from lead profile", status: "stopped" });
+  res.json({ ok: stopped, paused });
 });
 crmRouter.post("/api/leads/:id/campaign/resume", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
-  res.json({ ok: true, resumed: resumeLeadAutomations(lead.id) });
+  const resumed = resumeLeadAutomations(lead.id);
+  if (resumed) logActivity(lead.id, { type: "automation", direction: "system", channel: "system", body: "Workflow resumed from lead profile", status: "running" });
+  res.json({ ok: resumed > 0, resumed });
 });
 crmRouter.post("/api/leads/:id/campaign/next", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
   res.json({ ok: advancePhase(lead.id) });
 });
+crmRouter.post("/api/leads/:id/campaign/skip", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  res.json({ ok: skipPhase(lead.id) });
+});
 crmRouter.post("/api/leads/:id/campaign/back", requirePass, (req, res) => {
   const lead = accessibleLead(req, res);
   if (!lead) return;
   res.json({ ok: rewindPhase(lead.id) });
+});
+crmRouter.post("/api/leads/:id/campaign/unenroll", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const automationId = typeof req.body?.automationId === "string" ? req.body.automationId : undefined;
+  const before = leadCampaignState(lead.id);
+  if (!before.enrolled || (automationId && before.automationId !== automationId)) {
+    res.status(404).json({ error: "lead is not enrolled in that campaign" });
+    return;
+  }
+  res.json({ ok: true, removedSteps: unenrollLeadFromAutomation(lead.id, automationId) });
 });
 /** Manually enroll / switch the lead into a chosen campaign (stops any running flow first).
  *  Body: { automationId }. */

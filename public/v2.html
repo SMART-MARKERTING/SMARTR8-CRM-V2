@@ -908,6 +908,9 @@
         automations: [],
         editingAutomation: null,
         automationDraftSteps: [],
+        pendingAutomationEditId: "",
+        bulkCampaignIds: [],
+        bulkCampaignScope: "",
         emailBox: "inbox",
         emailMessages: [],
         emailMessageState: {},
@@ -1500,7 +1503,7 @@
       async function loadLeadsView() {
         state.leadStageFilter = state.leadStageFilter || "";
         pageShell("Leads", "Manage borrowers, pipeline status, task follow-up, and loan workflow notes.",
-          '<button class="btn" data-action="download-lead-sample">Sample CSV</button><button class="btn" data-action="open-lead-import">Import CSV</button><button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
+          '<button class="btn" data-action="download-lead-sample">Sample CSV</button><button class="btn" data-action="open-lead-import">Import CSV</button><button class="btn primary" data-action="bulk-campaigns">Campaigns</button><button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
           '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadScopeSummary" class="leadScopeSummary"></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
         await loadLeads();
@@ -1739,7 +1742,7 @@
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
             '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
-            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
@@ -1761,6 +1764,7 @@
           '</div>' +
           '<div style="margin-top:12px"><div class="toolbar" style="justify-content:space-between;align-items:center"><div><b>Tags</b><div id="leadTagsSearchHint" class="sub">' + esc((lead.tags || []).join(", ")) + '</div></div></div><div id="leadTagChips" style="margin-top:8px">' + renderLeadTagChips(lead.tags || [], true) + '</div><div class="toolbar" style="margin-top:8px"><input id="leadTagInput" placeholder="Add tag, e.g. HELOC, VA, hot lead"><button class="btn small primary" data-action="add-lead-tag">Add tag</button></div></div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
+          '<section id="leadCampaignCard" class="card pad"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Campaign / workflow</h3><div class="sub">Enroll, switch, pause, resume, or control the next workflow step.</div></div><span id="leadCampaignBadge" class="badge blue">Loading</span></div><div id="leadCampaignPanel" style="margin-top:12px"><div class="spinner"></div></div><div id="leadCampaignMsg" class="statusLine"></div></section>' +
           '<section class="card pad"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Lead Intelligence</h3><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div></div><span id="leadAgentState" class="badge blue">Checking</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="spinner"></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Refresh history</button></div><div id="leadAgentMsg" class="statusLine"></div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Previous message history</h3><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div></div><span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></div><div id="leadHistoryList" class="list" style="margin-top:12px">' + renderLeadHistory(activities) + '</div></section>' +
@@ -1768,13 +1772,66 @@
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
           '<section class="card pad"><h3 style="margin-top:0">File folders</h3><div class="fieldGrid"><label>Folder<input id="ldDocFolder" list="emailFolderOptions" value="General"></label><label>File name<input id="ldDocDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="ldDocFile" type="file"></label></div><button class="btn primary" data-action="upload-doc" style="margin-top:10px">Upload document</button><div id="docMiniList" class="list" style="margin-top:12px"><div class="spinner"></div></div></section>' +
           '<details class="card pad leadWide" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
-          '<section id="leadCommsCard" class="card pad leadWide"><h3 style="margin-top:0">Communication and actions</h3><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button><button class="btn teal" data-action="call-lead">Click-to-call</button><button class="btn" data-action="open-lead-dialer">Open dialer</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><button class="btn" data-action="run-flow">Run flow</button><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadWhatsappMsg" class="statusLine"></div></div></section>' +
+          '<section id="leadCommsCard" class="card pad leadWide"><h3 style="margin-top:0">Communication and actions</h3><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button><button class="btn teal" data-action="call-lead">Click-to-call</button><button class="btn" data-action="open-lead-dialer">Open dialer</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><a class="btn" href="#leadCampaignCard">Campaign controls</a><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadWhatsappMsg" class="statusLine"></div></div></section>' +
           '</div><div class="leadStickyFooter"><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="save-lead">Save lead</button></div><div id="leadSaveMsg" class="statusLine"></div></div>',
           { fullscreen: true });
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
         loadLeadAgentPanel(lead.id);
+        loadLeadCampaignPanel(lead.id);
+      }
+
+      function campaignOptions(selectedId) {
+        return '<option value="">Choose campaign</option>' + (state.automations || []).map(function (a) {
+          return '<option value="' + esc(a.id) + '"' + (String(a.id) === String(selectedId || "") ? " selected" : "") + '>' + esc(a.name || a.id) + (a.enabled ? "" : " (off)") + '</option>';
+        }).join("");
+      }
+      function campaignJobLabel(job) {
+        return (Number(job.stepIndex || 0) + 1) + ". " + stepLabel(job.type) + " - " + String(job.status || "pending").replace("_", " ");
+      }
+      async function loadLeadCampaignPanel(leadId) {
+        var panel = $("leadCampaignPanel");
+        if (!panel || !leadId) return;
+        try {
+          var results = await Promise.all([json("/api/automations"), json("/api/leads/" + encodeURIComponent(leadId) + "/campaign")]);
+          state.automations = results[0].automations || [];
+          var current = results[1] || {};
+          var active = current.enrolled && (current.status === "running" || current.status === "stopped");
+          if ($("leadCampaignBadge")) {
+            $("leadCampaignBadge").textContent = current.enrolled ? (current.paused ? "Stopped" : String(current.status || "Running")) : "Not enrolled";
+            $("leadCampaignBadge").className = "badge " + (current.paused ? "amber" : active ? "green" : "blue");
+          }
+          var nextText = current.nextStepType
+            ? stepLabel(current.nextStepType) + (current.nextRunAt ? " at " + formatDateTime(current.nextRunAt) : "")
+            : "No remaining step";
+          panel.innerHTML =
+            '<label>Campaign<select id="leadCampaignSelect">' + campaignOptions(current.automationId) + '</select></label>' +
+            '<div class="item" style="margin-top:10px"><div class="toolbar" style="justify-content:space-between"><b>' + esc(current.name || "No active campaign") + '</b><span class="badge blue">' + Number(current.stepDone || 0) + ' / ' + Number(current.stepTotal || 0) + ' complete</span></div><div class="sub" style="margin-top:6px">Next: ' + esc(nextText) + '</div></div>' +
+            '<div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="lead-campaign-enroll">' + (active ? "Switch campaign" : "Enroll") + '</button><button class="btn" data-action="lead-campaign-run">Run next now</button><button class="btn" data-action="lead-campaign-skip">Skip current step</button><button class="btn" data-action="lead-campaign-back">Back one step</button><button class="btn" data-action="lead-campaign-stop">Stop</button><button class="btn" data-action="lead-campaign-resume">Resume</button><button class="btn danger" data-action="lead-campaign-unenroll">Unenroll</button><button class="btn" data-action="lead-campaign-edit" data-id="' + esc(current.automationId || "") + '">Edit workflow</button></div>' +
+            ((current.jobs || []).length ? '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:800">Workflow steps</summary><div class="list" style="margin-top:8px">' + current.jobs.map(function (job) { return '<div class="item"><span class="badge ' + (job.status === "done" ? "green" : job.status === "error" ? "red" : job.status === "paused" ? "amber" : "blue") + '">' + esc(campaignJobLabel(job)) + '</span>' + (job.lastError ? '<div class="sub">' + esc(job.lastError) + '</div>' : '') + '</div>'; }).join("") + '</div></details>' : '');
+        } catch (e) {
+          panel.innerHTML = '<div class="empty badText">' + esc(e.message || String(e)) + '</div>';
+        }
+      }
+      async function runLeadCampaignAction(action) {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var automationId = $("leadCampaignSelect") ? $("leadCampaignSelect").value : "";
+        if (action === "enroll" && !automationId) { status("leadCampaignMsg", "Choose a campaign first.", "warnText"); return; }
+        status("leadCampaignMsg", "Updating workflow...");
+        var body = action === "enroll" ? { automationId: automationId } : {};
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/campaign/" + action, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        status("leadCampaignMsg", data.ok === false ? "No matching workflow step was available for that action." : "Workflow updated.", data.ok === false ? "warnText" : "okText");
+        await loadLeadCampaignPanel(lead.id);
+        await refreshLeadTimelinePanels(lead.id);
+      }
+      async function editCampaignWorkflow(id) {
+        var automationId = id || ($("leadCampaignSelect") && $("leadCampaignSelect").value) || "";
+        if (!automationId) { status("leadCampaignMsg", "Choose a campaign to edit.", "warnText"); return; }
+        state.pendingAutomationEditId = automationId;
+        closeModal();
+        await route("automations");
       }
       function leadAgentPriorityBadge(priority) {
         if (priority === "high") return "red";
@@ -2289,9 +2346,9 @@
             '<div class="grid">' +
               '<div class="leadPoolTop">' +
                 '<section class="card pad"><h2 style="margin-top:0">Upload old leads</h2><div class="sub" style="margin-bottom:10px">' + esc(leadPoolSampleColumns()) + '</div><input id="poolCsv" type="file" accept=".csv,text/csv"><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="import-leadpool">Upload CSV</button></div><div id="poolStatus" class="statusLine"></div></section>' +
-                '<section class="card pad leadPoolFilters"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>States<select id="poolState" multiple size="5"></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label><label>Campaign<select id="poolCampaign"><option value="">Choose campaign</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button><button class="btn" data-action="enroll-leadpool">Enroll selected</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
+                '<section class="card pad leadPoolFilters"><h2 style="margin-top:0">Filters</h2><div class="fieldGrid"><label>Search<input id="poolSearch" type="search" placeholder="Name, phone, email, address, source..."></label><label>States<select id="poolState" multiple size="5"></select></label><label>Tag<select id="poolTag"><option value="">All tags</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="refresh-leadpool">Apply</button><button class="btn" data-action="clear-leadpool-filters">Clear</button></div><div id="poolActionMsg" class="statusLine"></div></section>' +
               '</div>' +
-              '<section class="card"><div class="cardHead"><div><h2>Pool records</h2><div id="poolSelectionCount" class="sub">0 selected in current filter</div></div><div class="toolbar"><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
+              '<section class="card"><div class="cardHead"><div><h2>Pool records</h2><div id="poolSelectionCount" class="sub">0 selected in current filter</div></div><div class="toolbar"><button class="btn primary" data-action="pool-campaigns">Campaigns</button><button class="btn primary" data-action="pool-call-list">Add to call list</button><button class="btn" data-action="pool-text">Text selected</button><button class="btn" data-action="pool-email">Email selected</button><button class="btn danger" data-action="pool-delete-selected">Delete selected</button></div></div><div id="poolListWrap" class="tableWrap"></div></section>' +
             '</div>' +
           '</div>');
         if ($("poolSearch")) $("poolSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") refreshLeadPool(); });
@@ -2302,11 +2359,6 @@
         try {
           var data = await json("/api/automations");
           state.automations = data.automations || [];
-          if ($("poolCampaign")) {
-            $("poolCampaign").innerHTML = '<option value="">Choose campaign</option>' + state.automations.map(function (a) {
-              return '<option value="' + esc(a.id) + '">' + esc(a.name || a.id) + (a.enabled ? "" : " (off)") + '</option>';
-            }).join("");
-          }
         } catch (e) {}
       }
       async function refreshLeadPool() {
@@ -2505,14 +2557,35 @@
         var data = await json("/api/leads/email-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: selectedPoolIds(), subject: $("poolBlastSubject").value, body: $("poolBlastEmail").value }) });
         status("poolBlastMsg", "Sent " + data.sent + ", skipped " + data.skipped + ", failed " + data.failed + ".", data.failed ? "warnText" : "okText");
       }
-      async function enrollLeadPool() {
-        var ids = selectedPoolIds();
-        var automationId = $("poolCampaign") ? $("poolCampaign").value : "";
-        if (!ids.length) { status("poolActionMsg", "Select pool records first.", "warnText"); return; }
-        if (!automationId) { status("poolActionMsg", "Choose a campaign.", "warnText"); return; }
-        status("poolActionMsg", "Enrolling...");
-        var data = await json("/api/lead-pool/enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids, automationId: automationId }) });
-        status("poolActionMsg", "Enrolled " + data.enrolled + ", skipped " + data.skipped + ".", data.enrolled ? "okText" : "warnText");
+      async function openBulkCampaignControls(scope) {
+        var ids = scope === "pool" ? selectedPoolIds() : Array.from(state.selectedIds);
+        if (!ids.length) { showToast("Select at least one contact first.", true); return; }
+        var data = await json("/api/automations");
+        state.automations = data.automations || [];
+        state.bulkCampaignIds = ids.slice();
+        state.bulkCampaignScope = scope;
+        openModal("Campaign controls",
+          '<div class="item"><b>' + ids.length + ' selected contact' + (ids.length === 1 ? '' : 's') + '</b><div class="sub">Actions apply only to this exact selection.</div></div>' +
+          '<label style="margin-top:12px">Campaign<select id="bulkCampaignSelect">' + campaignOptions("") + '</select></label>' +
+          '<div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="bulk-campaign-action" data-kind="enroll">Enroll / change</button><button class="btn" data-action="bulk-campaign-action" data-kind="run">Run next now</button><button class="btn" data-action="bulk-campaign-action" data-kind="skip">Skip current step</button><button class="btn" data-action="bulk-campaign-action" data-kind="back">Back one step</button><button class="btn" data-action="bulk-campaign-action" data-kind="stop">Stop</button><button class="btn" data-action="bulk-campaign-action" data-kind="resume">Resume</button><button class="btn danger" data-action="bulk-campaign-action" data-kind="unenroll">Unenroll</button><button class="btn" data-action="bulk-campaign-edit">Edit selected workflow</button></div>' +
+          '<div class="warnBox" style="margin-top:12px">Enroll / change requires a campaign choice. Other actions operate on each contact\'s current workflow.</div><div id="bulkCampaignMsg" class="statusLine"></div>');
+      }
+      async function runBulkCampaignAction(action) {
+        var automationId = $("bulkCampaignSelect") ? $("bulkCampaignSelect").value : "";
+        if (action === "enroll" && !automationId) { status("bulkCampaignMsg", "Choose a campaign first.", "warnText"); return; }
+        status("bulkCampaignMsg", "Updating " + state.bulkCampaignIds.length + " contacts...");
+        var data = await json("/api/leads/campaign/bulk", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: state.bulkCampaignIds, action: action, automationId: action === "enroll" ? automationId : undefined })
+        });
+        status("bulkCampaignMsg", "Updated " + Number(data.succeeded || 0) + ", skipped " + Number(data.skipped || 0) + (data.failed && data.failed.length ? ", failed " + data.failed.length : "") + ".", (data.failed && data.failed.length) || !data.succeeded ? "warnText" : "okText");
+      }
+      async function editBulkCampaignWorkflow() {
+        var automationId = $("bulkCampaignSelect") ? $("bulkCampaignSelect").value : "";
+        if (!automationId) { status("bulkCampaignMsg", "Choose a campaign to edit.", "warnText"); return; }
+        state.pendingAutomationEditId = automationId;
+        closeModal();
+        await route("automations");
       }
       async function deleteSelectedPoolLeads() {
         var ids = selectedPoolIds();
@@ -3904,6 +3977,12 @@
           '<section class="card pad"><h2 style="margin-top:0">Setup health</h2>' + renderAutoHealth(health) + '<div style="margin-top:12px"><b>Website lead webhook</b><div class="toolbar" style="margin-top:6px"><input id="leadHookUrl" value="' + esc(location.origin + apiPath("/webhooks/lead")) + '" readonly><button class="btn small" data-action="copy-webhook">Copy</button></div></div></section>' +
           '<section class="card"><div class="cardHead"><h2>Flows</h2><button class="btn small primary" data-action="auto-new">New flow</button></div><div class="list" style="padding:12px">' + renderAutomationList(state.automations, autos.error) + '</div></section>' +
           '<section class="card pad" style="grid-column:1/-1"><h2 style="margin-top:0">Recent automation activity</h2>' + renderAutoActivity(activity.activity || [], activity.error) + '</section>';
+        if (state.pendingAutomationEditId) {
+          var pending = findAutomation(state.pendingAutomationEditId);
+          state.pendingAutomationEditId = "";
+          if (pending) openAutomationEditor(pending);
+          else showToast("That workflow was not found.", true);
+        }
       }
 
       async function loadPipelineStages() {
@@ -5479,6 +5558,7 @@
           else if (a === "cal-open-event") await openCalendarEvent(btn.dataset.leadId, btn.dataset.todoId);
           else if (a === "cal-send-invite") await sendCalendarInvite(btn.dataset.leadId, btn.dataset.todoId, btn.dataset.via);
           else if (a === "lead-status-tab") { state.leadStageFilter = btn.dataset.stage || ""; await loadLeads(); }
+          else if (a === "bulk-campaigns") await openBulkCampaignControls("leads");
           else if (a === "refresh-leadpool") await refreshLeadPool();
           else if (a === "repair-leadpool") await repairLeadPool();
           else if (a === "clear-leadpool-filters") { if ($("poolSearch")) $("poolSearch").value = ""; if ($("poolState")) Array.from($("poolState").options || []).forEach(function (opt) { opt.selected = false; }); if ($("poolTag")) $("poolTag").value = ""; await refreshLeadPool(); }
@@ -5486,13 +5566,15 @@
           else if (a === "import-leadpool") await importLeadPoolCsv();
           else if (a === "pool-select") { btn.checked ? state.leadPoolSelectedIds.add(btn.dataset.id) : state.leadPoolSelectedIds.delete(btn.dataset.id); updatePoolSelectionSummary(); }
           else if (a === "pool-select-all") { state.leadPool.forEach(function (l) { btn.checked ? state.leadPoolSelectedIds.add(l.id) : state.leadPoolSelectedIds.delete(l.id); }); await refreshLeadPool(); }
+          else if (a === "pool-campaigns") await openBulkCampaignControls("pool");
+          else if (a === "bulk-campaign-action") await runBulkCampaignAction(btn.dataset.kind);
+          else if (a === "bulk-campaign-edit") await editBulkCampaignWorkflow();
           else if (a === "pool-call-list") openPoolCallListModal();
           else if (a === "save-pool-call-list") await savePoolCallList();
           else if (a === "pool-text") openPoolBlast("text");
           else if (a === "pool-email") openPoolBlast("email");
           else if (a === "send-pool-text") await sendPoolText();
           else if (a === "send-pool-email") await sendPoolEmail();
-          else if (a === "enroll-leadpool") await enrollLeadPool();
           else if (a === "pool-delete-selected") await deleteSelectedPoolLeads();
           else if (a === "open-pool") await openPoolRecord(btn.dataset.id);
           else if (a === "close-pool-detail") $("poolDrawer").innerHTML = '<div class="empty">Open a Lead Pool record to work it like a normal profile.</div>';
@@ -5511,6 +5593,14 @@
           else if (a === "refresh-lead-agent") { if (state.selectedLead) await loadLeadAgentPanel(state.selectedLead.id); }
           else if (a === "add-lead-tag") await addTagsToCurrentLead();
           else if (a === "remove-lead-tag") await removeTagFromCurrentLead(btn.dataset.tag);
+          else if (a === "lead-campaign-enroll") await runLeadCampaignAction("enroll");
+          else if (a === "lead-campaign-run") await runLeadCampaignAction("next");
+          else if (a === "lead-campaign-skip") await runLeadCampaignAction("skip");
+          else if (a === "lead-campaign-back") await runLeadCampaignAction("back");
+          else if (a === "lead-campaign-stop") await runLeadCampaignAction("stop");
+          else if (a === "lead-campaign-resume") await runLeadCampaignAction("resume");
+          else if (a === "lead-campaign-unenroll") await runLeadCampaignAction("unenroll");
+          else if (a === "lead-campaign-edit") await editCampaignWorkflow(btn.dataset.id);
           else if (a === "close-detail") $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
           else if (a === "toggle-select") { btn.checked ? state.selectedIds.add(btn.dataset.id) : state.selectedIds.delete(btn.dataset.id); }
           else if (a === "select-all") { state.leads.forEach(function (l) { btn.checked ? state.selectedIds.add(l.id) : state.selectedIds.delete(l.id); }); await loadLeads(); }
@@ -5625,7 +5715,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","leadCampaignMsg","bulkCampaignMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 
