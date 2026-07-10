@@ -537,6 +537,7 @@
     }
     .modalBody { padding: 16px; display: grid; gap: 12px; }
     .modal.fullscreen {
+      position: relative;
       width: calc(100vw - 28px);
       max-width: none;
       height: calc(100vh - 28px);
@@ -547,9 +548,7 @@
     }
     .modal.fullscreen .modalBody { flex: 1; overflow: auto; align-content: start; }
     .leadProfileHero {
-      position: sticky;
-      top: 0;
-      z-index: 3;
+      position: static;
       display: grid;
       gap: 12px;
       border: 1px solid var(--line);
@@ -564,17 +563,35 @@
     .leadProfileGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 14px; align-items: start; }
     .leadWide { grid-column: 1 / -1; }
     .leadStickyFooter {
-      position: sticky;
-      bottom: 0;
-      z-index: 2;
+      position: static;
       margin-top: 4px;
       padding: 12px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: color-mix(in srgb, var(--panel) 84%, transparent);
       box-shadow: 0 -8px 22px rgba(15,23,42,.06);
-      backdrop-filter: blur(14px);
+      backdrop-filter: none;
     }
+    .leadHistoryCompact > summary { cursor: pointer; font-weight: 900; list-style-position: inside; }
+    .leadHistoryCompact[open] > summary { margin-bottom: 10px; }
+    .leadHistoryScroll { max-height: 300px; overflow: auto; padding-right: 4px; }
+    .leadActionDrawer {
+      position: absolute;
+      z-index: 12;
+      inset: 0 0 0 auto;
+      width: min(620px, 100%);
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      box-shadow: -18px 0 45px rgba(15,23,42,.18);
+    }
+    .leadActionDrawer.hidden { display: none; }
+    .leadActionDrawerHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .leadActionDrawerBody { flex: 1; overflow: auto; padding: 18px; }
+    .leadActionDrawer .historyPreview { max-height: 42vh; overflow: auto; margin-bottom: 16px; }
+    .leadConsentButton.isOn { background: var(--green); border-color: var(--green); color: #fff; }
+    body.leadPhoneActive .desktopPhoneDrawer { z-index: 100; }
     .leadChromeCollapsed .leadQuickBar,
     .leadChromeCollapsed .leadStickyFooter { display: none; }
     .leadChromeCollapsed .leadProfileHero {
@@ -1944,20 +1961,21 @@
       }
       function renderLeadDrawer(data) {
         var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
+        state.selectedLeadData = data;
         var name = nameOf(lead);
         var addr = leadAddressParts(lead);
-        var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
         var activateButton = lead.past_client ? '<button class="btn primary" data-action="activate-lead">Move to active Leads</button>' : '';
         var poolButton = custom.lead_pool ? '<span class="badge amber">In Lead Pool</span>' : '<button class="btn" data-action="move-lead-to-pool">Move to Lead Pool</button>';
         var quickStage = '<select title="Change pipeline stage" data-action="lead-stage-quick" data-id="' + esc(lead.id) + '" style="width:auto;min-width:150px;font-weight:850">' + state.stages.map(function (stage) { return '<option value="' + esc(stage) + '"' + (stage === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(stage) + '</option>'; }).join("") + '</select>';
+        var consentButton = '<button class="btn leadConsentButton' + (lead.sms_consent ? ' isOn' : '') + '" data-action="sms-consent">' + (lead.sms_consent ? '&#10003; SMS consent' : 'Mark SMS consent') + '</button>';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
-            '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
-            '<div class="leadQuickBar">' + quickStage + '<button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + activateButton + poolButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '</div></div>' +
+            '<div class="leadQuickBar">' + quickStage + '<button class="btn call" data-action="call-lead">Call</button><button class="btn primary" data-action="open-lead-panel" data-panel="text">Text</button><button class="btn" data-action="open-lead-panel" data-panel="email">Email</button><button class="btn teal" data-action="open-lead-panel" data-panel="whatsapp">WhatsApp</button><button class="btn" data-action="lead-scroll-section" data-target="leadAppointmentCard">Book appointment</button><button class="btn" data-action="open-lead-panel" data-panel="campaign">Campaign / workflow</button><button class="btn primary" data-action="open-lead-panel" data-panel="application">Start app</button><button class="btn" data-action="open-lead-panel" data-panel="files">File folders</button>' + consentButton + activateButton + poolButton + '</div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
-          '<section class="card pad"><h3 style="margin-top:0">Contact details</h3><div class="grid fieldGrid">' +
+          '<section class="card pad leadWide"><h3 style="margin-top:0">Contact details</h3><div class="grid fieldGrid">' +
             field("Full Name", "ldFull", name) +
             field("Phone", "ldPhone", lead.phone || "") +
             field("Email", "ldEmail", lead.email || "") +
@@ -1975,22 +1993,84 @@
           '</div>' +
           '<div style="margin-top:12px"><div class="toolbar" style="justify-content:space-between;align-items:center"><div><b>Tags</b><div id="leadTagsSearchHint" class="sub">' + esc((lead.tags || []).join(", ")) + '</div></div></div><div id="leadTagChips" style="margin-top:8px">' + renderLeadTagChips(lead.tags || [], true) + '</div><div class="toolbar" style="margin-top:8px"><input id="leadTagInput" placeholder="Add tag, e.g. HELOC, VA, hot lead"><button class="btn small primary" data-action="add-lead-tag">Add tag</button></div></div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
-          '<section id="leadCampaignCard" class="card pad"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Campaign / workflow</h3><div class="sub">Enroll, switch, pause, resume, or control the next workflow step.</div></div><span id="leadCampaignBadge" class="badge blue">Loading</span></div><div id="leadCampaignPanel" style="margin-top:12px"><div class="spinner"></div></div><div id="leadCampaignMsg" class="statusLine"></div></section>' +
-          '<section class="card pad"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Lead Intelligence</h3><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div></div><span id="leadAgentState" class="badge blue">Checking</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="spinner"></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Refresh history</button></div><div id="leadAgentMsg" class="statusLine"></div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
-          '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Previous message history</h3><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div></div><span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></div><div id="leadHistoryList" class="list" style="margin-top:12px">' + renderLeadHistory(activities) + '</div></section>' +
+          '<details class="card pad leadWide leadHistoryCompact" open><summary>Previous message history <span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></summary><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div><div id="leadHistoryList" class="list leadHistoryScroll" style="margin-top:10px">' + renderLeadHistory(activities) + '</div></details>' +
           '<section id="leadAppointmentCard" class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
           '<section class="card pad"><h3 style="margin-top:0">To-Do / Calendar</h3><div class="fieldGrid">' + field("Task title", "todoTitle", "") + '<label>Due date/time<input id="todoDue" type="datetime-local"></label>' + field("CC Email", "todoCc", "") + '<label style="align-self:end"><button class="btn" data-action="add-task">Add</button></label></div><div id="todoList" class="list" style="margin-top:12px">' + renderTodoList(lead.todos || []) + '</div></section>' +
-          '<section class="card pad"><h3 style="margin-top:0">File folders</h3><div class="fieldGrid"><label>Folder<input id="ldDocFolder" list="emailFolderOptions" value="General"></label><label>File name<input id="ldDocDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="ldDocFile" type="file"></label></div><button class="btn primary" data-action="upload-doc" style="margin-top:10px">Upload document</button><div id="docMiniList" class="list" style="margin-top:12px"><div class="spinner"></div></div></section>' +
-          '<details class="card pad leadWide" open><summary style="cursor:pointer;font-weight:900">Application file / protected borrower data</summary><div id="leadAppPanel" style="margin-top:12px"></div></details>' +
-          '<section id="leadCommsCard" class="card pad leadWide"><h3 style="margin-top:0">Communication and actions</h3><div class="grid" style="margin-top:12px"><label>Send text<textarea id="ldText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><button class="btn primary" data-action="send-lead-text">Send text</button><label>Email subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Email body<textarea id="ldEmailBody">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn" data-action="send-lead-email">Send email</button><div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp opt-in is not recorded. Outbound WhatsApp will be blocked until you record consent.") + '</div><label>WhatsApp template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="ldWhatsappText">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button><button class="btn teal" data-action="call-lead">Click-to-call</button><button class="btn" data-action="open-lead-dialer">Open dialer</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button><a class="btn" href="#leadCampaignCard">Campaign controls</a><button class="btn danger" data-action="delete-lead">Delete lead</button></div><div id="leadWhatsappMsg" class="statusLine"></div></div></section>' +
-          '</div><div class="leadStickyFooter"><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="save-lead">Save lead</button></div><div id="leadSaveMsg" class="statusLine"></div></div>',
+          '<details class="card pad leadWide"><summary style="cursor:pointer;font-weight:900">Lead Intelligence</summary><div class="toolbar" style="justify-content:space-between;align-items:flex-start;margin-top:12px"><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div><span id="leadAgentState" class="badge blue">Checking</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="spinner"></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Refresh history</button></div><div id="leadAgentMsg" class="statusLine"></div></details>' +
+          '</div><div class="leadStickyFooter"><div class="toolbar" style="justify-content:space-between"><button class="btn danger" data-action="delete-lead">Delete lead</button><div class="toolbar"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="save-lead">Save lead</button></div></div><div id="leadSaveMsg" class="statusLine"></div></div>' +
+          '<aside id="leadActionDrawer" class="leadActionDrawer hidden"><div class="leadActionDrawerHead"><div><b id="leadActionDrawerTitle">Lead action</b><div id="leadActionDrawerSub" class="sub"></div></div><button class="btn small" data-action="close-lead-panel">Close</button></div><div id="leadActionDrawerBody" class="leadActionDrawerBody"></div></aside>',
           { fullscreen: true });
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
-        renderLeadApplicationPanel(lead);
-        loadLeadDocs(lead.id, "docMiniList");
         loadLeadAgentPanel(lead.id);
-        loadLeadCampaignPanel(lead.id);
+      }
+
+      function leadChannelActivities(channels) {
+        var data = state.selectedLeadData || {};
+        return (data.activities || []).filter(function (activity) {
+          var channel = String(activity.channel || "").toLowerCase();
+          var type = String(activity.type || "").toLowerCase();
+          return channels.indexOf(channel) >= 0 || channels.indexOf(type) >= 0;
+        });
+      }
+      function leadDrawerHistory(id, channels, emptyText) {
+        var rows = leadChannelActivities(channels);
+        return '<div class="toolbar" style="justify-content:space-between"><b>Previous history</b><span class="badge blue">' + rows.length + '</span></div><div id="' + id + '" class="list historyPreview" style="margin-top:10px">' + (rows.length ? renderLeadHistory(rows) : '<div class="empty">' + esc(emptyText) + '</div>') + '</div>';
+      }
+      async function openLeadPanel(panel) {
+        var drawer = $("leadActionDrawer"), body = $("leadActionDrawerBody"), title = $("leadActionDrawerTitle"), sub = $("leadActionDrawerSub");
+        var lead = state.selectedLead;
+        if (!drawer || !body || !lead) return;
+        drawer.classList.remove("hidden");
+        if (panel === "text") {
+          title.textContent = "Text " + nameOf(lead);
+          sub.textContent = lead.phone || "No phone number";
+          body.innerHTML = leadDrawerHistory("leadTextHistory", ["sms", "imessage", "text"], "No previous text messages.") +
+            '<label>Message<textarea id="ldText" rows="7">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in looking at a HELOC/home equity line? Reply YES to continue or STOP to opt out.</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-lead-text">Send text</button><button class="btn" data-action="voicemail-lead">Drop voicemail</button></div><div id="leadTextMsg" class="statusLine"></div>';
+        } else if (panel === "email") {
+          title.textContent = "Email " + nameOf(lead);
+          sub.textContent = lead.email || "No email address";
+          body.innerHTML = leadDrawerHistory("leadEmailHistory", ["email"], "No previous emails.") +
+            '<label>Subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Message<textarea id="ldEmailBody" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn primary" data-action="send-lead-email">Send email</button><div id="leadEmailMsg" class="statusLine"></div>';
+        } else if (panel === "whatsapp") {
+          title.textContent = "WhatsApp " + nameOf(lead);
+          sub.textContent = lead.whatsapp_phone || lead.phone || "No WhatsApp number";
+          body.innerHTML = leadDrawerHistory("leadWhatsappHistory", ["whatsapp"], "No previous WhatsApp messages.") +
+            '<div class="' + (lead.whatsapp_opt_in_status ? "okText" : "warnBox") + '">' + (lead.whatsapp_opt_in_status ? "WhatsApp opt-in recorded." : "WhatsApp is not connected for this contact. Sending remains blocked until separate WhatsApp consent is recorded.") + '</div><label>Template<select id="ldWhatsappTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>Message<textarea id="ldWhatsappText" rows="7">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options? Reply HELOC and I can send next steps. Subject to approval.</textarea></label><div class="toolbar"><button class="btn teal" data-action="send-lead-whatsapp">Send WhatsApp</button><button class="btn" data-action="send-lead-whatsapp-template">Send template</button><button class="btn" data-action="send-lead-whatsapp-quote">Send quote link</button></div><div id="leadWhatsappMsg" class="statusLine"></div>';
+        } else if (panel === "campaign") {
+          title.textContent = "Campaign / workflow";
+          sub.textContent = "Enroll, switch, pause, resume, or advance this lead.";
+          body.innerHTML = '<div class="toolbar" style="justify-content:space-between"><h3 style="margin:0">Workflow controls</h3><span id="leadCampaignBadge" class="badge blue">Loading</span></div><div id="leadCampaignPanel" style="margin-top:12px"><div class="spinner"></div></div><div id="leadCampaignMsg" class="statusLine"></div>';
+          await loadLeadCampaignPanel(lead.id);
+        } else if (panel === "application") {
+          title.textContent = "Application file";
+          sub.textContent = "Application status, services, and protected borrower data.";
+          body.innerHTML = '<div id="leadAppPanel"></div>';
+          renderLeadApplicationPanel(lead);
+        } else if (panel === "files") {
+          title.textContent = "File folders";
+          sub.textContent = "Upload and manage documents for this lead.";
+          body.innerHTML = '<div class="fieldGrid"><label>Folder<input id="ldDocFolder" list="emailFolderOptions" value="General"></label><label>File name<input id="ldDocDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="ldDocType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="other">Other</option></select></label><label>File<input id="ldDocFile" type="file"></label></div><button class="btn primary" data-action="upload-doc" style="margin-top:10px">Upload document</button><div id="docMiniList" class="list" style="margin-top:12px"><div class="spinner"></div></div>';
+          await loadLeadDocs(lead.id, "docMiniList");
+        }
+      }
+      function closeLeadPanel() {
+        var drawer = $("leadActionDrawer");
+        if (drawer) drawer.classList.add("hidden");
+      }
+      function scrollLeadSection(id) {
+        var section = $(id);
+        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      async function callLeadFromProfile() {
+        var lead = state.selectedLead;
+        if (!lead || !lead.phone) throw new Error("This lead does not have a phone number.");
+        if (!isDesktopLayout()) { await openLeadDialer(true); return; }
+        document.body.classList.add("leadPhoneActive");
+        if ($("desktopPhoneDrawer") && $("desktopPhoneDrawer").classList.contains("hidden")) await togglePhoneDrawer();
+        if ($("quickDialPhone")) $("quickDialPhone").value = lead.phone;
+        await showQuickPhoneTab("keypad");
+        await quickDialCall();
       }
 
       function campaignOptions(selectedId) {
@@ -2174,10 +2254,14 @@
         if (!leadId || (!$("leadNotesList") && !$("leadHistoryList"))) return;
         var data = await json("/api/leads/" + encodeURIComponent(leadId));
         if (data.lead) state.selectedLead = data.lead;
+        state.selectedLeadData = data;
         var notes = data.notes || [];
         var activities = data.activities || [];
         if ($("leadNotesList")) $("leadNotesList").innerHTML = renderLeadNotes(notes);
         if ($("leadHistoryList")) $("leadHistoryList").innerHTML = renderLeadHistory(activities);
+        if ($("leadTextHistory")) $("leadTextHistory").innerHTML = renderLeadHistory(leadChannelActivities(["sms", "imessage", "text"]));
+        if ($("leadEmailHistory")) $("leadEmailHistory").innerHTML = renderLeadHistory(leadChannelActivities(["email"]));
+        if ($("leadWhatsappHistory")) $("leadWhatsappHistory").innerHTML = renderLeadHistory(leadChannelActivities(["whatsapp"]));
         if ($("leadNotesCount")) $("leadNotesCount").textContent = notes.length + " notes";
         if ($("leadHistoryCount")) $("leadHistoryCount").textContent = activities.length + " events";
       }
@@ -3583,6 +3667,7 @@
         if (!drawer || !isDesktopLayout()) { await route("dialer"); return; }
         var opening = drawer.classList.contains("hidden");
         drawer.classList.toggle("hidden", !opening);
+        if (!opening) document.body.classList.remove("leadPhoneActive");
         if ($("desktopPhoneButton")) $("desktopPhoneButton").classList.toggle("active", opening);
         if (!opening) return;
         if ($("quickDialPhone") && state.selectedLead && state.selectedLead.phone && !$("quickDialPhone").value) $("quickDialPhone").value = state.selectedLead.phone;
@@ -5790,6 +5875,7 @@
       }
       function closeModal() {
         $("modalShade").classList.add("hidden");
+        document.body.classList.remove("leadPhoneActive");
         var modal = document.querySelector("#modalShade .modal");
         if (modal) modal.classList.remove("fullscreen");
         $("modalBody").classList.remove("leadChromeCollapsed");
@@ -5898,6 +5984,9 @@
           else if (a === "notifications-clear") await clearNotifications();
           else if (a === "notification-task") openNotificationTask(btn.dataset.notificationId);
           else if (a === "notification-save-task") await saveNotificationTask(btn.dataset.notificationId);
+          else if (a === "open-lead-panel") await openLeadPanel(btn.dataset.panel || "text");
+          else if (a === "close-lead-panel") closeLeadPanel();
+          else if (a === "lead-scroll-section") scrollLeadSection(btn.dataset.target);
           else if (a === "toggle-lead-chrome") toggleLeadChrome();
           else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
           else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
@@ -6087,14 +6176,14 @@
           else if (a === "save-sms-consent") await saveSmsConsent();
           else if (a === "toggle-dnc") { await json("/api/leads/" + state.selectedLead.id + "/dnc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: btn.dataset.on === "1" }) }); showToast("DNC updated."); await openLead(state.selectedLead.id); }
           else if (a === "open-lead-dialer") await openLeadDialer(false);
-          else if (a === "send-lead-text") await leadAction("text");
-          else if (a === "send-lead-email") await leadAction("email");
+          else if (a === "send-lead-text") await leadAction("text", "leadTextMsg");
+          else if (a === "send-lead-email") await leadAction("email", "leadEmailMsg");
           else if (a === "send-lead-whatsapp") await sendLeadWhatsApp("text");
           else if (a === "send-lead-whatsapp-template") await sendLeadWhatsApp("template");
           else if (a === "send-lead-whatsapp-quote") await sendLeadWhatsApp("quote");
           else if (a === "add-note") await leadAction("note");
-          else if (a === "call-lead") await openLeadDialer(true);
-          else if (a === "voicemail-lead") await leadAction("vm");
+          else if (a === "call-lead") await callLeadFromProfile();
+          else if (a === "voicemail-lead") await leadAction("vm", "leadTextMsg");
           else if (a === "run-flow") await leadAction("runflow");
           else if (a === "start-app") await leadAction("start");
           else if (a === "order-title") await leadAction("title");
