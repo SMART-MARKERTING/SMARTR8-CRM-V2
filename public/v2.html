@@ -1243,7 +1243,10 @@
         if (!input || !box) return;
         var q = input.value.trim();
         if (q.length < 2) { box.classList.add("hidden"); box.innerHTML = ""; state.globalSearchRows = []; return; }
+        var requestId = Number(state.globalSearchRequestId || 0) + 1;
+        state.globalSearchRequestId = requestId;
         var data = await json("/api/contacts/all?limit=20&q=" + encodeURIComponent(q));
+        if (requestId !== state.globalSearchRequestId || input.value.trim() !== q) return;
         state.globalSearchRows = data.contacts || [];
         box.innerHTML = state.globalSearchRows.length ? state.globalSearchRows.map(function (contact) {
           return '<button class="globalSearchRow" data-action="global-search-open" data-id="' + esc(contact.id) + '"><span class="avatar">' + esc(initials(contact.name)) + '</span><span><b>' + esc(contact.name || "Contact") + '</b><span class="sub" style="display:block">' + esc([contact.phone, contact.email, contact.address].filter(Boolean).join(" | ")) + '</span></span><span class="badge ' + (contact.scope === "Past Client" ? "purple" : contact.scope === "Lead Pool" ? "amber" : "blue") + '">' + esc(contact.scope || "Contact") + '</span></button>';
@@ -1955,9 +1958,16 @@
       }
 
       async function openLead(id) {
-        var data = await json("/api/leads/" + encodeURIComponent(id));
-        state.selectedLead = data.lead;
-        renderLeadDrawer(data);
+        openModal("Lead Profile", '<div class="empty"><div class="spinner"></div><div style="margin-top:10px">Opening lead...</div></div>', { fullscreen: true });
+        try {
+          var data = await json("/api/leads/" + encodeURIComponent(id) + "?activityLimit=20");
+          state.selectedLead = data.lead;
+          state.selectedLeadHistoryComplete = false;
+          renderLeadDrawer(data);
+        } catch (error) {
+          if ($("modalBody")) $("modalBody").innerHTML = '<div class="empty badText">Could not open this lead: ' + esc(error.message || String(error)) + '</div>';
+          throw error;
+        }
       }
       function renderLeadDrawer(data) {
         var lead = data.lead, notes = data.notes || [], activities = data.activities || [], custom = lead.custom || {};
@@ -1994,13 +2004,21 @@
           '<div style="margin-top:12px"><div class="toolbar" style="justify-content:space-between;align-items:center"><div><b>Tags</b><div id="leadTagsSearchHint" class="sub">' + esc((lead.tags || []).join(", ")) + '</div></div></div><div id="leadTagChips" style="margin-top:8px">' + renderLeadTagChips(lead.tags || [], true) + '</div><div class="toolbar" style="margin-top:8px"><input id="leadTagInput" placeholder="Add tag, e.g. HELOC, VA, hot lead"><button class="btn small primary" data-action="add-lead-tag">Add tag</button></div></div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
-          '<details class="card pad leadWide leadHistoryCompact" open><summary>Previous message history <span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></summary><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div><div id="leadHistoryList" class="list leadHistoryScroll" style="margin-top:10px">' + renderLeadHistory(activities) + '</div></details>' +
-          '<details class="card pad leadWide"><summary style="cursor:pointer;font-weight:900">Lead Intelligence</summary><div class="toolbar" style="justify-content:space-between;align-items:flex-start;margin-top:12px"><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div><span id="leadAgentState" class="badge blue">Checking</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="spinner"></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Refresh history</button></div><div id="leadAgentMsg" class="statusLine"></div></details>' +
+          '<details class="card pad leadWide leadHistoryCompact" open><summary>Previous message history <span id="leadHistoryCount" class="badge blue">Latest ' + activities.length + '</span></summary><div class="sub">The newest activity is shown here. Channel drawers load the complete history only when needed.</div><div id="leadHistoryList" class="list leadHistoryScroll" style="margin-top:10px">' + renderLeadHistory(activities, 12) + '</div></details>' +
+          '<details class="card pad leadWide"><summary style="cursor:pointer;font-weight:900">Lead Intelligence</summary><div class="toolbar" style="justify-content:space-between;align-items:flex-start;margin-top:12px"><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div><span id="leadAgentState" class="badge blue">On demand</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="empty">Lead Intelligence is paused until you request it, keeping lead profiles fast.</div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Load history</button></div><div id="leadAgentMsg" class="statusLine"></div></details>' +
           '</div><div class="leadStickyFooter"><div class="toolbar" style="justify-content:space-between"><button class="btn danger" data-action="delete-lead">Delete lead</button><div class="toolbar"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="save-lead">Save lead</button></div></div><div id="leadSaveMsg" class="statusLine"></div></div>' +
           '<aside id="leadActionDrawer" class="leadActionDrawer hidden"><div class="leadActionDrawerHead"><div><b id="leadActionDrawerTitle">Lead action</b><div id="leadActionDrawerSub" class="sub"></div></div><button class="btn small" data-action="close-lead-panel">Close</button></div><div id="leadActionDrawerBody" class="leadActionDrawerBody"></div></aside>',
           { fullscreen: true });
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
-        loadLeadAgentPanel(lead.id);
+      }
+
+      async function ensureLeadHistoryLoaded() {
+        var lead = state.selectedLead;
+        if (!lead || state.selectedLeadHistoryComplete) return;
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "?activityLimit=100");
+        if (!state.selectedLead || state.selectedLead.id !== lead.id) return;
+        state.selectedLeadData = data;
+        state.selectedLeadHistoryComplete = true;
       }
 
       function leadChannelActivities(channels) {
@@ -2020,6 +2038,10 @@
         var lead = state.selectedLead;
         if (!drawer || !body || !lead) return;
         drawer.classList.remove("hidden");
+        if (["text", "email", "whatsapp"].indexOf(panel) >= 0 && !state.selectedLeadHistoryComplete) {
+          body.innerHTML = '<div class="empty"><div class="spinner"></div><div style="margin-top:10px">Loading message history...</div></div>';
+          await ensureLeadHistoryLoaded();
+        }
         if (panel === "text") {
           title.textContent = "Text " + nameOf(lead);
           sub.textContent = lead.phone || "No phone number";
@@ -2236,10 +2258,10 @@
           meta.message || meta.preview || meta.text || meta.outcome || meta.detail ||
           meta.error || meta.provider_message_id || "";
       }
-      function renderLeadHistory(activities) {
+      function renderLeadHistory(activities, limit) {
         activities = (activities || []).filter(function (a) { return !a.deleted_at; });
         if (!activities.length) return '<div class="empty">No previous messages or activity yet.</div>';
-        return activities.slice(0, 120).map(function (a) {
+        return activities.slice(0, limit || 120).map(function (a) {
           var label = activityLabel(a);
           var preview = String(activityPreview(a) || "");
           var metaLine = [formatDateTime(a.created_at), a.direction, a.channel, a.status].filter(Boolean).join(" | ");
@@ -2257,15 +2279,16 @@
         var data = await json("/api/leads/" + encodeURIComponent(leadId));
         if (data.lead) state.selectedLead = data.lead;
         state.selectedLeadData = data;
+        state.selectedLeadHistoryComplete = true;
         var notes = data.notes || [];
         var activities = data.activities || [];
         if ($("leadNotesList")) $("leadNotesList").innerHTML = renderLeadNotes(notes);
-        if ($("leadHistoryList")) $("leadHistoryList").innerHTML = renderLeadHistory(activities);
+        if ($("leadHistoryList")) $("leadHistoryList").innerHTML = renderLeadHistory(activities, 12);
         if ($("leadTextHistory")) $("leadTextHistory").innerHTML = renderLeadHistory(leadChannelActivities(["sms", "imessage", "text"]));
         if ($("leadEmailHistory")) $("leadEmailHistory").innerHTML = renderLeadHistory(leadChannelActivities(["email"]));
         if ($("leadWhatsappHistory")) $("leadWhatsappHistory").innerHTML = renderLeadHistory(leadChannelActivities(["whatsapp"]));
         if ($("leadNotesCount")) $("leadNotesCount").textContent = notes.length + " notes";
-        if ($("leadHistoryCount")) $("leadHistoryCount").textContent = activities.length + " events";
+        if ($("leadHistoryCount")) $("leadHistoryCount").textContent = "Latest " + Math.min(activities.length, 20);
       }
       function toggleLeadChrome() {
         var body = $("modalBody");
