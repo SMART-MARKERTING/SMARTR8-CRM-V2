@@ -3019,6 +3019,9 @@
             $("incomingCallBox").innerHTML = '<b>' + esc(incoming ? "Incoming call" : "Active call") + '</b><div class="sub">' + esc(who + " | " + st) + '</div>';
           }
           status("crmLineStatus", "Call: " + st, /hangup|destroy/i.test(st) ? "" : "okText");
+          if (incoming && state.page === "powerdialer") {
+            setTimeout(function () { autoAnswerPowerDialerCall(n.call, 0); }, 150);
+          }
           if (/hangup|destroy/i.test(st)) {
             state.activeCall = null;
             if ($("incomingCallBox")) { $("incomingCallBox").className = "empty"; $("incomingCallBox").innerHTML = "No active call."; }
@@ -3027,6 +3030,24 @@
         });
         client.connect();
         return readyPromise;
+      }
+      async function autoAnswerPowerDialerCall(call, attempt) {
+        if (!call || state.activeCall !== call || state.page !== "powerdialer") return;
+        var ccid = activeCallControlId();
+        if (!ccid && attempt < 6) {
+          setTimeout(function () { autoAnswerPowerDialerCall(call, attempt + 1); }, 250);
+          return;
+        }
+        try {
+          var data = await json("/calls/power-dialer/status");
+          var line = (data.lines || []).find(function (item) {
+            return item.peerCcid === ccid || item.monitorCcid === ccid;
+          });
+          if (line && state.activeCall === call && call.answer) {
+            call.answer();
+            status("powerMsg", line.monitorCcid === ccid ? "Live listening connected." : "Customer answered. CRM call connected automatically.", "okText");
+          }
+        } catch (e) {}
       }
       async function repairCrmLine() {
         status("crmLineStatus", "Repairing CRM line setup...");
@@ -3164,7 +3185,7 @@
             return;
           }
           refreshPowerStatus().catch(function () {});
-        }, 5000);
+        }, 1500);
       }
       async function loadPowerLists() {
         var data = await json("/calls/power-dialer/lists").catch(function () { return { lists: [] }; });
@@ -3338,14 +3359,18 @@
         if (!lines || !lines.length) return '<div class="empty">No active live lines right now.</div>';
         return lines.slice(0, 3).map(function (line, idx) {
           var label = line.status || line.stage || "calling";
-          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>Line ' + (idx + 1) + ': ' + esc(line.name || line.phone || "Calling") + '</b><div class="sub">' + esc([line.phone, line.listName, line.from ? "from " + line.from : "", line.outcome].filter(Boolean).join(" | ")) + '</div></div>' + powerStatusBadge(label) + '</div><div class="toolbar" style="margin-top:10px"><button class="btn small teal" data-action="power-monitor-line" data-ccid="' + esc(line.callControlId || "") + '">Listen / connect</button><button class="btn small call" data-action="dial-answer">Answer CRM call</button><button class="btn small" data-action="power-disposition-line" data-id="' + esc(line.leadId || "") + '">Disposition</button><button class="btn small danger" data-action="power-end-line" data-ccid="' + esc(line.callControlId || "") + '">End call</button></div></div>';
+          var listening = !!(line.monitoring || line.monitorRequested);
+          var connected = /(agent-answered|connected)/i.test(label);
+          var listenButton = connected ? '' : '<button class="btn small ' + (listening ? 'danger' : 'teal') + '" data-action="power-monitor-line" data-ccid="' + esc(line.callControlId || "") + '" data-mode="' + (listening ? 'stop' : 'start') + '">' + (listening ? 'Stop listening' : 'Live listen') + '</button>';
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>Line ' + (idx + 1) + ': ' + esc(line.name || line.phone || "Calling") + '</b><div class="sub">' + esc([line.phone, line.listName, line.from ? "from " + line.from : "", line.outcome].filter(Boolean).join(" | ")) + '</div></div>' + powerStatusBadge(label) + '</div><div class="toolbar" style="margin-top:10px">' + listenButton + '<button class="btn small" data-action="power-disposition-line" data-id="' + esc(line.leadId || "") + '">Disposition</button><button class="btn small danger" data-action="power-end-line" data-ccid="' + esc(line.callControlId || "") + '">End call</button></div></div>';
         }).join("");
       }
-      function maybeOpenPowerDisposition(lines) {
-        if (!lines || $("modalShade").classList.contains("hidden") === false) return;
-        var line = lines.find(function (r) {
+      function maybeOpenPowerDisposition(lines, attention) {
+        if ($("modalShade").classList.contains("hidden") === false) return;
+        var candidates = attention ? [attention].concat(lines || []) : (lines || []);
+        var line = candidates.find(function (r) {
           var key = r.callControlId || r.leadId;
-          var hot = /(ringing-agent|agent-answered|answered|connected|human)/i.test([r.status, r.outcome].filter(Boolean).join(" "));
+          var hot = /(ringing-agent|agent-answered|answered|connected|human-detected|human)/i.test([r.status, r.outcome].filter(Boolean).join(" "));
           return key && hot && !state.powerDialerDispositionShown.has(key);
         });
         if (!line) return;
@@ -3364,12 +3389,12 @@
         state.powerDialerLines = data.lines || [];
         if (data.lists) state.powerDialerLists = data.lists;
         $("powerStatus").innerHTML =
-          '<div class="item"><b>' + (data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>' +
-          '<div class="item"><b>Live lines</b><div class="sub">Tap Listen / connect to join a live line. Max 3 active lines.</div></div>' +
+          '<div class="item"><b>' + (data.paused ? "Paused for answered customer" : data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.attention ? '<div class="okText">' + esc((data.attention.name || data.attention.phone || "Customer") + " answered. Other lines were ended until disposition.") + '</div>' : '') + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>' +
+          '<div class="item"><b>Live lines</b><div class="sub">Live listen is muted monitor audio. A human answer connects automatically and pauses the other lines.</div></div>' +
           renderPowerLines(data.lines || []) +
           ((data.queue || []).length ? '<div class="item"><b>Next up</b><div class="sub">' + esc((data.queue || []).slice(0, 5).map(function (q) { return (q.listName ? q.listName + ": " : "") + (q.name || q.phone || q.leadId); }).join(", ")) + '</div></div>' : '') +
           ((data.lists || []).length ? '<div class="item"><b>List windows</b><div class="sub">' + esc((data.lists || []).map(function (l) { var w = l.callWindow || {}; return l.name + " - " + (w.timezone ? (w.allowed ? "open " : "closed ") + (w.localTime || "") : "manual"); }).join(" | ")) + '</div></div>' : '');
-        maybeOpenPowerDisposition(data.lines || []);
+        maybeOpenPowerDisposition(data.lines || [], data.attention || null);
         renderPowerActivity(data.recent || []);
         if ($("powerLeadWrap") && state.powerDialerLeads.length) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
       }
@@ -3396,22 +3421,22 @@
         showToast("Power Dialer disposition saved.");
         await refreshPowerStatus();
       }
-      async function monitorPowerLine(ccid) {
+      async function monitorPowerLine(ccid, mode) {
         if (!ccid) return;
-        if (($("powerConnect") && $("powerConnect").value) === "crm" && !state.dialerClient) await connectCrmLine();
-        status("powerMsg", "Connecting to live line...");
+        if (mode !== "stop" && ($("powerConnect") && $("powerConnect").value) === "crm" && !state.dialerClient) await connectCrmLine();
+        status("powerMsg", mode === "stop" ? "Stopping live listen..." : "Starting live listen...");
         var data = await json("/calls/power-dialer/lines/" + encodeURIComponent(ccid) + "/monitor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ connectTo: $("powerConnect") ? $("powerConnect").value : "crm" })
+          body: JSON.stringify({ action: mode === "stop" ? "stop" : "start", connectTo: $("powerConnect") ? $("powerConnect").value : "crm" })
         });
-        status("powerMsg", "Ringing " + data.connectTo + " for live line.", "okText");
+        status("powerMsg", mode === "stop" ? "Live listening stopped." : "Live listening is connecting.", mode === "stop" ? "warnText" : "okText");
         await refreshPowerStatus();
       }
       async function endPowerLine(ccid) {
         if (!ccid) return;
         await json("/calls/power-dialer/lines/" + encodeURIComponent(ccid) + "/end", { method: "POST" });
-        status("powerMsg", "Line ended.", "warnText");
+        status("powerMsg", "Line ended. The queue advanced to the next lead.", "warnText");
         await refreshPowerStatus();
       }
 
@@ -5520,7 +5545,7 @@
           else if (a === "power-save-disposition") await savePowerDisposition(btn.dataset.id);
           else if (a === "power-save-popup-disposition") await savePopupPowerDisposition(btn.dataset.id);
           else if (a === "power-disposition-line") openPowerDispositionModal(btn.dataset.id, "Power Dialer call");
-          else if (a === "power-monitor-line") await monitorPowerLine(btn.dataset.ccid);
+          else if (a === "power-monitor-line") await monitorPowerLine(btn.dataset.ccid, btn.dataset.mode);
           else if (a === "power-end-line") await endPowerLine(btn.dataset.ccid);
           else if (a === "power-select") { btn.checked ? state.powerDialerSelectedIds.add(btn.dataset.id) : state.powerDialerSelectedIds.delete(btn.dataset.id); }
           else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads); }

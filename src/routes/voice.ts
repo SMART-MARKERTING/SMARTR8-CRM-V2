@@ -44,6 +44,10 @@ import {
   answer,
   hangup,
   bridge,
+  createConference,
+  joinConference,
+  updateConferenceParticipant,
+  leaveConference,
   transfer,
   speak,
   gatherDigits,
@@ -260,6 +264,18 @@ let powerDialerConcurrency = 1;
 let powerDialerStopped = true;
 let powerDialerLastError: string | null = null;
 let powerDialerNumberCache: { at: number; numbers: OwnedNumber[] } | null = null;
+let powerDialerPumping = false;
+
+interface PowerDialerAttention {
+  leadId: string;
+  callControlId: string;
+  name: string | null;
+  phone: string | null;
+  detectedAt: number;
+  status: string;
+}
+
+let powerDialerAttention: PowerDialerAttention | null = null;
 
 interface PowerDialerEvent {
   id: string;
@@ -477,28 +493,70 @@ async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
 }
 
 function pumpPowerDialer(): void {
-  if (powerDialerStopped) return;
+  if (powerDialerStopped || powerDialerAttention || powerDialerPumping) return;
+  powerDialerPumping = true;
   void (async () => {
-    while (!powerDialerStopped && powerDialerActive < powerDialerConcurrency && powerDialerQueue.length) {
-      const item = powerDialerQueue.shift()!;
-      try {
-        await startPowerDialLead(item);
-      } catch (err) {
-        powerDialerLastError = String(err);
-        log.error("power dialer start error", { leadId: item.leadId, err: String(err) });
+    try {
+      while (!powerDialerStopped && !powerDialerAttention && powerDialerActive < powerDialerConcurrency && powerDialerQueue.length) {
+        const item = powerDialerQueue.shift()!;
+        try {
+          await startPowerDialLead(item);
+        } catch (err) {
+          powerDialerLastError = String(err);
+          log.error("power dialer start error", { leadId: item.leadId, err: String(err) });
+        }
       }
+    } finally {
+      powerDialerPumping = false;
     }
   })();
 }
 
-function finishPowerDialerLeg(): void {
+function finishPowerDialerLeg(ctx: ReturnType<typeof getCall>): void {
+  if (!ctx || ctx.powerDialerFinished) return;
+  ctx.powerDialerFinished = true;
   if (powerDialerActive > 0) powerDialerActive--;
-  pumpPowerDialer();
+  if (!powerDialerAttention) pumpPowerDialer();
+}
+
+function resumePowerDialer(leadId?: string): void {
+  if (powerDialerAttention && leadId && powerDialerAttention.leadId !== leadId) return;
+  powerDialerAttention = null;
+  if (!powerDialerStopped) pumpPowerDialer();
+}
+
+async function pausePowerDialerForHuman(winnerCcid: string, winnerCtx: NonNullable<ReturnType<typeof getCall>>, lead: Lead | null): Promise<void> {
+  powerDialerAttention = {
+    leadId: winnerCtx.leadId || lead?.id || "",
+    callControlId: winnerCcid,
+    name: lead ? leadDisplayName(lead) : null,
+    phone: winnerCtx.contactPhone || lead?.phone || null,
+    detectedAt: Date.now(),
+    status: "human-detected",
+  };
+  const otherLines = listCalls().filter(({ ccid, ctx }) => ccid !== winnerCcid && ctx.powerDialer && ctx.primary && !ctx.powerDialerFinished);
+  await Promise.all(otherLines.map(async ({ ccid, ctx }) => {
+    const otherLead = ctx.leadId ? getLead(ctx.leadId) : null;
+    ctx.stage = "cancelled-for-human-answer";
+    if (otherLead) {
+      powerDialerEventForLead(otherLead, {
+        leadId: otherLead.id,
+        status: "cancelled",
+        outcome: "another-line-answered",
+        callControlId: ccid,
+        note: lead ? `${leadDisplayName(lead) || lead.phone || "Another lead"} answered` : "Another line answered",
+      });
+    }
+    if (ctx.monitorCcid) await hangup(ctx.monitorCcid).catch(() => {});
+    if (ctx.peerCcid) await hangup(ctx.peerCcid).catch(() => {});
+    await hangup(ccid).catch(() => {});
+    finishPowerDialerLeg(ctx);
+  }));
 }
 
 function powerDialerActiveLines() {
   return listCalls()
-    .filter(({ ctx }) => ctx.powerDialer && ctx.primary)
+    .filter(({ ctx }) => ctx.powerDialer && ctx.primary && !ctx.powerDialerFinished)
     .map(({ ccid, ctx }) => {
       const lead = ctx.leadId ? getLead(ctx.leadId) : null;
       const event = powerDialerEvents.find((row) => row.callControlId === ccid || (lead && row.leadId === lead.id));
@@ -517,6 +575,10 @@ function powerDialerActiveLines() {
         answeredAt: ctx.answeredAt || null,
         connectedAt: ctx.connectedAt || null,
         stage: ctx.stage || null,
+        monitoring: Boolean(ctx.monitoring),
+        monitorRequested: Boolean(ctx.monitorRequested),
+        monitorCcid: ctx.monitorCcid || null,
+        conferenceId: ctx.conferenceId || null,
       };
     })
     .sort((a, b) => a.startedAt - b.startedAt);
@@ -695,6 +757,7 @@ voiceRouter.post("/calls/power-dialer/disposition", requirePass, (req, res) => {
     meta: { source: "power-dialer-manual" },
   });
   powerDialerEventForLead(lead, { leadId: lead!.id, status: "manual", outcome, note });
+  resumePowerDialer(lead!.id);
   res.json({ ok: true, leadId: lead!.id, outcome });
 });
 
@@ -722,6 +785,7 @@ voiceRouter.post("/calls/power-dialer/start", requirePass, async (req, res) => {
     return;
   }
   powerDialerConcurrency = Math.max(1, Math.min(3, Number(body.concurrency) || 1));
+  if (powerDialerStopped) powerDialerAttention = null;
   powerDialerStopped = false;
   powerDialerLastError = null;
   for (const id of ids) {
@@ -762,6 +826,7 @@ voiceRouter.post("/calls/power-dialer/start-available-lists", requirePass, async
     return;
   }
   powerDialerConcurrency = Math.max(1, Math.min(3, Number(body.concurrency) || 1));
+  if (powerDialerStopped) powerDialerAttention = null;
   powerDialerStopped = false;
   powerDialerLastError = null;
   const max = Math.max(1, Math.min(750, Number(body.max) || 250));
@@ -797,6 +862,7 @@ voiceRouter.post("/calls/power-dialer/stop", requirePass, (_req, res) => {
   const cleared = powerDialerQueue.length;
   powerDialerQueue.splice(0, powerDialerQueue.length);
   powerDialerStopped = true;
+  powerDialerAttention = null;
   res.json({ ok: true, cleared, active: powerDialerActive });
 });
 
@@ -807,7 +873,27 @@ voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (
     res.status(404).json({ error: "active Power Dialer line not found" });
     return;
   }
-  const body = (req.body ?? {}) as { connectTo?: string };
+  const body = (req.body ?? {}) as { connectTo?: string; action?: string };
+  if (body.action === "stop") {
+    const monitorCcid = ctx.monitorCcid;
+    if (monitorCcid) await hangup(monitorCcid).catch(() => {});
+    if (ctx.conferenceId) await leaveConference(ctx.conferenceId, ccid).catch(() => {});
+    ctx.monitorCcid = undefined;
+    ctx.monitorRequested = false;
+    ctx.monitorTarget = undefined;
+    ctx.monitoring = false;
+    ctx.conferenceId = undefined;
+    ctx.stage = ctx.stageBeforeMonitor || (ctx.answeredAt ? "amd-wait" : "dialing");
+    ctx.stageBeforeMonitor = undefined;
+    const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+    if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: ctx.stage || "dialing", callControlId: ccid, note: "Live listening stopped" });
+    res.json({ ok: true, action: "stopped", callControlId: ccid, monitorCcid: monitorCcid || null });
+    return;
+  }
+  if (ctx.monitorCcid || ctx.monitorRequested || ctx.monitoring) {
+    res.json({ ok: true, action: "already-started", callControlId: ccid, monitorCcid: ctx.monitorCcid || null, monitoring: Boolean(ctx.monitoring) });
+    return;
+  }
   const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
   const target = await powerDialerTarget(connectTo);
   if (!target) {
@@ -815,25 +901,28 @@ voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (
     return;
   }
   try {
-    const peer = await dialLeg(target, { timeoutSecs: config.inbound.cellRingSecs, from: config.telnyx.fromNumber });
-    ctx.peerCcid = peer;
-    setCall(peer, {
+    const monitor = await dialLeg(target, { timeoutSecs: config.inbound.cellRingSecs, from: config.telnyx.fromNumber });
+    ctx.stageBeforeMonitor = ctx.stage;
+    ctx.monitorRequested = true;
+    ctx.monitorTarget = connectTo;
+    ctx.monitorCcid = monitor;
+    setCall(monitor, {
       kind: "automated",
       direction: "outbound",
       startedAt: ctx.startedAt,
       primary: false,
       leadId: ctx.leadId,
       contactPhone: ctx.contactPhone,
-      role: "bridge-on-answer",
+      role: "power-monitor-join",
       peerCcid: ccid,
       powerDialer: true,
     });
     const lead = ctx.leadId ? getLead(ctx.leadId) : null;
     if (lead) {
-      powerDialerEventForLead(lead, { leadId: lead.id, status: "monitor-ringing", callControlId: ccid, peerCcid: peer, note: `Ringing ${connectTo}` });
-      logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer monitor requested to ${connectTo}`, status: "monitor-ringing" });
+      powerDialerEventForLead(lead, { leadId: lead.id, status: "monitor-ringing", callControlId: ccid, peerCcid: monitor, note: `Starting live listen in ${connectTo}` });
+      logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer live listen requested in ${connectTo}`, status: "monitor-ringing" });
     }
-    res.json({ ok: true, callControlId: ccid, peerCcid: peer, connectTo });
+    res.json({ ok: true, action: "starting", callControlId: ccid, monitorCcid: monitor, connectTo });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -847,11 +936,15 @@ voiceRouter.post("/calls/power-dialer/lines/:ccid/end", requirePass, async (req,
     return;
   }
   const peer = ctx.peerCcid;
+  const monitor = ctx.monitorCcid;
   await hangup(ccid).catch(() => {});
   if (peer) await hangup(peer).catch(() => {});
+  if (monitor && monitor !== peer) await hangup(monitor).catch(() => {});
   const lead = ctx.leadId ? getLead(ctx.leadId) : null;
   if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "ended", outcome: "manual-end", callControlId: ccid });
-  res.json({ ok: true, callControlId: ccid, peerCcid: peer || null });
+  finishPowerDialerLeg(ctx);
+  if (powerDialerAttention?.callControlId === ccid) resumePowerDialer(ctx.leadId);
+  res.json({ ok: true, callControlId: ccid, peerCcid: peer || null, monitorCcid: monitor || null, advanced: true });
 });
 
 voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
@@ -860,6 +953,8 @@ voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
     queued: powerDialerQueue.length,
     active: powerDialerActive,
     running: !powerDialerStopped,
+    paused: Boolean(powerDialerAttention),
+    attention: powerDialerAttention,
     concurrency: powerDialerConcurrency,
     lastError: powerDialerLastError,
     lines: powerDialerActiveLines(),
@@ -998,6 +1093,56 @@ async function handleInbound(p: any): Promise<void> {
   await answer(ccid);
 }
 
+function humanPowerDialerResult(value: string | undefined): boolean {
+  return /human|not_sure|unknown/.test(String(value || "").toLowerCase());
+}
+
+async function connectPowerMonitor(primaryCcid: string): Promise<boolean> {
+  const primary = getCall(primaryCcid);
+  if (!primary?.powerDialer || !primary.primary || !primary.answeredAt || !primary.monitorCcid) return false;
+  const monitor = getCall(primary.monitorCcid);
+  if (!monitor?.answeredAt) return false;
+  try {
+    if (!primary.conferenceId) {
+      primary.conferenceId = await createConference(`power-${primary.leadId || randomUUID()}`, primaryCcid);
+    }
+    const barge = humanPowerDialerResult(primary.powerDialerResult);
+    await joinConference(primary.conferenceId, primary.monitorCcid, { supervisorRole: barge ? "barge" : "monitor" });
+    primary.monitorRequested = false;
+    primary.monitoring = !barge;
+    if (barge) {
+      primary.peerCcid = primary.monitorCcid;
+      primary.connectedAt = Date.now();
+      primary.stage = "agent-answered";
+      primary.stageBeforeMonitor = undefined;
+      if (powerDialerAttention?.callControlId === primaryCcid) powerDialerAttention.status = "connected";
+    } else {
+      primary.stage = "monitoring";
+    }
+    const lead = primary.leadId ? getLead(primary.leadId) : null;
+    if (lead) {
+      powerDialerEventForLead(lead, {
+        leadId: lead.id,
+        status: barge ? "agent-answered" : "monitoring",
+        outcome: barge ? "connected" : "live-listen",
+        callControlId: primaryCcid,
+        peerCcid: primary.monitorCcid,
+        note: barge ? "Human answer connected to CRM" : "Live listening active",
+      });
+    }
+    return true;
+  } catch (err) {
+    const monitorCcid = primary.monitorCcid;
+    if (monitorCcid) await hangup(monitorCcid).catch(() => {});
+    primary.monitorCcid = undefined;
+    primary.monitorRequested = false;
+    primary.monitoring = false;
+    primary.conferenceId = undefined;
+    powerDialerLastError = `Live listen failed: ${String(err)}`;
+    return false;
+  }
+}
+
 async function handleAnswered(ccid: string): Promise<void> {
   const ctx = getCall(ccid);
   if (!ctx) {
@@ -1006,9 +1151,14 @@ async function handleAnswered(ccid: string): Promise<void> {
     return;
   }
   ctx.answeredAt = Date.now();
+  if (ctx.role === "power-monitor-join" && ctx.peerCcid) {
+    await connectPowerMonitor(ctx.peerCcid);
+    return;
+  }
   if (ctx.powerDialer && ctx.stage === "amd-wait") {
     // Power Dialer waits for AMD before ringing the agent, so voicemail/machine answers
     // do not pull the operator into a dead call.
+    if (ctx.monitorCcid) await connectPowerMonitor(ccid);
     return;
   }
 
@@ -1056,6 +1206,7 @@ async function handleAnswered(ccid: string): Promise<void> {
     if (ctx.powerDialer && ctx.leadId) {
       const lead = getLead(ctx.leadId);
       if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "agent-answered", outcome: "connected", callControlId: ctx.peerCcid, peerCcid: ccid });
+      if (powerDialerAttention?.callControlId === ctx.peerCcid) powerDialerAttention.status = "connected";
     }
   }
 }
@@ -1079,12 +1230,40 @@ async function handleMachineDetection(ccid: string, p: any): Promise<void> {
       powerDialerEventForLead(lead, { leadId: lead.id, status: "machine", outcome: result || "machine", callControlId: ccid });
     }
     await hangup(ccid).catch(() => {});
+    finishPowerDialerLeg(ctx);
     return;
   }
   if (!ctx.peerTarget) {
     if (lead) logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer human detected but no agent target was available", status: "failed:no-agent-target" });
     if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "failed", outcome: "no-agent-target", callControlId: ccid });
     await hangup(ccid).catch(() => {});
+    finishPowerDialerLeg(ctx);
+    return;
+  }
+  ctx.stage = "human-detected";
+  if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "human-detected", outcome: result || "human", callControlId: ccid });
+  await pausePowerDialerForHuman(ccid, ctx, lead);
+  if (ctx.monitorCcid) {
+    if (ctx.monitoring && ctx.conferenceId) {
+      try {
+        await updateConferenceParticipant(ctx.conferenceId, ctx.monitorCcid, "barge");
+        ctx.monitoring = false;
+        ctx.monitorRequested = false;
+        ctx.peerCcid = ctx.monitorCcid;
+        ctx.connectedAt = Date.now();
+        ctx.stage = "agent-answered";
+        ctx.stageBeforeMonitor = undefined;
+        if (powerDialerAttention) powerDialerAttention.status = "connected";
+        if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "agent-answered", outcome: "connected", callControlId: ccid, peerCcid: ctx.monitorCcid, note: "Live listener promoted to connected call" });
+        return;
+      } catch (err) {
+        powerDialerLastError = `Could not connect live listener: ${String(err)}`;
+      }
+    }
+    const connected = await connectPowerMonitor(ccid);
+    if (connected) return;
+    ctx.stage = "ringing-agent";
+    if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "ringing-agent", outcome: result || "human", callControlId: ccid, peerCcid: ctx.monitorCcid, note: "Human detected; waiting for CRM listener" });
     return;
   }
   try {
@@ -1117,6 +1296,7 @@ async function handleMachineDetection(ccid: string, p: any): Promise<void> {
     if (lead) logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer agent ring failed", status: "failed:agent-ring", meta: { error: String(err) } });
     if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "failed", outcome: "agent-ring-failed", callControlId: ccid, note: String(err) });
     await hangup(ccid).catch(() => {});
+    finishPowerDialerLeg(ctx);
   }
 }
 
@@ -1156,6 +1336,22 @@ async function handleHangup(ccid: string, p: any): Promise<void> {
   if (await onInboundLegHangup(ccid)) return;
 
   const ctx = getCall(ccid);
+  if (ctx?.role === "power-monitor-join" && ctx.peerCcid) {
+    const primary = getCall(ctx.peerCcid);
+    if (primary?.monitorCcid === ccid) {
+      primary.monitorCcid = undefined;
+      primary.monitorRequested = false;
+      primary.monitoring = false;
+      if (!humanPowerDialerResult(primary.powerDialerResult) && primary.conferenceId) {
+        await leaveConference(primary.conferenceId, ctx.peerCcid).catch(() => {});
+        primary.conferenceId = undefined;
+      }
+      if (!humanPowerDialerResult(primary.powerDialerResult)) {
+        primary.stage = primary.stageBeforeMonitor || (primary.answeredAt ? "amd-wait" : "dialing");
+      }
+      primary.stageBeforeMonitor = undefined;
+    }
+  }
   if (ctx && ctx.primary && !ctx.logged) {
     ctx.logged = true;
     // "Connected" = a human (CRM app or cell) actually bridged. For inbound, answeredAt is
@@ -1238,6 +1434,6 @@ async function handleHangup(ccid: string, p: any): Promise<void> {
     }
     log.info("call ended", { ccid, kind: ctx.kind, direction: ctx.direction, durationSec, status });
   }
-  if (ctx?.powerDialer && ctx.primary) finishPowerDialerLeg();
+  if (ctx?.powerDialer && ctx.primary) finishPowerDialerLeg(ctx);
   delCall(ccid);
 }

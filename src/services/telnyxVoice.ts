@@ -91,13 +91,37 @@ export async function bridge(ccid: string, otherCcid: string): Promise<void> {
  * This is how we do reliable 3-way calling (a 1:1 bridge can't hold a third party).
  */
 export async function createConference(name: string, ccid: string): Promise<string> {
-  const data = await voicePost(`/conferences`, { name, call_control_id: ccid });
+  const data = await voicePost(`/conferences`, { name, call_control_id: ccid, beep_enabled: "never" });
   return data?.data?.id as string;
 }
 
 /** Join an already-answered call into an existing conference. */
-export async function joinConference(conferenceId: string, ccid: string): Promise<void> {
-  await voicePost(`/conferences/${conferenceId}/actions/join`, { call_control_id: ccid });
+export async function joinConference(
+  conferenceId: string,
+  ccid: string,
+  opts: { supervisorRole?: "barge" | "monitor" | "none" | "whisper" } = {},
+): Promise<void> {
+  const body: Record<string, unknown> = { call_control_id: ccid, beep_enabled: "never" };
+  if (opts.supervisorRole) body.supervisor_role = opts.supervisorRole;
+  await voicePost(`/conferences/${conferenceId}/actions/join`, body);
+}
+
+export async function updateConferenceParticipant(
+  conferenceId: string,
+  ccid: string,
+  supervisorRole: "barge" | "monitor" | "none" | "whisper",
+): Promise<void> {
+  await voicePost(`/conferences/${conferenceId}/actions/update`, {
+    call_control_id: ccid,
+    supervisor_role: supervisorRole,
+  });
+}
+
+export async function leaveConference(conferenceId: string, ccid: string): Promise<void> {
+  await voicePost(`/conferences/${conferenceId}/actions/leave`, {
+    call_control_id: ccid,
+    beep_enabled: "never",
+  });
 }
 
 export async function transfer(ccid: string, to: string, from = config.telnyx.fromNumber): Promise<void> {
