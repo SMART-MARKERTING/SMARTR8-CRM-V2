@@ -282,6 +282,29 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_call_summaries_status ON call_summaries(status, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_call_summaries_call ON call_summaries(call_session_id, call_control_id);
   CREATE INDEX IF NOT EXISTS idx_call_summaries_lead ON call_summaries(lead_id, updated_at DESC);
+
+  -- Lead-intelligence agent audit trail. The agent is recommendation-only by
+  -- default; every run is persisted so an operator can see what it considered,
+  -- what it recommended, and whether any safe action was actually applied.
+  CREATE TABLE IF NOT EXISTS lead_agent_runs (
+    id                        TEXT PRIMARY KEY,
+    lead_id                   TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    created_at                INTEGER NOT NULL,
+    updated_at                INTEGER NOT NULL,
+    trigger                   TEXT NOT NULL,
+    mode                      TEXT NOT NULL,
+    status                    TEXT NOT NULL,
+    provider                  TEXT,
+    model                     TEXT,
+    summary                   TEXT,
+    duplicate_json            TEXT NOT NULL DEFAULT '[]',
+    recommendation_json       TEXT NOT NULL DEFAULT '{}',
+    recommended_owner_user_id TEXT,
+    applied_actions_json      TEXT NOT NULL DEFAULT '[]',
+    error_message             TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_lead_agent_runs_lead ON lead_agent_runs(lead_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_lead_agent_runs_status ON lead_agent_runs(status, updated_at DESC);
 `);
 
 // ── Multi-user accounts ──────────────────────────────────────────────────────

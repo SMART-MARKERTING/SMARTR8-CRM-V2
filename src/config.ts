@@ -82,6 +82,20 @@ export const config = {
     aiModel: env("AI_MODEL", "gpt-4o-mini"),
   },
 
+  // Step 1 lead-intelligence agent. It is deliberately off by default and its
+  // default mode only records recommendations; it never contacts a consumer or
+  // makes a credit decision. Safe CRM mutations require an explicit second flag.
+  leadAgent: {
+    enabled: env("LEAD_AGENT_ENABLED", "false") === "true",
+    mode: env("LEAD_AGENT_MODE", "recommend").toLowerCase(),
+    applySafeActions: env("LEAD_AGENT_APPLY_SAFE_ACTIONS", "false") === "true",
+    createTasks: env("LEAD_AGENT_CREATE_TASKS", "false") === "true",
+    provider: env("LEAD_AGENT_PROVIDER", env("AI_PROVIDER", "openai")).toLowerCase(),
+    apiKey: env("LEAD_AGENT_API_KEY", env("AI_API_KEY")),
+    model: env("LEAD_AGENT_MODEL", env("AI_MODEL", "gpt-4o-mini")),
+    routingRulesJson: env("LEAD_AGENT_ROUTING_RULES_JSON", "[]"),
+  },
+
   whatsapp: {
     twilioAccountSid: env("TWILIO_ACCOUNT_SID"),
     twilioAuthToken: env("TWILIO_AUTH_TOKEN"),
