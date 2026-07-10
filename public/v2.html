@@ -5026,8 +5026,9 @@
       async function loadAdminPage() {
         pageShell("Admin / Sub-Accounts", "Manage admin users, sub-account users, passwords, roles, and feature access.",
           '<button class="btn" data-action="refresh-admin">Refresh</button>',
-          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><h3>Feature access</h3><div class="sub">Uncheck anything this user should not see or use.</div>' + permissionCheckboxes("new", allFeaturePages(), "user") + '<button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
+          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><h3>Feature access</h3><div class="sub">Uncheck anything this user should not see or use.</div>' + permissionCheckboxes("new", allFeaturePages(), "user") + '<button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section><section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Classic CRM synchronization</h2><div class="sub">Live changes are mirrored both ways. Reconciliation catches missed and historical records.</div></div><div class="toolbar"><button class="btn" data-action="admin-sync-status">Check status</button><button class="btn primary" data-action="admin-sync-classic">Reconcile all now</button></div></div><div id="adminSyncStatus" class="statusLine">Checking synchronization...</div></section></div>');
         await refreshAdminPage();
+        await refreshAdminSyncStatus();
       }
       async function refreshAdminPage() {
         var data = await json("/api/users").catch(function (e) { return { users: [], error: e.message }; });
@@ -5037,6 +5038,36 @@
             '<details style="margin-top:10px" ' + (u.role === "admin" ? "" : "open") + '><summary style="cursor:pointer;font-weight:900">Feature access</summary>' + permissionCheckboxes(u.id, u.permissions || [], u.role) + '<button class="btn small primary" data-action="admin-save-permissions" data-id="' + esc(u.id) + '" style="margin-top:10px"' + (u.role === "admin" ? " disabled" : "") + '>Save permissions</button></details>' +
             '<div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
         }).join("") : '<div class="empty">No users found.</div>';
+      }
+      async function refreshAdminSyncStatus() {
+        if (!$('adminSyncStatus')) return;
+        status('adminSyncStatus', 'Checking synchronization...');
+        var data = await json('/api/admin/sync/status').catch(function (e) { return { error: e.message }; });
+        if (!$('adminSyncStatus')) return;
+        if (data.error) { status('adminSyncStatus', data.error, 'badText'); return; }
+        var sync = data.reconciliation || {};
+        var parts = [
+          sync.configured ? 'Connected' : 'Not configured',
+          'Status: ' + (sync.status || 'unknown'),
+          'Checked: ' + Number(sync.scanned || 0),
+          'Applied: ' + Number(sync.applied || 0),
+          'Notes: ' + Number(sync.notes || 0),
+          'Timeline items: ' + Number(sync.activities || 0)
+        ];
+        if (sync.finishedAt) parts.push('Last completed: ' + formatDateTime(sync.finishedAt));
+        if (sync.error) parts.push('Error: ' + sync.error);
+        status('adminSyncStatus', parts.join(' | '), sync.configured && sync.status !== 'error' ? 'okText' : 'warnText');
+      }
+      async function reconcileClassicCrm() {
+        status('adminSyncStatus', 'Reconciling every Classic CRM record. Keep this page open...');
+        var data = await json('/api/admin/sync/classic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ full: true })
+        });
+        var sync = data.reconciliation || {};
+        status('adminSyncStatus', 'Complete | Checked: ' + Number(sync.scanned || 0) + ' | Applied: ' + Number(sync.applied || 0) + ' | Notes: ' + Number(sync.notes || 0) + ' | Timeline items: ' + Number(sync.activities || 0), 'okText');
+        showToast('Classic CRM reconciliation complete.');
       }
       async function createAdminUser() {
         status("adminMsg", "Creating user...");
@@ -5406,6 +5437,8 @@
           else if (a === "email-cancel-scheduled") await cancelScheduledEmail();
           else if (a === "send-email-page") await sendEmailPage();
           else if (a === "refresh-admin") await refreshAdminPage();
+          else if (a === "admin-sync-status") await refreshAdminSyncStatus();
+          else if (a === "admin-sync-classic") await reconcileClassicCrm();
           else if (a === "admin-create-user") await createAdminUser();
           else if (a === "admin-reset-pass") await resetAdminPassword(btn.dataset.id);
           else if (a === "admin-toggle-user") await toggleAdminUser(btn.dataset.id, btn.dataset.disabled === "1");

@@ -25,6 +25,8 @@ export interface LegacyCrmSyncResult {
   leadId: string;
   legacyLeadId: string;
   created: boolean;
+  leadApplied: boolean;
+  duplicate: boolean;
   notesUpserted: number;
   activitiesUpserted: number;
 }
@@ -170,7 +172,7 @@ function findTargetLead(legacyLeadId: string, phone: string | null, email: strin
   return null;
 }
 
-function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: string; created: boolean } {
+function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: string; created: boolean; applied: boolean } {
   const lead = payload.lead || {};
   const legacyLeadId = asString(lead.id);
   if (!legacyLeadId) throw new Error("sync payload missing lead.id");
@@ -180,13 +182,21 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
   const existing = findTargetLead(legacyLeadId, phone, email);
   const now = Date.now();
   const id = existing?.id || legacyLeadId;
+  const incomingUpdatedAt = asNumber(lead.updated_at, asNumber(payload.sentAt, now));
+  const existingUpdatedAt = asNumber(existing?.updated_at, 0);
   const existingCustom = readCustom(existing);
   const existingIsLeadPool = isLeadPoolRow(existing);
   const incomingCustom = normalizeObject(lead.custom);
   const incomingTags = normalizeTags(lead.tags);
   const source = asString(lead.source) || "legacy-crm-sync";
   const incomingIsLeadPool = isLegacyLeadPoolCandidate(source, incomingTags, incomingCustom, lead.contact_only);
-  const shouldBePastClient = isLegacyPastClient(lead, incomingTags, incomingCustom) || boolInt(existing?.past_client) === 1;
+  const incomingPastClient = isLegacyPastClient(lead, incomingTags, incomingCustom);
+  const incomingIsCurrent = !existing || incomingUpdatedAt >= existingUpdatedAt;
+  const shouldPromotePastClient = Boolean(existing && incomingPastClient && boolInt(existing.past_client) === 0);
+  if (existing && !incomingIsCurrent && !shouldPromotePastClient) {
+    return { id, legacyLeadId, created: false, applied: false };
+  }
+  const shouldBePastClient = incomingPastClient;
   const shouldBeLeadPool = !shouldBePastClient && (existingIsLeadPool || incomingIsLeadPool);
   const custom: JsonObject = {
     ...existingCustom,
@@ -207,10 +217,14 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     delete custom.lead_pool_sync_reason;
     custom.legacy_past_client_synced_at = new Date(now).toISOString();
   }
+  if (existing && !incomingIsCurrent && shouldPromotePastClient) {
+    db.prepare(`UPDATE leads SET past_client = 1, contact_only = 0, custom = ? WHERE id = ?`).run(JSON.stringify(custom), id);
+    return { id, legacyLeadId, created: false, applied: true };
+  }
   const row = {
     id,
     created_at: asNumber(lead.created_at, now),
-    updated_at: asNumber(lead.updated_at, now),
+    updated_at: incomingUpdatedAt,
     first_name: asString(lead.first_name),
     last_name: asString(lead.last_name),
     email,
@@ -263,7 +277,7 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
         @consent_at, @deleted_at, @past_client, @contact_only, @owner_user_id, @todos)`,
     ).run(row);
   }
-  return { id, legacyLeadId, created: !existing };
+  return { id, legacyLeadId, created: !existing, applied: true };
 }
 
 function upsertNotes(leadId: string, notes: JsonObject[] | undefined): number {
@@ -341,14 +355,34 @@ function upsertActivities(leadId: string, activities: JsonObject[] | undefined):
 
 export function applyLegacyCrmSync(payload: LegacyCrmSyncPayload): LegacyCrmSyncResult {
   if (!payload || typeof payload !== "object") throw new Error("invalid sync payload");
+  const eventId = asString(payload.eventId);
+  if (eventId && db.prepare(`SELECT 1 FROM crm_sync_events WHERE event_id = ?`).get(eventId)) {
+    return {
+      leadId: asString(payload.lead?.id) || "unknown",
+      legacyLeadId: asString(payload.lead?.id) || "unknown",
+      created: false,
+      leadApplied: false,
+      duplicate: true,
+      notesUpserted: 0,
+      activitiesUpserted: 0,
+    };
+  }
   const run = db.transaction(() => {
     const leadResult = applyLead(payload);
     const notesUpserted = upsertNotes(leadResult.id, payload.notes);
     const activitiesUpserted = upsertActivities(leadResult.id, payload.activities);
+    if (eventId) {
+      db.prepare(
+        `INSERT INTO crm_sync_events (event_id, source, lead_id, direction, status, detail, created_at)
+         VALUES (?, ?, ?, 'inbound', 'applied', ?, ?)`,
+      ).run(eventId, payload.source || "crm.smartr8.com", leadResult.id, payload.reason || null, Date.now());
+    }
     return {
       leadId: leadResult.id,
       legacyLeadId: leadResult.legacyLeadId,
       created: leadResult.created,
+      leadApplied: leadResult.applied,
+      duplicate: false,
       notesUpserted,
       activitiesUpserted,
     };

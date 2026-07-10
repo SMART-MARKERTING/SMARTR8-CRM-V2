@@ -34,7 +34,7 @@ function snapshotLead(leadId: string) {
   const activities = db
     .prepare(
       `SELECT * FROM activities
-       WHERE lead_id = ? AND deleted_at IS NULL
+       WHERE lead_id = ?
        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(leadId, config.crm.legacyOutboundSyncActivitiesLimit) as Record<string, unknown>[];

@@ -120,6 +120,7 @@ import { getLeadDocument, getLeadDocumentPath, listLeadDocuments, saveLeadDocume
 import { listSettlementVendorSettings, saveSettlementVendorSettings, SettlementVendorKind } from "../services/loanServiceSettings";
 import { mimeForExt, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
 import { applyLegacyCrmSync } from "../services/legacyCrmSync";
+import { getClassicCrmReconcileStatus, runClassicCrmReconciliation } from "../services/classicCrmReconcile";
 import {
   generateVoicemailAudio,
   publicElevenLabsSettings,
@@ -1947,6 +1948,19 @@ crmRouter.post("/api/admin/repair-lead-pool", requireAdmin, (_req, res) => {
   const leadPool = repairLeadPoolVisibility();
   const pastClients = repairPastClientVisibility();
   res.json({ ok: true, repaired: leadPool.repaired + pastClients.repaired, leadPool, pastClients });
+});
+
+crmRouter.get("/api/admin/sync/status", requireAdmin, (_req, res) => {
+  const eventCounts = db
+    .prepare(`SELECT direction, status, COUNT(*) AS count FROM crm_sync_events GROUP BY direction, status`)
+    .all();
+  res.json({ ok: true, reconciliation: getClassicCrmReconcileStatus(), eventCounts });
+});
+
+crmRouter.post("/api/admin/sync/classic", requireAdmin, async (req, res) => {
+  const full = req.body?.full === true;
+  const status = await runClassicCrmReconciliation({ full, maxPages: full ? 10000 : 100 });
+  res.status(status.status === "error" || status.status === "not_configured" ? 503 : 200).json({ ok: status.status === "complete", reconciliation: status });
 });
 
 crmRouter.post("/api/sync/legacy-crm", (req, res) => {
