@@ -372,26 +372,48 @@
     .item.clickable { cursor: pointer; }
     .item.clickable:hover { border-color: var(--muted); background: var(--hover); }
     .empty { border: 1px dashed var(--fieldLine); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--muted); background: var(--empty); }
-    .emailShell { display: grid; grid-template-columns: minmax(420px, 32vw) minmax(0, 1fr); gap: 14px; align-items: stretch; min-height: calc(100vh - 128px); }
+    .emailShell { display: grid; grid-template-columns: minmax(420px, 32vw) minmax(0, 1fr); gap: 14px; align-items: start; min-height: calc(100vh - 128px); }
+    .emailShell.emailFullView { grid-template-columns: minmax(0, 1fr); }
+    .emailShell.emailFullView .emailPane { display: none; }
     .emailPane { min-width: 0; overflow: hidden; }
-    .emailList { max-height: calc(100vh - 264px); overflow: auto; padding: 10px; display: grid; gap: 8px; }
+    .emailList { max-height: calc(100vh - 264px); overflow-y: auto; overflow-x: hidden; padding: 10px; display: grid; gap: 8px; }
     .emailBulkBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
     .emailSelectLabel { display: inline-flex; align-items: center; gap: 7px; font-weight: 850; color: var(--muted); }
     .emailSelectLabel input, .emailRowCheck { width: auto; margin: 0; }
-    .emailRow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--item); color: var(--text); padding: 11px; }
+    .emailRow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; width: 100%; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--item); color: var(--text); padding: 11px; }
     .emailRow:hover { border-color: var(--muted); background: var(--hover); }
     .emailRow.active { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent); }
     .emailRowMain { display: grid; gap: 6px; min-width: 0; width: 100%; border: 0; padding: 0; margin: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
-    .emailRowTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .emailSubject { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .emailRowTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; overflow: hidden; }
+    .emailSubject { flex: 1 1 auto; min-width: 0; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .emailMeta { color: var(--muted); font-size: 12px; line-height: 1.35; }
     .emailPreview { color: var(--muted); font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .emailReader { min-height: calc(100vh - 128px); max-height: calc(100vh - 128px); overflow: auto; min-width: 0; }
+    .emailReader { min-height: 0; max-height: calc(100vh - 128px); overflow: auto; min-width: 0; }
+    .emailReader.emailExpanded { min-height: calc(100vh - 128px); }
     .emailBodyText { white-space: pre-wrap; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
     .emailAddressLine { display: grid; gap: 3px; margin: 12px 0; color: var(--muted); font-size: 13px; }
     .emailBack { display: none; }
     .emailBodyShell { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; overflow: hidden; }
     .emailFrame { display: block; width: 100%; min-height: min(820px, calc(100vh - 360px)); border: 0; background: #fff; }
+    .emailMessagePreview {
+      position: relative;
+      max-height: 320px;
+      overflow: hidden;
+      border-radius: var(--radius);
+    }
+    .emailMessagePreview::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 72px;
+      pointer-events: none;
+      background: linear-gradient(to bottom, transparent, var(--panel));
+    }
+    .emailReader.emailExpanded .emailMessagePreview { max-height: none; overflow: visible; }
+    .emailReader.emailExpanded .emailMessagePreview::after { display: none; }
+    .emailReaderToggle { margin-top: 12px; width: 100%; justify-content: center; }
     .emailPlainFallback { margin-top: 12px; }
     .statusLine {
       min-height: 22px;
@@ -613,11 +635,13 @@
       .emailShell.emailReading .emailPane { display: none; }
       .emailShell:not(.emailReading) .emailReader { display: none; }
       .emailReader { min-height: calc(100vh - 106px); max-height: none; padding: 12px; }
+      .emailReader.emailExpanded { min-height: calc(100vh - 106px); }
       .emailList { max-height: none; overflow: visible; }
       .emailBulkBar, .emailRowTop, .emailReader .toolbar { gap: 6px; }
       .emailRow { padding: 10px; }
       .emailBack { display: inline-flex; margin-bottom: 10px; }
       .emailFrame { min-height: 70vh; }
+      .emailMessagePreview { max-height: 280px; }
     }
 
     /* LoanGenius V2 application shell — mobile interaction patterns inspired by
@@ -862,6 +886,7 @@
         emailSelectedIds: new Set(),
         activeEmailId: null,
         emailReaderOpen: false,
+        emailReaderExpanded: false,
         emailResendError: "",
         emailReceivedError: "",
         emailContactsLoaded: false,
@@ -4005,6 +4030,7 @@
 
       async function loadEmailPage() {
         state.emailReaderOpen = false;
+        state.emailReaderExpanded = false;
         pageShell("Email", "Mailbox for borrower replies, sent mail, and Resend inbound email.",
           '<button class="btn primary" data-action="email-compose">Compose</button><button class="btn" data-action="refresh-email-page">Refresh</button>',
           '<div id="emailShell" class="emailShell">' +
@@ -4367,12 +4393,17 @@
         if (!box) return;
         var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
         if (!m) {
-          if ($("emailShell")) $("emailShell").classList.remove("emailReading");
+          if ($("emailShell")) $("emailShell").classList.remove("emailReading", "emailFullView");
+          var emptyReaderCard = document.querySelector(".emailReader");
+          if (emptyReaderCard) emptyReaderCard.classList.remove("emailExpanded");
           box.className = "empty";
           box.innerHTML = "Select an email.";
           return;
         }
         if ($("emailShell")) $("emailShell").classList.toggle("emailReading", Boolean(state.emailReaderOpen));
+        if ($("emailShell")) $("emailShell").classList.toggle("emailFullView", Boolean(state.emailReaderExpanded));
+        var readerCard = document.querySelector(".emailReader");
+        if (readerCard) readerCard.classList.toggle("emailExpanded", Boolean(state.emailReaderExpanded));
         box.className = "";
         var attachments = Array.isArray(m.attachments) ? m.attachments : [];
         var leadButton = m.lead_id ? '<button class="btn" data-action="open-lead" data-id="' + esc(m.lead_id) + '">Open lead</button>' : "";
@@ -4408,6 +4439,7 @@
         var technicalDetails = (htmlFormatLine || resendLine)
           ? '<details class="emailPlainFallback"><summary>Technical details</summary><div class="emailAddressLine">' + htmlFormatLine + resendLine + '</div></details>'
           : "";
+        var readerToggleLabel = state.emailReaderExpanded ? "Back to mailbox" : "Open full email";
         box.innerHTML =
           '<button class="btn small emailBack" data-action="email-mobile-back">Back to inbox</button>' +
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
@@ -4415,12 +4447,14 @@
           '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + mailboxButtons + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
           (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a, m.direction !== "inbound"); }).join("") + '</div>' : '') +
           contentStatus +
-          renderEmailBody(m) +
+          '<div class="emailMessagePreview">' + renderEmailBody(m) + '</div>' +
+          '<button class="btn primary emailReaderToggle" data-action="email-toggle-expand">' + readerToggleLabel + '</button>' +
           technicalDetails;
       }
       async function openEmailMessage(id) {
         state.activeEmailId = id;
         state.emailReaderOpen = true;
+        state.emailReaderExpanded = false;
         renderEmailList();
         renderEmailReader();
         var m = (state.emailMessages || []).find(function (row) { return row.id === id; });
@@ -4428,7 +4462,14 @@
       }
       function closeEmailMobileReader() {
         state.emailReaderOpen = false;
-        if ($("emailShell")) $("emailShell").classList.remove("emailReading");
+        state.emailReaderExpanded = false;
+        if ($("emailShell")) $("emailShell").classList.remove("emailReading", "emailFullView");
+      }
+      function toggleEmailReaderExpanded() {
+        state.emailReaderExpanded = !state.emailReaderExpanded;
+        renderEmailReader();
+        var reader = document.querySelector(".emailReader");
+        if (reader) reader.scrollTop = 0;
       }
       function emailNeedsFullContent(m) {
         if (!m || m.content_loaded || m.content_loading) return false;
@@ -4523,7 +4564,10 @@
         var activeStillVisible = activeMessage ? applyEmailMailboxState([activeMessage]).length > 0 : false;
         if (ids.indexOf(state.activeEmailId) >= 0 || !activeStillVisible) {
           state.activeEmailId = nextVisibleEmailId(ids);
-          if (!state.activeEmailId) state.emailReaderOpen = false;
+          if (!state.activeEmailId) {
+            state.emailReaderOpen = false;
+            state.emailReaderExpanded = false;
+          }
         }
         renderEmailList();
         renderEmailReader();
@@ -5212,8 +5256,9 @@
           else if (a === "refresh-contacts") await refreshContacts();
           else if (a === "refresh-campaigns") await refreshCampaigns();
           else if (a === "refresh-email-page") await refreshEmailPage();
-          else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; state.emailReaderOpen = false; state.emailSelectedIds.clear(); await refreshEmailPage(); }
+          else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; state.emailReaderOpen = false; state.emailReaderExpanded = false; state.emailSelectedIds.clear(); await refreshEmailPage(); }
           else if (a === "email-mobile-back") closeEmailMobileReader();
+          else if (a === "email-toggle-expand") toggleEmailReaderExpanded();
           else if (a === "email-select") toggleEmailSelected(btn.dataset.id, btn.checked);
           else if (a === "email-select-all") toggleVisibleEmails(btn.checked);
           else if (a === "email-bulk-archive") await bulkEmailMailboxState("archive");
