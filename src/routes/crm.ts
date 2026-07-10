@@ -721,6 +721,7 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
     const ownerWhere = owner ? "AND l.owner_user_id = @owner" : "";
     const ownerCallWhere = owner ? "AND c.lead_id IN (SELECT id FROM leads WHERE owner_user_id = @owner)" : "";
     const dismissedNotifications = dismissedDashboardIds("notification");
+    const notificationsClearedAt = dashboardClearedAt("notification");
     const missedCalls = db
       .prepare(
         `SELECT c.id, c.created_at, c.phone, c.name, c.lead_id, l.first_name, l.last_name, l.email
@@ -780,7 +781,7 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
         };
       }),
     ]
-      .filter((n) => !dismissedNotifications.has(n.id))
+      .filter((n) => !dismissedNotifications.has(n.id) && n.at > notificationsClearedAt)
       .sort((a, b) => b.at - a.at)
       .slice(0, limit);
     res.json({ ok: true, count: notifications.length, notifications });
@@ -845,6 +846,12 @@ crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) =
   }
   dismissDashboardItem("notification", notificationId);
   res.json({ ok: true, id: notificationId });
+});
+
+/** Clear the notification feed without deleting the underlying calls or messages. */
+crmRouter.post("/api/notifications/clear", requirePass, (_req, res) => {
+  clearDashboardKind("notification");
+  res.json({ ok: true, clearedAt: dashboardClearedAt("notification") });
 });
 
 crmRouter.get("/api/call-summaries", requirePass, (req, res) => {
