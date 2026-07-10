@@ -2,7 +2,7 @@ import { Router, raw, Request } from "express";
 import path from "path";
 import fs from "fs";
 import { randomUUID, createHash } from "crypto";
-import { hideMessage, hiddenMessageSigs, hideConversation, unhideConversation, hiddenConversationIds, hideContacts, hiddenContactPhones } from "../store/db";
+import { hideMessage, hiddenMessageSigs, hideConversation, unhideConversation, hiddenConversationIds, hideContacts } from "../store/db";
 import { config } from "../config";
 import { log } from "../logger";
 import { checkPass, requirePass, requireFeatureForCurrentPath } from "../util/auth";
@@ -13,9 +13,6 @@ import { listNumbers, defaultFrom, pickFromNumber, toOwnedNumber } from "../serv
 import { listOwnedNumbers, sendSms, getMessageStatus } from "../services/telnyx";
 import { isForwardingEnabled, setForwarding, withinForwardWindow } from "../services/inboundRouter";
 import { mimeForExt, mediaPathFor, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
-// GHL is disconnected: the Messages tab + contacts search now read the local SQLite CRM.
-// listAllContacts is the only GHL call left (for the one-time "Import from GHL" migration).
-import { listAllContacts } from "../services/ghl";
 import {
   findLead,
   createLead,
@@ -294,32 +291,6 @@ appRouter.get("/api/contacts", requirePass, async (req, res) => {
     res.json({ contacts });
   } catch (err) {
     log.error("console contacts error", { err: String(err) });
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-/** ALL contacts (paginated) — for the Contacts tab's display-only GHL merge. Hidden GHL
- *  contacts (deleted from the Contacts list) are filtered out. */
-appRouter.get("/api/contacts/all", requirePass, async (req, res) => {
-  try {
-    const owner = ownerScope(req);
-    if (owner) {
-      const contacts = listLeads({ includeContactOnly: true, limit: 2000, ownerUserId: owner }).map((l) => ({
-        id: l.id,
-        name: leadName(l),
-        phone: l.phone ?? undefined,
-        email: l.email ?? undefined,
-        tags: l.tags,
-      }));
-      res.json({ contacts });
-      return;
-    }
-    const hidden = hiddenContactPhones();
-    const norm = (p?: string) => { const d = String(p || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; };
-    const contacts = (await listAllContacts(2000)).filter((c) => { const k = norm(c.phone); return !k || !hidden.has(k); });
-    res.json({ contacts });
-  } catch (err) {
-    log.error("console contacts/all error", { err: String(err) });
     res.status(500).json({ error: String(err) });
   }
 });
