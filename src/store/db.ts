@@ -110,6 +110,19 @@ db.exec(`
     value TEXT
   );
 
+  -- Idempotency ledger for Classic <-> V2 snapshots. Reconciliation intentionally
+  -- retries; this table makes those retries harmless and auditable.
+  CREATE TABLE IF NOT EXISTS crm_sync_events (
+    event_id    TEXT PRIMARY KEY,
+    source      TEXT NOT NULL,
+    lead_id     TEXT,
+    direction   TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    detail      TEXT,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_crm_sync_events_created ON crm_sync_events(created_at DESC);
+
   -- Console-side hidden messages: a signature per GHL-sourced message that the operator
   -- chose to delete from the Smartr8 thread view. GHL remains the system of record (it has
   -- no reliable per-message delete API), so this only suppresses the message in the console.

@@ -202,11 +202,18 @@ export const config = {
     // Optional V2 -> current CRM sync sender. Set these on the V2 Render service when
     // crm.smartr8.com exposes the matching receiver so edits flow both directions.
     legacyOutboundSyncEnabled: env("CRM_LEGACY_SYNC_ENABLED", env("CRM_V1_SYNC_ENABLED", "true")) !== "false",
-    legacyOutboundSyncUrl: env("CRM_LEGACY_SYNC_URL", env("CRM_V1_SYNC_URL", "")),
-    legacyOutboundSyncSecret: env("CRM_LEGACY_SYNC_SECRET", env("CRM_V1_SYNC_SECRET", env("CRM_SYNC_SECRET", ""))),
+    legacyOutboundSyncUrl: env("CRM_LEGACY_SYNC_URL", env("CRM_V1_SYNC_URL", "https://crm.smartr8.com/api/sync/v2-crm")),
+    legacyOutboundSyncSecret: env(
+      "CRM_LEGACY_SYNC_SECRET",
+      env("CRM_V1_SYNC_SECRET", env("CRM_SYNC_SECRET", env("CRM_V2_SYNC_SECRET", env("LEAD_WEBHOOK_SECRET")))),
+    ),
     legacyOutboundSyncDebounceMs: parseInt(env("CRM_LEGACY_SYNC_DEBOUNCE_MS", "750"), 10),
     legacyOutboundSyncNotesLimit: parseInt(env("CRM_LEGACY_SYNC_NOTES_LIMIT", "100"), 10),
     legacyOutboundSyncActivitiesLimit: parseInt(env("CRM_LEGACY_SYNC_ACTIVITIES_LIMIT", "200"), 10),
+    legacyReconcileUrl: env("CRM_LEGACY_RECONCILE_URL", "https://crm.smartr8.com/api/sync/v2-crm/export"),
+    legacyReconcileIntervalMs: parseInt(env("CRM_LEGACY_RECONCILE_INTERVAL_MS", "60000"), 10),
+    legacyReconcileBatchSize: parseInt(env("CRM_LEGACY_RECONCILE_BATCH_SIZE", "50"), 10),
+    legacyReconcileStartDelayMs: parseInt(env("CRM_LEGACY_RECONCILE_START_DELAY_MS", "15000"), 10),
     // Public origin of this service (e.g. https://smartr8-texting-1wx7.onrender.com),
     // used to build email unsubscribe links + List-Unsubscribe headers. Falls back
     // to the OAuth redirect URI's origin when unset.

@@ -17,6 +17,7 @@ import { seedCampaigns, startAutomationWorker } from "./services/automations";
 import { seedAdminIfEmpty } from "./services/auth";
 import { handleResendInboundWebhook } from "./services/resendInbound";
 import { db } from "./store/db";
+import { startClassicCrmReconcileWorker } from "./services/classicCrmReconcile";
 
 const app = express();
 const publicDir = path.resolve(process.cwd(), "public");
@@ -152,4 +153,5 @@ app.listen(config.port, () => {
   startCallNowPoller(); // watch GHL for the `call-now` tag → click-to-dial
   seedCampaigns(); // one-time: seed the 5 category nurture campaigns (disabled)
   startAutomationWorker(); // run due CRM automation steps (email/text/voicemail)
+  startClassicCrmReconcileWorker(); // continuously repair missed Classic <-> V2 lead changes
 });
