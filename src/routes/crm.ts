@@ -4292,14 +4292,14 @@ crmRouter.post("/api/email/bulk-state", requirePass, (req, res) => {
     const owner = ownerScope(req);
     const rows = db
       .prepare(
-        `SELECT a.id, a.meta, a.deleted_at
+        `SELECT a.id, a.direction, a.meta, a.deleted_at
            FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
           WHERE a.type = 'email'
             AND a.id IN (${placeholders})
             ${action === "restore" ? "" : "AND a.deleted_at IS NULL"}
             ${owner ? "AND l.owner_user_id = ?" : ""}`,
       )
-      .all(...activityIds, ...(owner ? [owner] : [])) as Array<{ id: string; meta: string | null; deleted_at: number | null }>;
+      .all(...activityIds, ...(owner ? [owner] : [])) as Array<{ id: string; direction: string | null; meta: string | null; deleted_at: number | null }>;
     skippedActivities = activityIds.length - rows.length;
     const now = Date.now();
     const isoNow = new Date(now).toISOString();
@@ -4330,6 +4330,17 @@ crmRouter.post("/api/email/bulk-state", requirePass, (req, res) => {
     });
     updateEmailRows(rows);
     updatedActivities = rows.length;
+
+    // A received/sent email can appear both as a local CRM activity and as a
+    // Resend API mailbox row. Persist the matching Resend state in this same
+    // click so refresh cannot reconstruct a second copy that needs deletion.
+    for (const row of rows) {
+      const meta = safeMeta(row.meta) || {};
+      const resendId = cleanText(meta.resend_id || meta.resend_email_id || meta.id);
+      if (!resendId) continue;
+      const mailboxId = `${row.direction === "inbound" ? "resend-received" : "resend"}:${resendId}`;
+      resendState[mailboxId] = setResendMailboxState(req, mailboxId, action);
+    }
   }
 
   res.json({
