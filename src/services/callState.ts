@@ -42,6 +42,7 @@ export interface CallContext {
   powerDialer?: boolean;
   powerDialerResult?: string;
   powerDialerFinished?: boolean;
+  powerDialerAmdTimerStarted?: boolean;
   conferenceId?: string;
   monitorRequested?: boolean;
   monitorTarget?: string;

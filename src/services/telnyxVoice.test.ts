@@ -4,8 +4,31 @@ import {
   createConference,
   joinConference,
   leaveConference,
+  placeCallWithAmd,
   updateConferenceParticipant,
 } from "./telnyxVoice";
+
+test("Power Dialer calls send a bounded ring timeout and fast AMD mode", async () => {
+  const originalFetch = global.fetch;
+  let requestBody: Record<string, unknown> = {};
+  global.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBody = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
+    return new Response(JSON.stringify({ data: { call_control_id: "power-call-1" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const ccid = await placeCallWithAmd("+16025550100", "+16232808351", { timeoutSecs: 24, amdMode: "detect" });
+    assert.equal(ccid, "power-call-1");
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(requestBody.timeout_secs, 24);
+  assert.equal(requestBody.answering_machine_detection, "detect");
+});
 
 test("Power Dialer live listen uses Telnyx supervisor monitor commands", async () => {
   const originalFetch = global.fetch;
