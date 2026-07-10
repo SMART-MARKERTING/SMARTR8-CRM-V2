@@ -4,6 +4,7 @@ export type CallKind = "click" | "automated" | "inbound" | "conference";
 export type CallRole =
   | "dial-peer-on-answer"
   | "bridge-on-answer"
+  | "power-monitor-join"
   // Conference (3-way) legs: the agent leg that creates the conference on answer,
   // and any participant leg that joins the conference on answer.
   | "conf-agent-create"
@@ -40,6 +41,13 @@ export interface CallContext {
   joinPhone?: string;
   powerDialer?: boolean;
   powerDialerResult?: string;
+  powerDialerFinished?: boolean;
+  conferenceId?: string;
+  monitorRequested?: boolean;
+  monitorTarget?: string;
+  monitorCcid?: string;
+  monitoring?: boolean;
+  stageBeforeMonitor?: string;
 }
 
 // In-memory call context, keyed by Telnyx call_control_id. Calls are short-lived;
