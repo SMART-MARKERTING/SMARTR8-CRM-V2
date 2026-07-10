@@ -8,8 +8,8 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /v2/health
-    # Production releases are promoted manually after preview QA and approval.
-    autoDeploy: false
+    # Main is the production branch; verified fixes published there should roll out automatically.
+    autoDeploy: true
     # Persistent disk so OAuth tokens survive restarts/redeploys.
     disk:
       name: tokens
