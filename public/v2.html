@@ -1761,6 +1761,7 @@
           '</div>' +
           '<div style="margin-top:12px"><div class="toolbar" style="justify-content:space-between;align-items:center"><div><b>Tags</b><div id="leadTagsSearchHint" class="sub">' + esc((lead.tags || []).join(", ")) + '</div></div></div><div id="leadTagChips" style="margin-top:8px">' + renderLeadTagChips(lead.tags || [], true) + '</div><div class="toolbar" style="margin-top:8px"><input id="leadTagInput" placeholder="Add tag, e.g. HELOC, VA, hot lead"><button class="btn small primary" data-action="add-lead-tag">Add tag</button></div></div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
+          '<section class="card pad"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Lead Intelligence</h3><div class="sub">Human-reviewed priority, duplicate, routing, and next-action recommendations.</div></div><span id="leadAgentState" class="badge blue">Checking</span></div><div id="leadAgentPanel" style="margin-top:12px"><div class="spinner"></div></div><div class="toolbar" style="margin-top:12px"><button class="btn primary" data-action="analyze-lead">Analyze lead</button><button class="btn" data-action="refresh-lead-agent">Refresh history</button></div><div id="leadAgentMsg" class="statusLine"></div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Previous message history</h3><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div></div><span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></div><div id="leadHistoryList" class="list" style="margin-top:12px">' + renderLeadHistory(activities) + '</div></section>' +
           '<section id="leadAppointmentCard" class="card pad"><h3 style="margin-top:0">Book appointment</h3><div class="fieldGrid">' + field("Title", "apptTitle", "Mortgage review appointment") + '<label>Start<input id="apptStart" type="datetime-local" value="' + esc(localDateInput(Date.now() + 60 * 60_000)) + '"></label><label>Duration<select id="apptDuration"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>' + field("Location", "apptLocation", "Phone call") + field("CC Email", "apptCc", "") + '<label>Send invite<select id="apptInviteVia"><option value="none">Do not send yet</option><option value="email">Email</option><option value="text">Text</option><option value="both">Email + text</option></select></label></div><label>Description<textarea id="apptDescription">We will review your mortgage and home equity options.</textarea></label><button class="btn primary" data-action="book-lead-appointment">Book appointment</button><div id="leadCalendarMsg" class="statusLine"></div></section>' +
@@ -1773,6 +1774,59 @@
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
         renderLeadApplicationPanel(lead);
         loadLeadDocs(lead.id, "docMiniList");
+        loadLeadAgentPanel(lead.id);
+      }
+      function leadAgentPriorityBadge(priority) {
+        if (priority === "high") return "red";
+        if (priority === "low") return "purple";
+        return "blue";
+      }
+      function renderLeadAgentRun(run) {
+        var rec = run && run.recommendation;
+        if (!rec) return '<div class="empty">No completed recommendation is available yet.</div>';
+        var duplicates = run.duplicates || [];
+        return '<div class="item">' +
+          '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(rec.summary || "Lead recommendation") + '</b><div class="sub">' + esc(formatDateTime(run.createdAt)) + ' · ' + esc(run.trigger || "manual") + '</div></div><span class="badge ' + leadAgentPriorityBadge(rec.priority) + '">' + esc(rec.priority || "normal") + ' priority</span></div>' +
+          '<div class="warnBox" style="margin-top:10px"><b>Next human action</b><div style="margin-top:4px">' + esc(rec.nextAction || "Review this lead.") + '</div></div>' +
+          '<div style="margin-top:10px"><b>Why</b><ul style="margin:6px 0 0;padding-left:20px">' + (rec.reasons || []).map(function (reason) { return '<li>' + esc(reason) + '</li>'; }).join("") + '</ul></div>' +
+          (rec.recommendedOwnerName ? '<div class="sub" style="margin-top:8px"><b>Recommended owner:</b> ' + esc(rec.recommendedOwnerName) + '</div>' : '') +
+          (duplicates.length ? '<div class="warnBox" style="margin-top:10px"><b>' + duplicates.length + ' possible duplicate' + (duplicates.length === 1 ? '' : 's') + '</b><div class="sub" style="margin-top:4px">' + duplicates.map(function (dup) { return esc(dup.name + " · " + dup.match + " · " + dup.status); }).join("<br>") + '</div></div>' : '') +
+          '<div class="sub" style="margin-top:8px">Human review required. The agent cannot contact the consumer, quote terms, or make a credit decision.</div>' +
+        '</div>';
+      }
+      async function loadLeadAgentPanel(leadId) {
+        var panel = $("leadAgentPanel");
+        if (!panel || !leadId) return;
+        panel.innerHTML = '<div class="spinner"></div>';
+        try {
+          var results = await Promise.all([
+            json("/api/agent/status"),
+            json("/api/leads/" + encodeURIComponent(leadId) + "/agent/runs?limit=10")
+          ]);
+          var agent = results[0] || {}, runs = (results[1] && results[1].runs) || [];
+          if ($("leadAgentState")) {
+            $("leadAgentState").textContent = agent.enabled ? (agent.mode === "apply_safe" ? "Safe actions" : "Review only") : "Disabled";
+            $("leadAgentState").className = "badge " + (agent.enabled ? "green" : "purple");
+          }
+          panel.innerHTML = runs.length ? runs.map(renderLeadAgentRun).join("") : '<div class="empty">' + (agent.enabled ? 'No analysis yet. Run the first human-reviewed recommendation.' : 'The agent foundation is installed but disabled in deployment settings. No lead data will be sent to AI.') + '</div>';
+          var analyze = document.querySelector('[data-action="analyze-lead"]');
+          if (analyze) { analyze.disabled = !agent.enabled; analyze.title = agent.enabled ? "Run a recommendation" : "Enable LEAD_AGENT_ENABLED in deployment settings first"; }
+        } catch (error) {
+          panel.innerHTML = '<div class="warnBox">Could not load Lead Intelligence: ' + esc(error.message || String(error)) + '</div>';
+          if ($("leadAgentState")) { $("leadAgentState").textContent = "Unavailable"; $("leadAgentState").className = "badge red"; }
+        }
+      }
+      async function analyzeCurrentLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("leadAgentMsg", "Analyzing with compliance guardrails...");
+        try {
+          var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/agent/analyze", { method: "POST" });
+          status("leadAgentMsg", data && data.run ? "Recommendation ready for review." : "Analysis completed.", "okText");
+          await loadLeadAgentPanel(lead.id);
+        } catch (error) {
+          status("leadAgentMsg", error.message || String(error), "warnText");
+        }
       }
       function renderLeadNotes(notes) {
         notes = notes || [];
@@ -5380,6 +5434,8 @@
           else if (a === "delete-pool") await deletePoolLead(btn.dataset.id);
           else if (a === "open-lead") await openLead(btn.dataset.id);
           else if (a === "open-lead-from-pipeline") await openLead(btn.dataset.id);
+          else if (a === "analyze-lead") await analyzeCurrentLead();
+          else if (a === "refresh-lead-agent") { if (state.selectedLead) await loadLeadAgentPanel(state.selectedLead.id); }
           else if (a === "add-lead-tag") await addTagsToCurrentLead();
           else if (a === "remove-lead-tag") await removeTagFromCurrentLead(btn.dataset.tag);
           else if (a === "close-detail") $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
