@@ -866,6 +866,37 @@ voiceRouter.post("/calls/power-dialer/stop", requirePass, (_req, res) => {
   res.json({ ok: true, cleared, active: powerDialerActive });
 });
 
+async function stopPowerDialerMonitorOnly(primaryCcid: string, note: string): Promise<string | null> {
+  const ctx = getCall(primaryCcid);
+  if (!ctx?.powerDialer || !ctx.primary) return null;
+  const monitorCcid = ctx.monitorCcid || null;
+  const conferenceId = ctx.conferenceId;
+
+  // Clear ownership first so the monitor hangup webhook cannot reset another line.
+  ctx.monitorCcid = undefined;
+  ctx.monitorRequested = false;
+  ctx.monitorTarget = undefined;
+  ctx.monitoring = false;
+  ctx.stage = ctx.stageBeforeMonitor || (ctx.answeredAt ? "amd-wait" : "dialing");
+  ctx.stageBeforeMonitor = undefined;
+
+  if (monitorCcid) {
+    if (conferenceId) await leaveConference(conferenceId, monitorCcid).catch(() => {});
+    await hangup(monitorCcid).catch(() => {});
+  }
+
+  const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+  if (lead) {
+    powerDialerEventForLead(lead, {
+      leadId: lead.id,
+      status: ctx.stage || "dialing",
+      callControlId: primaryCcid,
+      note,
+    });
+  }
+  return monitorCcid;
+}
+
 voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (req, res) => {
   const ccid = req.params.ccid;
   const ctx = getCall(ccid);
@@ -875,23 +906,24 @@ voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (
   }
   const body = (req.body ?? {}) as { connectTo?: string; action?: string };
   if (body.action === "stop") {
-    const monitorCcid = ctx.monitorCcid;
-    if (monitorCcid) await hangup(monitorCcid).catch(() => {});
-    if (ctx.conferenceId) await leaveConference(ctx.conferenceId, ccid).catch(() => {});
-    ctx.monitorCcid = undefined;
-    ctx.monitorRequested = false;
-    ctx.monitorTarget = undefined;
-    ctx.monitoring = false;
-    ctx.conferenceId = undefined;
-    ctx.stage = ctx.stageBeforeMonitor || (ctx.answeredAt ? "amd-wait" : "dialing");
-    ctx.stageBeforeMonitor = undefined;
-    const lead = ctx.leadId ? getLead(ctx.leadId) : null;
-    if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: ctx.stage || "dialing", callControlId: ccid, note: "Live listening stopped" });
+    const monitorCcid = await stopPowerDialerMonitorOnly(ccid, "Live listening stopped");
     res.json({ ok: true, action: "stopped", callControlId: ccid, monitorCcid: monitorCcid || null });
     return;
   }
+  const stoppedPrevious: string[] = [];
+  for (const item of listCalls()) {
+    if (
+      item.ccid !== ccid &&
+      item.ctx.powerDialer &&
+      item.ctx.primary &&
+      (item.ctx.monitorCcid || item.ctx.monitorRequested || item.ctx.monitoring)
+    ) {
+      await stopPowerDialerMonitorOnly(item.ccid, "Live listening moved to another line");
+      stoppedPrevious.push(item.ccid);
+    }
+  }
   if (ctx.monitorCcid || ctx.monitorRequested || ctx.monitoring) {
-    res.json({ ok: true, action: "already-started", callControlId: ccid, monitorCcid: ctx.monitorCcid || null, monitoring: Boolean(ctx.monitoring) });
+    res.json({ ok: true, action: "already-started", callControlId: ccid, monitorCcid: ctx.monitorCcid || null, monitoring: Boolean(ctx.monitoring), stoppedPrevious });
     return;
   }
   const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
@@ -922,7 +954,7 @@ voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (
       powerDialerEventForLead(lead, { leadId: lead.id, status: "monitor-ringing", callControlId: ccid, peerCcid: monitor, note: `Starting live listen in ${connectTo}` });
       logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer live listen requested in ${connectTo}`, status: "monitor-ringing" });
     }
-    res.json({ ok: true, action: "starting", callControlId: ccid, monitorCcid: monitor, connectTo });
+    res.json({ ok: true, action: "starting", callControlId: ccid, monitorCcid: monitor, connectTo, stoppedPrevious });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
