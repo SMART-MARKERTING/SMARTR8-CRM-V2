@@ -38,7 +38,7 @@ test("Telnyx webhook accepts valid transcription event", async () => {
 
 test("duplicate webhook does not create duplicate CRM note", async () => {
   const { createLead, listNotes } = await import("./leads");
-  const { acceptTelnyxCallSummaryEvent, processCallSummary, validateMortgageCallSummary } = await import("./callSummary");
+  const { acceptTelnyxCallSummaryEvent, listCallSummaries, processCallSummary, validateMortgageCallSummary } = await import("./callSummary");
   const validSummary = validateMortgageCallSummary(readFixture("ai_summary_valid.json"));
   const lead = createLead({ first_name: "Dupe", last_name: "Borrower", phone: "+16235550101", source: "test" });
   const event = eventClone("inbound_telnyx_transcription_saved.json", "dupe", { from: lead.phone });
@@ -107,9 +107,9 @@ test("CRM note formatting works", async () => {
   assert.match(note, /Generated from Telnyx call summary/);
 });
 
-test("follow-up task creation works when follow_up_needed=true", async () => {
+test("structured follow-up task creation works when follow_up_needed=true", async () => {
   const { createLead, getLead } = await import("./leads");
-  const { acceptTelnyxCallSummaryEvent, processCallSummary, validateMortgageCallSummary } = await import("./callSummary");
+  const { acceptTelnyxCallSummaryEvent, listCallSummaries, processCallSummary, validateMortgageCallSummary } = await import("./callSummary");
   const validSummary = validateMortgageCallSummary(readFixture("ai_summary_valid.json"));
   const lead = createLead({ first_name: "Task", phone: "+16235550104", source: "test" });
   const event = eventClone("inbound_telnyx_transcription_saved.json", "task", { from: lead.phone });
@@ -117,7 +117,10 @@ test("follow-up task creation works when follow_up_needed=true", async () => {
   assert.ok(accepted.rowId);
   await processCallSummary(accepted.rowId!, { inlineTranscript: "Borrower wants a follow-up tomorrow.", generateSummary: async () => validSummary });
   const updated = getLead(lead.id);
-  assert.ok(updated?.todos.some((todo) => todo.text === "Follow up after call" && !todo.deleted_at));
+  assert.ok(updated?.todos.some((todo) => todo.text === "Review requested borrower documents" && !todo.deleted_at));
+  const row = listCallSummaries(50).find((item) => item.id === accepted.rowId);
+  assert.equal(row?.follow_up_recommendation?.outcome, "documents_requested");
+  assert.equal(row?.follow_up_recommendation?.consumerContactedAutomatically, false);
 });
 
 test("recording-only event without transcript remains pending", async () => {

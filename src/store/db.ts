@@ -417,6 +417,10 @@ ensureColumn("automations", "bypass_hours", "bypass_hours INTEGER NOT NULL DEFAU
 ensureColumn("automation_jobs", "updated_at", "updated_at INTEGER");
 db.exec(`UPDATE automation_jobs SET updated_at = created_at WHERE updated_at IS NULL`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_jobs_updated ON automation_jobs(status, updated_at DESC)`);
+// Structured, deterministic post-call guidance. Kept separate from the AI call
+// summary so operators can inspect the source summary and the recommended action
+// independently, and so older summary rows remain backward compatible.
+ensureColumn("call_summaries", "follow_up_json", "follow_up_json TEXT");
 
 // Pipeline column: each lead's kanban stage lives in its own `pipeline_stage` field
 // (defaults to 'Lead-In' so new inquiries enter the board's first column). On first

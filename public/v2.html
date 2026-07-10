@@ -1794,6 +1794,18 @@
           '<div class="sub" style="margin-top:8px">Human review required. The agent cannot contact the consumer, quote terms, or make a credit decision.</div>' +
         '</div>';
       }
+      function renderCallFollowUp(row) {
+        var rec = row && row.follow_up_recommendation;
+        if (!rec) return '';
+        var cls = rec.priority === "urgent_review" || rec.priority === "high" ? "red" : rec.priority === "low" ? "purple" : "blue";
+        var channels = (rec.permittedChannels || []).map(function (channel) { return channel.replace("manual_phone_review", "manual call review"); });
+        return '<div class="item">' +
+          '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>Post-call recommendation</b><div class="sub">' + esc(formatDateTime(row.updated_at)) + ' · ' + esc(rec.outcome || "review") + '</div></div><span class="badge ' + cls + '">' + esc((rec.priority || "normal").replace("_", " ")) + '</span></div>' +
+          '<div class="warnBox" style="margin-top:10px"><b>Next human action</b><div style="margin-top:4px">' + esc(rec.nextAction || "Review the call summary.") + '</div></div>' +
+          '<div class="sub" style="margin-top:8px"><b>Permitted after review:</b> ' + esc(channels.length ? channels.join(", ") : "no outreach channel") + '</div>' +
+          '<div class="sub" style="margin-top:6px">No call, email, or text was sent automatically. Human review is required.</div>' +
+        '</div>';
+      }
       async function loadLeadAgentPanel(leadId) {
         var panel = $("leadAgentPanel");
         if (!panel || !leadId) return;
@@ -1801,14 +1813,17 @@
         try {
           var results = await Promise.all([
             json("/api/agent/status"),
-            json("/api/leads/" + encodeURIComponent(leadId) + "/agent/runs?limit=10")
+            json("/api/leads/" + encodeURIComponent(leadId) + "/agent/runs?limit=10"),
+            json("/api/leads/" + encodeURIComponent(leadId) + "/call-summaries?limit=5")
           ]);
-          var agent = results[0] || {}, runs = (results[1] && results[1].runs) || [];
+          var agent = results[0] || {}, runs = (results[1] && results[1].runs) || [], callRows = (results[2] && results[2].call_summaries) || [];
           if ($("leadAgentState")) {
             $("leadAgentState").textContent = agent.enabled ? (agent.mode === "apply_safe" ? "Safe actions" : "Review only") : "Disabled";
             $("leadAgentState").className = "badge " + (agent.enabled ? "green" : "purple");
           }
-          panel.innerHTML = runs.length ? runs.map(renderLeadAgentRun).join("") : '<div class="empty">' + (agent.enabled ? 'No analysis yet. Run the first human-reviewed recommendation.' : 'The agent foundation is installed but disabled in deployment settings. No lead data will be sent to AI.') + '</div>';
+          var callHtml = callRows.map(renderCallFollowUp).join("");
+          var agentHtml = runs.length ? runs.map(renderLeadAgentRun).join("") : '<div class="empty">' + (agent.enabled ? 'No lead analysis yet. Run the first human-reviewed recommendation.' : 'The lead agent is disabled in deployment settings. Deterministic post-call recommendations can still appear here when call summaries are enabled.') + '</div>';
+          panel.innerHTML = callHtml + agentHtml;
           var analyze = document.querySelector('[data-action="analyze-lead"]');
           if (analyze) { analyze.disabled = !agent.enabled; analyze.title = agent.enabled ? "Run a recommendation" : "Enable LEAD_AGENT_ENABLED in deployment settings first"; }
         } catch (error) {
