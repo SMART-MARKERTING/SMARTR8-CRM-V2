@@ -194,8 +194,8 @@ const LEAD_POOL_MARKER_SQL = `(custom LIKE '%"lead_pool":true%' OR custom LIKE '
 const LEGACY_OLD_LIST_SQL =
   `(LOWER(COALESCE(source, '')) IN ('lead-pool', 'lead pool', 'leadpool', 'old lead', 'old leads', 'open lead') ` +
   `OR (LOWER(COALESCE(source, '')) = 'lead' AND (LOWER(COALESCE(tags, '')) LIKE '%open lead%' OR LOWER(COALESCE(custom, '')) LIKE '%open lead%' OR contact_only = 1)))`;
-const LEAD_POOL_CANDIDATE_SQL = `(${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL})`;
-const NOT_LEAD_POOL_CANDIDATE_SQL = `NOT ${LEAD_POOL_CANDIDATE_SQL}`;
+const LEAD_POOL_CANDIDATE_SQL = `(past_client = 0 AND (${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL}))`;
+const NOT_LEAD_POOL_CANDIDATE_SQL = `(past_client = 1 OR NOT (${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL}))`;
 
 export interface LeadInput {
   first_name?: string;
@@ -483,6 +483,46 @@ export function repairLeadPoolVisibility(): { repaired: number } {
       update.run({ id: row.id, custom: JSON.stringify(custom), now });
       repaired++;
     }
+  }
+  return { repaired };
+}
+
+export function repairPastClientVisibility(): { repaired: number } {
+  const now = Date.now();
+  const rows = db
+    .prepare(
+      `SELECT id, custom
+       FROM leads
+       WHERE deleted_at IS NULL
+         AND past_client = 0
+         AND (
+           LOWER(COALESCE(tags, '')) LIKE '%past-client%'
+           OR LOWER(COALESCE(tags, '')) LIKE '%past client%'
+           OR LOWER(COALESCE(pipeline_stage, '')) IN ('funded', 'closed', 'won', 'past client', 'past-client')
+           OR LOWER(COALESCE(status, '')) IN ('funded', 'closed', 'won', 'past client', 'past-client')
+           OR custom LIKE '%"past_client":true%'
+           OR custom LIKE '%"pastClient":true%'
+           OR custom LIKE '%"closed_client":true%'
+           OR custom LIKE '%"closedClient":true%'
+           OR custom LIKE '%"funded":true%'
+         )`,
+    )
+    .all() as Array<Pick<LeadRow, "id" | "custom">>;
+  const update = db.prepare(
+    `UPDATE leads
+     SET custom = @custom, contact_only = 0, past_client = 1, updated_at = @now
+     WHERE id = @id`,
+  );
+  let repaired = 0;
+  for (const row of rows) {
+    const custom = safeParse<Record<string, unknown>>(row.custom, {});
+    delete custom.lead_pool;
+    delete custom.lead_pool_repair_reason;
+    delete custom.lead_pool_sync_reason;
+    custom.past_client_repaired_at = new Date(now).toISOString();
+    custom.past_client_repair_reason = "classic-crm-sync";
+    update.run({ id: row.id, custom: JSON.stringify(custom), now });
+    repaired++;
   }
   return { repaired };
 }

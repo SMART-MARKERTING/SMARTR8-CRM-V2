@@ -37,6 +37,7 @@ import {
   listPipeline,
   listLeadPoolLeads,
   repairLeadPoolVisibility,
+  repairPastClientVisibility,
   listDuplicateLeadGroups,
   bulkCreateContacts,
   contactsDiag,
@@ -1625,6 +1626,7 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
   const includeContactOnly = req.query.includeContacts === "1" || req.query.includeContacts === "true";
   const excludeLeadPool = !(req.query.includeLeadPool === "1" || req.query.includeLeadPool === "true");
   const ownerUserId = ownerScope(req);
+  if (pastClient) repairPastClientVisibility();
   res.json({
     leads: listLeads({
       q,
@@ -1942,7 +1944,9 @@ crmRouter.post("/api/admin/dedupe-contacts", requirePass, (req, res) => {
 });
 
 crmRouter.post("/api/admin/repair-lead-pool", requireAdmin, (_req, res) => {
-  res.json({ ok: true, ...repairLeadPoolVisibility() });
+  const leadPool = repairLeadPoolVisibility();
+  const pastClients = repairPastClientVisibility();
+  res.json({ ok: true, repaired: leadPool.repaired + pastClients.repaired, leadPool, pastClients });
 });
 
 crmRouter.post("/api/sync/legacy-crm", (req, res) => {
