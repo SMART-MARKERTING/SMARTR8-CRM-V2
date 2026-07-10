@@ -1948,10 +1948,12 @@
         var addr = leadAddressParts(lead);
         var mailButton = lead.email ? '<a class="btn" href="mailto:' + esc(lead.email) + '">Email</a>' : '<button class="btn" disabled>No email</button>';
         var activateButton = lead.past_client ? '<button class="btn primary" data-action="activate-lead">Move to active Leads</button>' : '';
+        var poolButton = custom.lead_pool ? '<span class="badge amber">In Lead Pool</span>' : '<button class="btn" data-action="move-lead-to-pool">Move to Lead Pool</button>';
+        var quickStage = '<select title="Change pipeline stage" data-action="lead-stage-quick" data-id="' + esc(lead.id) + '" style="width:auto;min-width:150px;font-weight:850">' + state.stages.map(function (stage) { return '<option value="' + esc(stage) + '"' + (stage === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(stage) + '</option>'; }).join("") + '</select>';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
             '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '<button id="leadChromeToggle" class="btn small ghost" data-action="toggle-lead-chrome">Hide bars</button></div></div>' +
-            '<div class="leadQuickBar"><button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + activateButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
+            '<div class="leadQuickBar">' + quickStage + '<button class="btn call" data-action="call-lead">Click-to-call CRM</button><button class="btn teal" data-action="open-lead-dialer">Open dialer</button><a class="btn primary" href="#leadAppointmentCard">Book appointment</a><a class="btn" href="#leadCommsCard">Text / Email</a><a class="btn" href="#leadCampaignCard">Campaign</a>' + mailButton + activateButton + poolButton + '<button class="btn primary" data-action="start-app">Start app</button><button class="btn" data-action="order-title">Order title</button><button class="btn" data-action="order-flood">Flood report</button><button class="btn" data-action="sms-consent">Mark SMS consent</button></div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
@@ -2321,6 +2323,22 @@
         if (state.page === "pastclients") await loadLeadBucket("pastclients");
         else if (state.page === "contacts") await refreshContacts();
         await openLead(lead.id);
+      }
+
+      async function moveCurrentLeadToPool() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        status("leadActionMsg", "Moving to Lead Pool...");
+        await json("/api/leads/" + encodeURIComponent(lead.id) + "/to-lead-pool", { method: "POST" });
+        state.selectedLead = null;
+        state.selectedIds.delete(lead.id);
+        state.leadStageCountsCache = null;
+        closeModal();
+        showToast("Moved to Lead Pool. Notes, messages, and files were kept.");
+        if (state.page === "contacts") await refreshContacts();
+        else if (state.page === "pastclients") await loadLeadBucket("pastclients");
+        else if (state.page === "leadpool") await refreshLeadPool();
+        else if ($("leadListWrap")) await loadLeads();
       }
 
       async function refreshOpenLeadLists() {
@@ -6026,6 +6044,7 @@
           else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
           else if (a === "save-lead") await saveCurrentLead();
           else if (a === "activate-lead") await activateCurrentLead();
+          else if (a === "move-lead-to-pool") await moveCurrentLeadToPool();
           else if (a === "add-task") await addTaskToLead();
           else if (a === "book-lead-appointment") await bookLeadAppointment();
           else if (a === "toggle-task") await toggleTask(btn.dataset.id, btn.checked);
