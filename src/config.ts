@@ -135,6 +135,9 @@ export const config = {
     callNowTag: env("CALL_NOW_TAG", "call-now"), // tag a contact with this to trigger a dial
     pollMs: parseInt(env("CALL_POLL_MS", "20000"), 10), // call-now poll interval
     amdMode: env("TELNYX_AMD_MODE", "greeting_end"), // waits for voicemail greeting/beep before playback
+    powerDialerRingSecs: Math.max(15, Math.min(35, parseInt(env("POWER_DIALER_RING_SECS", "24"), 10) || 24)),
+    powerDialerAmdSecs: Math.max(5, Math.min(20, parseInt(env("POWER_DIALER_AMD_SECS", "10"), 10) || 10)),
+    powerDialerAmdMode: env("POWER_DIALER_AMD_MODE", "detect"),
   },
 
   // Browser softphone (Telnyx WebRTC)

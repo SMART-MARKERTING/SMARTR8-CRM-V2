@@ -39,13 +39,19 @@ export async function placeCall(to: string, from = config.telnyx.fromNumber): Pr
  * Telnyx emits `call.machine.detection.ended` (result: human|machine|not_sure|silence)
  * — on "machine" we play the pre-recorded message, otherwise we hang up. Returns ccid.
  */
-export async function placeCallWithAmd(to: string, from = config.telnyx.fromNumber): Promise<string> {
-  const data = await voicePost("/calls", {
+export async function placeCallWithAmd(
+  to: string,
+  from = config.telnyx.fromNumber,
+  opts: { timeoutSecs?: number; amdMode?: string } = {},
+): Promise<string> {
+  const body: Record<string, unknown> = {
     connection_id: config.voice.applicationId,
     to,
     from,
-    answering_machine_detection: config.voice.amdMode,
-  });
+    answering_machine_detection: opts.amdMode || config.voice.amdMode,
+  };
+  if (opts.timeoutSecs) body.timeout_secs = opts.timeoutSecs;
+  const data = await voicePost("/calls", body);
   return data?.data?.call_control_id as string;
 }
 

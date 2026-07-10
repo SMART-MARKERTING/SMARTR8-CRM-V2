@@ -466,7 +466,10 @@ async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
   }
   const picked = await pickPowerDialerFromNumber(lead.phone);
   const from = item.from || picked.from;
-  const ccid = await placeCallWithAmd(lead.phone, from);
+  const ccid = await placeCallWithAmd(lead.phone, from, {
+    timeoutSecs: config.voice.powerDialerRingSecs,
+    amdMode: config.voice.powerDialerAmdMode,
+  });
   powerDialerActive++;
   powerDialerEventForLead(lead, { leadId: lead.id, status: "dialing", from, callControlId: ccid, listId: item.listId, listName: item.listName, note: item.from ? "manual caller ID" : `auto ${picked.reason}` });
   setCall(ccid, {
@@ -487,8 +490,9 @@ async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
     channel: "voice",
     body: `Power Dialer started from ${from}`,
     status: "amd-wait",
-    meta: { callControlId: ccid, connectTo: item.connectTo, from, fromReason: item.from ? "manual" : picked.reason, listId: item.listId, listName: item.listName },
+    meta: { callControlId: ccid, connectTo: item.connectTo, from, fromReason: item.from ? "manual" : picked.reason, listId: item.listId, listName: item.listName, ringTimeoutSecs: config.voice.powerDialerRingSecs, amdMode: config.voice.powerDialerAmdMode },
   });
+  schedulePowerDialerRingTimeout(ccid);
   return true;
 }
 
@@ -517,6 +521,47 @@ function finishPowerDialerLeg(ctx: ReturnType<typeof getCall>): void {
   ctx.powerDialerFinished = true;
   if (powerDialerActive > 0) powerDialerActive--;
   if (!powerDialerAttention) pumpPowerDialer();
+}
+
+function schedulePowerDialerRingTimeout(ccid: string): void {
+  const timer = setTimeout(() => {
+    void (async () => {
+      const ctx = getCall(ccid);
+      if (!ctx?.powerDialer || ctx.powerDialerFinished || ctx.answeredAt) return;
+      ctx.powerDialerResult = "no-answer";
+      ctx.stage = "ring-timeout";
+      const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+      if (lead) {
+        powerDialerEventForLead(lead, { leadId: lead.id, status: "no-answer", outcome: "ring-timeout", callControlId: ccid, note: `${config.voice.powerDialerRingSecs}s maximum ring time reached` });
+        logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer ended after ${config.voice.powerDialerRingSecs}s with no answer`, status: "no-answer:ring-timeout" });
+      }
+      await hangup(ccid).catch(() => {});
+      finishPowerDialerLeg(ctx);
+    })();
+  }, config.voice.powerDialerRingSecs * 1000 + 750);
+  timer.unref();
+}
+
+function schedulePowerDialerAmdTimeout(ccid: string): void {
+  const ctx = getCall(ccid);
+  if (!ctx?.powerDialer || ctx.powerDialerAmdTimerStarted) return;
+  ctx.powerDialerAmdTimerStarted = true;
+  const timer = setTimeout(() => {
+    void (async () => {
+      const current = getCall(ccid);
+      if (!current?.powerDialer || current.powerDialerFinished || current.powerDialerResult) return;
+      current.powerDialerResult = "amd-timeout";
+      current.stage = "machine";
+      const lead = current.leadId ? getLead(current.leadId) : null;
+      if (lead) {
+        powerDialerEventForLead(lead, { leadId: lead.id, status: "machine", outcome: "amd-timeout", callControlId: ccid, note: "No explicit human result; call ended" });
+        logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer ended because voicemail detection did not return an explicit human result", status: "machine:amd-timeout" });
+      }
+      await hangup(ccid).catch(() => {});
+      finishPowerDialerLeg(current);
+    })();
+  }, config.voice.powerDialerAmdSecs * 1000);
+  timer.unref();
 }
 
 function resumePowerDialer(leadId?: string): void {
@@ -988,6 +1033,9 @@ voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
     paused: Boolean(powerDialerAttention),
     attention: powerDialerAttention,
     concurrency: powerDialerConcurrency,
+    ringTimeoutSecs: config.voice.powerDialerRingSecs,
+    amdTimeoutSecs: config.voice.powerDialerAmdSecs,
+    amdMode: config.voice.powerDialerAmdMode,
     lastError: powerDialerLastError,
     lines: powerDialerActiveLines(),
     lists: powerDialerListRows(_req).map(listSummary),
@@ -1090,7 +1138,7 @@ voiceRouter.post("/webhooks/telnyx-voice", async (req, res) => {
     }
     if (type === "call.initiated" && p.direction === "incoming") await handleInbound(p);
     else if (type === "call.answered") await handleAnswered(p.call_control_id);
-    else if (type === "call.machine.detection.ended") await handleMachineDetection(p.call_control_id, p);
+    else if (type === "call.machine.detection.ended" || type === "call.machine.premium.detection.ended") await handleMachineDetection(p.call_control_id, p);
     else if (type === "call.gather.ended") await handleGather(p.call_control_id, p.digits);
     else if (type === "call.hangup") await handleHangup(p.call_control_id, p);
   } catch (err) {
@@ -1190,6 +1238,7 @@ async function handleAnswered(ccid: string): Promise<void> {
   if (ctx.powerDialer && ctx.stage === "amd-wait") {
     // Power Dialer waits for AMD before ringing the agent, so voicemail/machine answers
     // do not pull the operator into a dead call.
+    schedulePowerDialerAmdTimeout(ccid);
     if (ctx.monitorCcid) await connectPowerMonitor(ccid);
     return;
   }
@@ -1245,11 +1294,13 @@ async function handleAnswered(ccid: string): Promise<void> {
 
 async function handleMachineDetection(ccid: string, p: any): Promise<void> {
   const ctx = getCall(ccid);
-  if (!ctx || !ctx.powerDialer) return;
+  if (!ctx || !ctx.powerDialer || ctx.powerDialerFinished) return;
   const result = String(p?.machine_detection_result ?? p?.result ?? p?.answering_machine_detection_result ?? "").toLowerCase();
   ctx.powerDialerResult = result || "unknown";
   const lead = ctx.leadId ? getLead(ctx.leadId) : null;
-  const human = /human|not_sure|unknown/.test(result);
+  // Only an explicit human classification may bridge to the agent. Treat machine,
+  // silence, fax, not_sure, unknown, and blank results as non-human for dialer safety.
+  const human = /human/.test(result);
   if (!human) {
     if (lead) {
       logActivity(lead.id, {
