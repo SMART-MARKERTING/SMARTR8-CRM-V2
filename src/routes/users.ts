@@ -13,12 +13,14 @@ import {
   setPassword,
   setDisabled,
   setRole,
+  setPermissions,
   markSessionPortalVerified,
   seedAdminIfEmpty,
   primaryAdmin,
   UserError,
   Role,
 } from "../services/auth";
+import { FEATURE_PERMISSION_CATALOG } from "../services/permissions";
 
 export const usersRouter = Router();
 
@@ -107,7 +109,7 @@ usersRouter.post("/api/auth/change-password", accountLimiter, requirePass, (req,
 // ── Admin-only user management ───────────────────────────────────────────────
 
 usersRouter.get("/api/users", adminUserLimiter, requireAdmin, (_req, res) => {
-  res.json({ users: listUsers() });
+  res.json({ users: listUsers(), permissionCatalog: FEATURE_PERMISSION_CATALOG });
 });
 
 usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
@@ -116,7 +118,7 @@ usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
   const name = (req.body?.name ?? "").toString();
   const role: Role = req.body?.role === "admin" ? "admin" : "user";
   try {
-    const user = createUser({ username, password, name, role });
+    const user = createUser({ username, password, name, role, permissions: req.body?.permissions });
     res.json({ ok: true, user });
   } catch (err) {
     res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
@@ -152,5 +154,6 @@ usersRouter.patch("/api/users/:id", adminUserLimiter, requireAdmin, (req, res) =
   }
   if (typeof req.body?.disabled === "boolean") setDisabled(target.id, req.body.disabled);
   if (req.body?.role === "admin" || req.body?.role === "user") setRole(target.id, req.body.role);
+  if (Array.isArray(req.body?.permissions)) setPermissions(target.id, req.body.permissions);
   res.json({ ok: true, user: getUser(target.id) });
 });

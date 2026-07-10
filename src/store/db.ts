@@ -377,6 +377,7 @@ ensureColumn("leads", "whatsapp_opt_in_timestamp", "whatsapp_opt_in_timestamp IN
 ensureColumn("leads", "whatsapp_last_inbound_at", "whatsapp_last_inbound_at INTEGER");
 ensureColumn("leads", "whatsapp_last_outbound_at", "whatsapp_last_outbound_at INTEGER");
 ensureColumn("leads", "preferred_channel", "preferred_channel TEXT");
+ensureColumn("users", "permissions", "permissions TEXT");
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal
 // activity feed but keeps them available in the Deleted workspace.
 ensureColumn("activities", "deleted_at", "deleted_at INTEGER");

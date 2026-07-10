@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { getSessionUser, adminFromPasscode, isSessionPortalVerified, User } from "../services/auth";
+import { featureForRequest, userHasFeature } from "../services/permissions";
 
 // Attach the authenticated user to the request for downstream handlers (lead scoping, etc.).
 declare global {
@@ -74,6 +75,21 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   if (!checkPass(req, res)) return;
   if (req.authUser?.role !== "admin") {
     res.status(403).json({ error: "admin only" });
+    return;
+  }
+  next();
+}
+
+/** Gate APIs by the signed-in user's feature checklist. Public/webhook routes return null. */
+export function requireFeatureForCurrentPath(req: Request, res: Response, next: NextFunction): void {
+  const feature = featureForRequest(req);
+  if (!feature) {
+    next();
+    return;
+  }
+  if (!checkPass(req, res)) return;
+  if (!userHasFeature(req.authUser, feature)) {
+    res.status(403).json({ error: `feature not allowed: ${feature}` });
     return;
   }
   next();

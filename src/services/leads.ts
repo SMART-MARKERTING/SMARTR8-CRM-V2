@@ -3,6 +3,7 @@ import { db } from "../store/db";
 import { toE164 } from "../util/phone";
 import { cityTz, stateTz, tzForPhone } from "../util/areaCodeTz";
 import { DEFAULT_STAGE, isPipelineStage } from "../pipeline";
+import { scheduleLegacyCrmSync } from "./legacyCrmOutboundSync";
 
 export type LeadStatus = "new" | "contacted" | "qualified" | "nurturing" | "won" | "lost";
 
@@ -171,6 +172,24 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function normalizeLeadTag(tag: unknown): string {
+  return String(tag ?? "").trim().replace(/\s+/g, " ").slice(0, 64);
+}
+
+function normalizeLeadTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const tag = normalizeLeadTag(raw);
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out;
+}
+
 const LEAD_POOL_MARKER_SQL = `(custom LIKE '%"lead_pool":true%' OR custom LIKE '%"lead_pool":"true"%')`;
 const LEGACY_OLD_LIST_SQL =
   `(LOWER(COALESCE(source, '')) IN ('lead-pool', 'lead pool', 'leadpool', 'old lead', 'old leads', 'open lead') ` +
@@ -241,7 +260,7 @@ export function createLead(input: LeadInput): Lead {
     score: input.score ?? 0,
     timezone: input.timezone ?? null,
     consent: input.consent ? 1 : 0,
-    tags: JSON.stringify(input.tags ?? []),
+    tags: JSON.stringify(normalizeLeadTags(input.tags ?? [])),
     custom: JSON.stringify(input.custom ?? {}),
     last_activity_at: now,
     category: input.category ?? null,
@@ -261,6 +280,7 @@ export function createLead(input: LeadInput): Lead {
     channel: "system",
     body: `Lead created${input.source ? ` from ${input.source}` : ""}`,
   });
+  scheduleLegacyCrmSync(id, "lead_created");
   return lead;
 }
 
@@ -297,7 +317,7 @@ export function bulkCreateContacts(
         email,
         phone,
         pipeline_stage: DEFAULT_STAGE,
-        tags: JSON.stringify(c.tags ?? []),
+        tags: JSON.stringify(normalizeLeadTags(c.tags ?? [])),
       });
       imported++;
     }
@@ -325,13 +345,17 @@ export function deleteLead(id: string): boolean {
   const r = db
     .prepare(`UPDATE leads SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
     .run(now, now, id);
-  return (r.changes ?? 0) > 0;
+  const changed = (r.changes ?? 0) > 0;
+  if (changed) scheduleLegacyCrmSync(id, "lead_deleted");
+  return changed;
 }
 
 /** Restore a soft-deleted lead back into the active list. */
 export function restoreLead(id: string): boolean {
   const r = db.prepare(`UPDATE leads SET deleted_at = NULL, updated_at = ? WHERE id = ?`).run(Date.now(), id);
-  return (r.changes ?? 0) > 0;
+  const changed = (r.changes ?? 0) > 0;
+  if (changed) scheduleLegacyCrmSync(id, "lead_restored");
+  return changed;
 }
 
 /** Find an existing lead by phone (E.164) or email, for dedup on intake. */
@@ -367,6 +391,7 @@ export interface ListLeadsOpts {
   includeContactOnly?: boolean;
   /** Restrict to leads owned by this user id (non-admins). Omit/undefined = no owner filter. */
   ownerUserId?: string;
+  tag?: string;
 }
 
 export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
@@ -397,9 +422,13 @@ export function listLeads(opts: ListLeadsOpts = {}): Lead[] {
   }
   if (opts.q) {
     where.push(
-      `(first_name LIKE @q OR last_name LIKE @q OR email LIKE @q OR phone LIKE @q OR source LIKE @q OR custom LIKE @q)`,
+      `(first_name LIKE @q OR last_name LIKE @q OR email LIKE @q OR phone LIKE @q OR source LIKE @q OR custom LIKE @q OR tags LIKE @q)`,
     );
     params.q = `%${opts.q}%`;
+  }
+  if (opts.tag) {
+    where.push(`LOWER(tags) LIKE @tag`);
+    params.tag = `%${opts.tag.toLowerCase()}%`;
   }
   // Cap generously: the Contacts tab loads the full local book (thousands of records)
   // now that GHL is disconnected and SQLite is the only source.
@@ -517,7 +546,7 @@ export function updateLead(
   }
   if (patch.tags !== undefined) {
     sets.push(`tags = @tags`);
-    params.tags = JSON.stringify(patch.tags);
+    params.tags = JSON.stringify(normalizeLeadTags(patch.tags));
   }
   if (patch.custom !== undefined) {
     sets.push(`custom = @custom`);
@@ -557,6 +586,7 @@ export function updateLead(
   }
   if (sets.length) {
     db.prepare(`UPDATE leads SET ${sets.join(", ")}, updated_at = @updated_at WHERE id = @id`).run(params);
+    scheduleLegacyCrmSync(id, "lead_updated");
   }
   // Record status / pipeline-stage changes on the timeline so history is auditable.
   if (typeof patch.status === "string" && patch.status !== existing.status) {
@@ -609,6 +639,7 @@ export function setSmsConsent(
     status: on ? "opted-in" : "opted-out",
     meta: { author: opts.author ?? null, source: "manual" },
   });
+  scheduleLegacyCrmSync(id, "sms_consent");
   return getLead(id);
 }
 
@@ -616,10 +647,28 @@ export function setSmsConsent(
 export function addLeadTag(id: string, tag: string): Lead | null {
   const lead = getLead(id);
   if (!lead) return null;
-  if (!lead.tags.includes(tag)) {
-    const tags = [...lead.tags, tag];
+  const next = normalizeLeadTag(tag);
+  if (!next) return lead;
+  if (!lead.tags.some((existing) => existing.toLowerCase() === next.toLowerCase())) {
+    const tags = normalizeLeadTags([...lead.tags, next]);
     db.prepare(`UPDATE leads SET tags = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(tags), Date.now(), id);
-    logActivity(id, { type: "tag", direction: "system", channel: "system", body: `Tagged: ${tag}` });
+    logActivity(id, { type: "tag", direction: "system", channel: "system", body: `Tagged: ${next}` });
+    scheduleLegacyCrmSync(id, "tag_added");
+  }
+  return getLead(id);
+}
+
+/** Remove a tag from a lead (case-insensitive). */
+export function removeLeadTag(id: string, tag: string): Lead | null {
+  const lead = getLead(id);
+  if (!lead) return null;
+  const target = normalizeLeadTag(tag).toLowerCase();
+  if (!target) return lead;
+  const tags = lead.tags.filter((existing) => existing.toLowerCase() !== target);
+  if (tags.length !== lead.tags.length) {
+    db.prepare(`UPDATE leads SET tags = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(tags), Date.now(), id);
+    logActivity(id, { type: "tag", direction: "system", channel: "system", body: `Removed tag: ${tag}` });
+    scheduleLegacyCrmSync(id, "tag_removed");
   }
   return getLead(id);
 }
@@ -660,6 +709,7 @@ function saveTodos(leadId: string, todos: Todo[]): Todo[] {
     Date.now(),
     leadId,
   );
+  scheduleLegacyCrmSync(leadId, "todos_updated");
   return todos.filter((t) => !t.deleted_at);
 }
 
@@ -742,6 +792,7 @@ export function addNote(leadId: string, body: string, author?: string): Note {
   ).run(note);
   touchLead(leadId);
   logActivity(leadId, { type: "note", direction: "system", channel: "system", body, meta: { author } });
+  scheduleLegacyCrmSync(leadId, "note_added");
   return note;
 }
 
@@ -783,6 +834,7 @@ export function logActivity(leadId: string, a: ActivityInput): Activity {
      VALUES (@id, @lead_id, @created_at, @type, @direction, @channel, @subject, @body, @status, @meta)`,
   ).run(row);
   touchLead(leadId);
+  scheduleLegacyCrmSync(leadId, "activity_logged");
   return { ...row, meta: a.meta ?? null };
 }
 
@@ -852,12 +904,16 @@ export function listActivities(leadId: string, limit = 100): Activity[] {
 /** Delete a single timeline activity from a lead. Returns true if a row was removed. */
 export function deleteActivity(leadId: string, activityId: string): boolean {
   const r = db.prepare(`UPDATE activities SET deleted_at = ? WHERE id = ? AND lead_id = ? AND deleted_at IS NULL`).run(Date.now(), activityId, leadId);
-  return (r.changes ?? 0) > 0;
+  const changed = (r.changes ?? 0) > 0;
+  if (changed) scheduleLegacyCrmSync(leadId, "activity_deleted");
+  return changed;
 }
 
 export function restoreActivity(leadId: string, activityId: string): boolean {
   const r = db.prepare(`UPDATE activities SET deleted_at = NULL WHERE id = ? AND lead_id = ?`).run(activityId, leadId);
-  return (r.changes ?? 0) > 0;
+  const changed = (r.changes ?? 0) > 0;
+  if (changed) scheduleLegacyCrmSync(leadId, "activity_restored");
+  return changed;
 }
 
 export function listDeletedActivities(opts: { ownerUserId?: string; limit?: number } = {}): Activity[] {
@@ -881,6 +937,7 @@ export function getActivity(leadId: string, activityId: string): Activity | null
 
 function touchLead(leadId: string): void {
   db.prepare(`UPDATE leads SET last_activity_at = ? WHERE id = ?`).run(Date.now(), leadId);
+  scheduleLegacyCrmSync(leadId, "lead_touched");
 }
 
 // ── Local message threads (replaces GHL conversations for the Messages tab) ──────

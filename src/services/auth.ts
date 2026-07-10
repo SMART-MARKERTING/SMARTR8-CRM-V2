@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { db } from "../store/db";
 import { config } from "../config";
 import { log } from "../logger";
+import { parseStoredPermissions, serializePermissions } from "./permissions";
 
 /**
  * Multi-user accounts + sessions. Passwords are scrypt-hashed with a per-user salt (no extra
@@ -17,6 +18,7 @@ export interface User {
   username: string;
   name: string | null;
   role: Role;
+  permissions: string[];
   disabled: boolean;
   created_at: number;
 }
@@ -28,6 +30,7 @@ interface UserRow {
   role: string;
   password_hash: string;
   password_salt: string;
+  permissions: string | null;
   disabled: number;
   created_at: number;
 }
@@ -40,6 +43,7 @@ function toUser(r: UserRow): User {
     username: r.username,
     name: r.name,
     role: r.role === "admin" ? "admin" : "user",
+    permissions: parseStoredPermissions(r.permissions, r.role),
     disabled: !!r.disabled,
     created_at: r.created_at,
   };
@@ -81,7 +85,7 @@ export function primaryAdmin(): User | null {
 
 export class UserError extends Error {}
 
-export function createUser(opts: { username: string; password: string; name?: string; role?: Role }): User {
+export function createUser(opts: { username: string; password: string; name?: string; role?: Role; permissions?: unknown }): User {
   const username = opts.username.trim();
   if (!username) throw new UserError("username is required");
   if (!opts.password || opts.password.length < 6) throw new UserError("password must be at least 6 characters");
@@ -90,8 +94,8 @@ export function createUser(opts: { username: string; password: string; name?: st
   const salt = crypto.randomBytes(16).toString("hex");
   const now = Date.now();
   db.prepare(
-    `INSERT INTO users (id, username, name, role, password_hash, password_salt, disabled, created_at)
-     VALUES (@id, @username, @name, @role, @hash, @salt, 0, @now)`,
+    `INSERT INTO users (id, username, name, role, password_hash, password_salt, permissions, disabled, created_at)
+     VALUES (@id, @username, @name, @role, @hash, @salt, @permissions, 0, @now)`,
   ).run({
     id,
     username,
@@ -99,6 +103,7 @@ export function createUser(opts: { username: string; password: string; name?: st
     role: opts.role === "admin" ? "admin" : "user",
     hash: hashPassword(opts.password, salt),
     salt,
+    permissions: opts.role === "admin" || opts.permissions === undefined ? null : serializePermissions(opts.permissions),
     now,
   });
   log.info("user created", { id, username, role: opts.role ?? "user" });
@@ -118,6 +123,10 @@ export function setDisabled(userId: string, disabled: boolean): void {
 
 export function setRole(userId: string, role: Role): void {
   db.prepare(`UPDATE users SET role = ? WHERE id = ?`).run(role === "admin" ? "admin" : "user", userId);
+}
+
+export function setPermissions(userId: string, permissions: unknown): void {
+  db.prepare(`UPDATE users SET permissions = ? WHERE id = ?`).run(serializePermissions(permissions), userId);
 }
 
 /** Verify username + password; returns the user or null. */

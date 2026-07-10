@@ -3,11 +3,11 @@ import { randomUUID } from "crypto";
 import { config } from "../config";
 import { log } from "../logger";
 import { toE164 } from "../util/phone";
-import { requirePass } from "../util/auth";
+import { requirePass, requireFeatureForCurrentPath } from "../util/auth";
 import { upsertContact, logCall } from "../services/ghl";
 import { addToDnc, listDnc, isOnDnc } from "../services/dnc";
 import { enqueueAutomated, queueStatus } from "../services/callQueue";
-import { getCall, setCall, delCall } from "../services/callState";
+import { getCall, setCall, delCall, listCalls } from "../services/callState";
 import { startClickToCall } from "../services/clickToCall";
 import {
   startConference,
@@ -52,6 +52,8 @@ import {
 import { acceptTelnyxCallSummaryEvent, processCallSummary, verifyTelnyxWebhookSignature } from "../services/callSummary";
 
 export const voiceRouter = Router();
+
+voiceRouter.use(requireFeatureForCurrentPath);
 
 const IVR_PROMPT =
   "Thank you for calling Adaxa Home Loans. Press 1 to reach Mike, or press 9 to be removed from our call list.";
@@ -254,6 +256,7 @@ interface PowerDialerItem {
   connectTo: PowerConnectTarget;
   from?: string;
   listId?: string;
+  listName?: string;
 }
 
 const powerDialerQueue: PowerDialerItem[] = [];
@@ -274,10 +277,70 @@ interface PowerDialerEvent {
   outcome?: string;
   note?: string;
   callControlId?: string;
+  peerCcid?: string;
   listId?: string;
+  listName?: string;
+}
+
+interface PowerListWindow {
+  timezone: string | null;
+  label: string | null;
+  allowed: boolean;
+  localTime: string | null;
+  reason: string | null;
 }
 
 const powerDialerEvents: PowerDialerEvent[] = [];
+
+const POWER_LIST_TIMEZONES: Array<{ pattern: RegExp; timezone: string; label: string }> = [
+  { pattern: /\b(az|arizona|phoenix)\b/i, timezone: "America/Phoenix", label: "AZ" },
+  { pattern: /\b(pt|pacific|ca|california|west)\b/i, timezone: "America/Los_Angeles", label: "PT" },
+  { pattern: /\b(mt|mountain|denver|co|colorado)\b/i, timezone: "America/Denver", label: "MT" },
+  { pattern: /\b(ct|central|chicago|tx|texas)\b/i, timezone: "America/Chicago", label: "CT" },
+  { pattern: /\b(et|eastern|new[_\s-]*york|fl|florida)\b/i, timezone: "America/New_York", label: "ET" },
+];
+
+function timezoneForPowerListName(name: string | null | undefined): { timezone: string; label: string } | null {
+  const raw = String(name || "");
+  for (const rule of POWER_LIST_TIMEZONES) {
+    if (rule.pattern.test(raw)) return { timezone: rule.timezone, label: rule.label };
+  }
+  return null;
+}
+
+function localHourMinute(timezone: string): { hour: number; minute: number; label: string } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  const label = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(new Date());
+  return { hour: hour === 24 ? 0 : hour, minute, label };
+}
+
+function powerListWindow(name: string | null | undefined): PowerListWindow {
+  const zone = timezoneForPowerListName(name);
+  if (!zone) return { timezone: null, label: null, allowed: true, localTime: null, reason: null };
+  const local = localHourMinute(zone.timezone);
+  const minutes = local.hour * 60 + local.minute;
+  const allowed = minutes >= 9 * 60 && minutes < 18 * 60;
+  return {
+    timezone: zone.timezone,
+    label: zone.label,
+    allowed,
+    localTime: local.label,
+    reason: allowed ? null : `List ${zone.label} can only dial 9:00 AM-6:00 PM local time (${local.label})`,
+  };
+}
 
 function ownerScope(req: any): string | undefined {
   return req.authUser?.role === "admin" ? undefined : req.authUser?.id;
@@ -360,35 +423,41 @@ async function powerDialerTarget(connectTo: PowerConnectTarget): Promise<string 
 async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
   const lead = getLead(item.leadId);
   if (!lead || lead.deleted_at) return false;
+  const window = powerListWindow(item.listName);
+  if (!window.allowed) {
+    logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer skipped: ${window.reason}`, status: "skipped:list-window" });
+    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "list-window", listId: item.listId, listName: item.listName, note: window.reason || undefined });
+    return false;
+  }
   if (!lead.phone) {
     logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: no phone", status: "skipped:no-phone" });
-    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "no-phone", listId: item.listId });
+    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "no-phone", listId: item.listId, listName: item.listName });
     return false;
   }
   if (await isOnDnc(lead.phone)) {
     logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: DNC", status: "skipped:on-DNC" });
-    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "dnc", listId: item.listId });
+    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "dnc", listId: item.listId, listName: item.listName });
     return false;
   }
   const timezone = resolveLeadTimezone(lead) || config.crm.defaultTimezone || undefined;
   const hours = withinCallingHours(timezone);
   if (!hours.allowed) {
     logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: outside calling window", status: `skipped:${hours.reason || "outside-hours"}` });
-    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: hours.reason || "outside-hours", listId: item.listId });
+    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: hours.reason || "outside-hours", listId: item.listId, listName: item.listName });
     return false;
   }
   const target = await powerDialerTarget(item.connectTo);
   if (!target) {
     powerDialerLastError = item.connectTo === "crm" ? "CRM softphone is not registered" : "MY_CELL_NUMBER is not set";
     logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer skipped: no agent target", status: "skipped:no-agent-target" });
-    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "no-agent-target", listId: item.listId });
+    powerDialerEventForLead(lead, { leadId: lead.id, status: "skipped", outcome: "no-agent-target", listId: item.listId, listName: item.listName });
     return false;
   }
   const picked = await pickPowerDialerFromNumber(lead.phone);
   const from = item.from || picked.from;
   const ccid = await placeCallWithAmd(lead.phone, from);
   powerDialerActive++;
-  powerDialerEventForLead(lead, { leadId: lead.id, status: "dialing", from, callControlId: ccid, listId: item.listId, note: item.from ? "manual caller ID" : `auto ${picked.reason}` });
+  powerDialerEventForLead(lead, { leadId: lead.id, status: "dialing", from, callControlId: ccid, listId: item.listId, listName: item.listName, note: item.from ? "manual caller ID" : `auto ${picked.reason}` });
   setCall(ccid, {
     kind: "automated",
     direction: "outbound",
@@ -407,7 +476,7 @@ async function startPowerDialLead(item: PowerDialerItem): Promise<boolean> {
     channel: "voice",
     body: `Power Dialer started from ${from}`,
     status: "amd-wait",
-    meta: { callControlId: ccid, connectTo: item.connectTo, from, fromReason: item.from ? "manual" : picked.reason, listId: item.listId },
+    meta: { callControlId: ccid, connectTo: item.connectTo, from, fromReason: item.from ? "manual" : picked.reason, listId: item.listId, listName: item.listName },
   });
   return true;
 }
@@ -432,6 +501,32 @@ function finishPowerDialerLeg(): void {
   pumpPowerDialer();
 }
 
+function powerDialerActiveLines() {
+  return listCalls()
+    .filter(({ ctx }) => ctx.powerDialer && ctx.primary)
+    .map(({ ccid, ctx }) => {
+      const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+      const event = powerDialerEvents.find((row) => row.callControlId === ccid || (lead && row.leadId === lead.id));
+      return {
+        callControlId: ccid,
+        peerCcid: ctx.peerCcid || null,
+        leadId: ctx.leadId || null,
+        name: lead ? leadDisplayName(lead) : null,
+        phone: ctx.contactPhone || lead?.phone || null,
+        status: event?.status || ctx.stage || "calling",
+        outcome: event?.outcome || ctx.powerDialerResult || null,
+        from: event?.from || ctx.peerFrom || null,
+        listId: event?.listId || null,
+        listName: event?.listName || null,
+        startedAt: ctx.startedAt,
+        answeredAt: ctx.answeredAt || null,
+        connectedAt: ctx.connectedAt || null,
+        stage: ctx.stage || null,
+      };
+    })
+    .sort((a, b) => a.startedAt - b.startedAt);
+}
+
 function powerDialerListRows(req: any): Array<{ id: string; created_at: number; updated_at: number; created_by: string | null; owner_user_id: string | null; name: string; source: string | null; lead_ids: string; filters: string }> {
   const owner = ownerScope(req);
   return db
@@ -443,8 +538,13 @@ function powerDialerListRows(req: any): Array<{ id: string; created_at: number; 
     .all({ owner: owner || null }) as Array<{ id: string; created_at: number; updated_at: number; created_by: string | null; owner_user_id: string | null; name: string; source: string | null; lead_ids: string; filters: string }>;
 }
 
+function powerDialerListForRequest(req: any, id: string) {
+  return powerDialerListRows(req).find((row) => row.id === id) || null;
+}
+
 function listSummary(row: ReturnType<typeof powerDialerListRows>[number]) {
   const ids = safeParse<string[]>(row.lead_ids, []);
+  const window = powerListWindow(row.name);
   return {
     id: row.id,
     name: row.name,
@@ -453,7 +553,13 @@ function listSummary(row: ReturnType<typeof powerDialerListRows>[number]) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     filters: safeParse<Record<string, unknown>>(row.filters, {}),
+    callWindow: window,
+    callableNow: window.allowed,
   };
+}
+
+function callablePowerLists(req: any) {
+  return powerDialerListRows(req).filter((row) => powerListWindow(row.name).allowed);
 }
 
 voiceRouter.get("/calls/power-dialer/lists", requirePass, (req, res) => {
@@ -604,6 +710,16 @@ voiceRouter.post("/calls/power-dialer/start", requirePass, async (req, res) => {
     res.status(400).json({ error: "pass selected lead ids" });
     return;
   }
+  const list = body.listId ? powerDialerListForRequest(req, cleanText(body.listId)) : null;
+  if (body.listId && !list) {
+    res.status(404).json({ error: "call list not found" });
+    return;
+  }
+  const listWindow = powerListWindow(list?.name);
+  if (!listWindow.allowed) {
+    res.status(403).json({ error: listWindow.reason || "call list is outside allowed hours", callWindow: listWindow });
+    return;
+  }
   const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
   const target = await powerDialerTarget(connectTo);
   if (!target) {
@@ -616,12 +732,70 @@ voiceRouter.post("/calls/power-dialer/start", requirePass, async (req, res) => {
   for (const id of ids) {
     const lead = getLead(id);
     if (canAccessLead(req, lead)) {
-      powerDialerQueue.push({ leadId: id, connectTo, from: body.from || undefined, listId: cleanText(body.listId) || undefined });
-      powerDialerEventForLead(lead, { leadId: id, status: "queued", listId: cleanText(body.listId) || undefined });
+      powerDialerQueue.push({ leadId: id, connectTo, from: body.from || undefined, listId: list?.id || undefined, listName: list?.name || undefined });
+      powerDialerEventForLead(lead, { leadId: id, status: "queued", listId: list?.id || undefined, listName: list?.name || undefined });
     }
   }
   pumpPowerDialer();
-  res.json({ ok: true, queued: powerDialerQueue.length, active: powerDialerActive, concurrency: powerDialerConcurrency, connectTo });
+  res.json({ ok: true, queued: powerDialerQueue.length, active: powerDialerActive, concurrency: powerDialerConcurrency, connectTo, callWindow: listWindow });
+});
+
+voiceRouter.post("/calls/power-dialer/start-available-lists", requirePass, async (req, res) => {
+  const body = (req.body ?? {}) as { connectTo?: string; from?: string; concurrency?: number; max?: number };
+  const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
+  const target = await powerDialerTarget(connectTo);
+  if (!target) {
+    res.status(400).json({ error: connectTo === "crm" ? "CRM softphone is not registered yet" : "MY_CELL_NUMBER is not set" });
+    return;
+  }
+  const allLists = powerDialerListRows(req);
+  const timedLists = allLists.filter((row) => Boolean(powerListWindow(row.name).timezone));
+  const available = timedLists.filter((row) => powerListWindow(row.name).allowed);
+  const unavailable = timedLists
+    .filter((row) => !powerListWindow(row.name).allowed)
+    .map((row) => ({ id: row.id, name: row.name, callWindow: powerListWindow(row.name) }));
+  if (!available.length) {
+    res.status(403).json({ error: "No call lists are inside the 9:00 AM-6:00 PM local window right now.", unavailable });
+    return;
+  }
+  const buckets = available.map((row) => ({
+    row,
+    ids: safeParse<string[]>(row.lead_ids, []).filter((id) => canAccessLead(req, getLead(id))),
+  })).filter((bucket) => bucket.ids.length);
+  if (!buckets.length) {
+    res.status(400).json({ error: "Available call lists have no callable leads.", unavailable });
+    return;
+  }
+  powerDialerConcurrency = Math.max(1, Math.min(3, Number(body.concurrency) || 1));
+  powerDialerStopped = false;
+  powerDialerLastError = null;
+  const max = Math.max(1, Math.min(750, Number(body.max) || 250));
+  const seen = new Set<string>();
+  let queued = 0;
+  while (queued < max && buckets.some((bucket) => bucket.ids.length)) {
+    for (const bucket of buckets) {
+      const id = bucket.ids.shift();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const lead = getLead(id);
+      if (!canAccessLead(req, lead)) continue;
+      powerDialerQueue.push({ leadId: id, connectTo, from: body.from || undefined, listId: bucket.row.id, listName: bucket.row.name });
+      powerDialerEventForLead(lead, { leadId: id, status: "queued", listId: bucket.row.id, listName: bucket.row.name });
+      queued++;
+      if (queued >= max) break;
+    }
+  }
+  pumpPowerDialer();
+  res.json({
+    ok: true,
+    queued: powerDialerQueue.length,
+    added: queued,
+    active: powerDialerActive,
+    concurrency: powerDialerConcurrency,
+    connectTo,
+    available: available.map(listSummary),
+    unavailable,
+  });
 });
 
 voiceRouter.post("/calls/power-dialer/stop", requirePass, (_req, res) => {
@@ -629,6 +803,60 @@ voiceRouter.post("/calls/power-dialer/stop", requirePass, (_req, res) => {
   powerDialerQueue.splice(0, powerDialerQueue.length);
   powerDialerStopped = true;
   res.json({ ok: true, cleared, active: powerDialerActive });
+});
+
+voiceRouter.post("/calls/power-dialer/lines/:ccid/monitor", requirePass, async (req, res) => {
+  const ccid = req.params.ccid;
+  const ctx = getCall(ccid);
+  if (!ctx || !ctx.powerDialer || !ctx.primary) {
+    res.status(404).json({ error: "active Power Dialer line not found" });
+    return;
+  }
+  const body = (req.body ?? {}) as { connectTo?: string };
+  const connectTo: PowerConnectTarget = body.connectTo === "cell" ? "cell" : "crm";
+  const target = await powerDialerTarget(connectTo);
+  if (!target) {
+    res.status(400).json({ error: connectTo === "crm" ? "CRM softphone is not registered yet" : "MY_CELL_NUMBER is not set" });
+    return;
+  }
+  try {
+    const peer = await dialLeg(target, { timeoutSecs: config.inbound.cellRingSecs, from: config.telnyx.fromNumber });
+    ctx.peerCcid = peer;
+    setCall(peer, {
+      kind: "automated",
+      direction: "outbound",
+      startedAt: ctx.startedAt,
+      primary: false,
+      leadId: ctx.leadId,
+      contactPhone: ctx.contactPhone,
+      role: "bridge-on-answer",
+      peerCcid: ccid,
+      powerDialer: true,
+    });
+    const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+    if (lead) {
+      powerDialerEventForLead(lead, { leadId: lead.id, status: "monitor-ringing", callControlId: ccid, peerCcid: peer, note: `Ringing ${connectTo}` });
+      logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: `Power Dialer monitor requested to ${connectTo}`, status: "monitor-ringing" });
+    }
+    res.json({ ok: true, callControlId: ccid, peerCcid: peer, connectTo });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+voiceRouter.post("/calls/power-dialer/lines/:ccid/end", requirePass, async (req, res) => {
+  const ccid = req.params.ccid;
+  const ctx = getCall(ccid);
+  if (!ctx || !ctx.powerDialer) {
+    res.status(404).json({ error: "active Power Dialer line not found" });
+    return;
+  }
+  const peer = ctx.peerCcid;
+  await hangup(ccid).catch(() => {});
+  if (peer) await hangup(peer).catch(() => {});
+  const lead = ctx.leadId ? getLead(ctx.leadId) : null;
+  if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "ended", outcome: "manual-end", callControlId: ccid });
+  res.json({ ok: true, callControlId: ccid, peerCcid: peer || null });
 });
 
 voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
@@ -639,9 +867,11 @@ voiceRouter.get("/calls/power-dialer/status", requirePass, (_req, res) => {
     running: !powerDialerStopped,
     concurrency: powerDialerConcurrency,
     lastError: powerDialerLastError,
+    lines: powerDialerActiveLines(),
+    lists: powerDialerListRows(_req).map(listSummary),
     queue: powerDialerQueue.slice(0, 50).map((item) => {
       const lead = getLead(item.leadId);
-      return { leadId: item.leadId, name: lead ? leadDisplayName(lead) : item.leadId, phone: lead?.phone || null, connectTo: item.connectTo, from: item.from || "auto", listId: item.listId };
+      return { leadId: item.leadId, name: lead ? leadDisplayName(lead) : item.leadId, phone: lead?.phone || null, connectTo: item.connectTo, from: item.from || "auto", listId: item.listId, listName: item.listName };
     }),
     recent: powerDialerEvents.slice(0, 80),
   });
@@ -828,6 +1058,10 @@ async function handleAnswered(ccid: string): Promise<void> {
       peer.answeredAt = peer.answeredAt || Date.now();
     }
     await bridge(ccid, ctx.peerCcid);
+    if (ctx.powerDialer && ctx.leadId) {
+      const lead = getLead(ctx.leadId);
+      if (lead) powerDialerEventForLead(lead, { leadId: lead.id, status: "agent-answered", outcome: "connected", callControlId: ctx.peerCcid, peerCcid: ccid });
+    }
   }
 }
 
@@ -882,7 +1116,7 @@ async function handleMachineDetection(ccid: string, p: any): Promise<void> {
         status: "ringing-agent",
         meta: { detection: result || "human" },
       });
-      powerDialerEventForLead(lead, { leadId: lead.id, status: "ringing-agent", outcome: result || "human", callControlId: ccid });
+      powerDialerEventForLead(lead, { leadId: lead.id, status: "ringing-agent", outcome: result || "human", callControlId: ccid, peerCcid: peer });
     }
   } catch (err) {
     if (lead) logActivity(lead.id, { type: "call", direction: "outbound", channel: "voice", body: "Power Dialer agent ring failed", status: "failed:agent-ring", meta: { error: String(err) } });

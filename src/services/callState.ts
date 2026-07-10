@@ -52,6 +52,9 @@ export function setCall(ccid: string, ctx: CallContext): void {
 export function getCall(ccid: string): CallContext | undefined {
   return calls.get(ccid);
 }
+export function listCalls(): Array<{ ccid: string; ctx: CallContext }> {
+  return Array.from(calls.entries()).map(([ccid, ctx]) => ({ ccid, ctx }));
+}
 export function delCall(ccid: string): void {
   calls.delete(ccid);
 }

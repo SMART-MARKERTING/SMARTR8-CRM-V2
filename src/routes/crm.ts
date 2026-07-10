@@ -4,7 +4,7 @@ import path from "path";
 import { Router, Request, Response, raw } from "express";
 import { config } from "../config";
 import { log } from "../logger";
-import { requirePass, requireAdmin, requirePortalVerified } from "../util/auth";
+import { requirePass, requireAdmin, requirePortalVerified, requireFeatureForCurrentPath } from "../util/auth";
 import { getUser, listUsers } from "../services/auth";
 import { sendOutbound } from "../services/router";
 import { startClickToCall } from "../services/clickToCall";
@@ -14,6 +14,8 @@ import {
   listLeads,
   updateLead,
   setSmsConsent,
+  addLeadTag,
+  removeLeadTag,
   deleteLead,
   restoreLead,
   findLead,
@@ -157,6 +159,8 @@ crmRouter.use((req, res, next) => {
   }
   next();
 });
+
+crmRouter.use(requireFeatureForCurrentPath);
 
 // ── Public website lead intake ───────────────────────────────────────────────
 // Point your site's form/webhook at:  POST https://<host>/webhooks/lead?key=SECRET
@@ -1596,6 +1600,7 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const stage = typeof req.query.stage === "string" ? req.query.stage : undefined;
+  const tag = typeof req.query.tag === "string" ? req.query.tag : undefined;
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
   const deleted = req.query.deleted === "1" || req.query.deleted === "true";
   const pastClient = req.query.pastClient === "1" || req.query.pastClient === "true";
@@ -1616,6 +1621,7 @@ crmRouter.get("/api/leads", requirePass, (req, res) => {
       q,
       status,
       stage,
+      tag,
       limit,
       deleted,
       pastClient,
@@ -3302,6 +3308,23 @@ crmRouter.patch("/api/leads/:id", requirePass, (req, res) => {
     markPastClient(existing.id); // sets the flag + fires the past_client trigger once (0->1)
   }
   res.json({ ok: true, lead: getLead(existing.id) });
+});
+
+crmRouter.post("/api/leads/:id/tags", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const tag = (req.body?.tag ?? "").toString().trim();
+  if (!tag) {
+    res.status(400).json({ error: "tag is required" });
+    return;
+  }
+  res.json({ ok: true, lead: addLeadTag(lead.id, tag) });
+});
+
+crmRouter.delete("/api/leads/:id/tags/:tag", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  res.json({ ok: true, lead: removeLeadTag(lead.id, req.params.tag) });
 });
 
 /** Delete a lead (notes + activity timeline cascade; pending automation steps cancelled). */

@@ -726,6 +726,9 @@
         powerDialerLists: [],
         powerDialerActiveListId: "",
         powerDialerRecent: [],
+        powerDialerLines: [],
+        powerDialerDispositionShown: new Set(),
+        powerDialerStatusTimer: null,
         powerDialerNumbers: [],
         calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
       };
@@ -926,12 +929,31 @@
       function itemByPage(page) {
         return controlItems.find(function (item) { return item.id === page; });
       }
+      function allFeaturePages() {
+        return controlItems.map(function (item) { return item.id; });
+      }
+      function userPermissionList() {
+        if (state.user && state.user.role === "admin") return allFeaturePages();
+        if (state.user && Array.isArray(state.user.permissions)) return state.user.permissions;
+        return allFeaturePages();
+      }
+      function canPage(page) {
+        if (page === "control") return true;
+        if (!itemByPage(page)) return true;
+        return userPermissionList().indexOf(page) >= 0;
+      }
+      function firstAccessiblePage() {
+        return ["dashboard"].concat(allFeaturePages()).find(function (page) { return canPage(page); }) || "control";
+      }
+      function accessibleControlItems() {
+        return controlItems.filter(function (item) { return canPage(item.id); });
+      }
       function loadFavoritePages() {
         try {
           var saved = JSON.parse(localStorage.getItem("lg_favorite_pages") || "null");
-          if (Array.isArray(saved)) return saved.filter(function (page) { return itemByPage(page); });
+          if (Array.isArray(saved)) return saved.filter(function (page) { return itemByPage(page) && canPage(page); });
         } catch (e) {}
-        return defaultFavoritePages.slice();
+        return defaultFavoritePages.filter(canPage);
       }
       function saveFavoritePages() {
         try { localStorage.setItem("lg_favorite_pages", JSON.stringify(state.favoritePages)); } catch (e) {}
@@ -948,7 +970,7 @@
         var favoriteItems = state.favoritePages.map(function (page) {
           var item = itemByPage(page);
           return item || null;
-        }).filter(Boolean);
+        }).filter(function (item) { return item && canPage(item.id); });
         if (favoritesWrap) favoritesWrap.innerHTML = favoriteItems.map(navButtonHtml).join("");
         if (workspaceWrap) {
           workspaceWrap.innerHTML = favoriteItems.filter(function (item) {
@@ -960,7 +982,7 @@
         });
       }
       function toggleFavoritePage(page) {
-        if (!itemByPage(page)) return;
+        if (!itemByPage(page) || !canPage(page)) return;
         if (isFavorite(page)) state.favoritePages = state.favoritePages.filter(function (p) { return p !== page; });
         else state.favoritePages.push(page);
         saveFavoritePages();
@@ -980,7 +1002,7 @@
       }
       function loadControlPanel() {
         var groups = {};
-        controlItems.forEach(function (item) {
+        accessibleControlItems().forEach(function (item) {
           groups[item.group] = groups[item.group] || [];
           groups[item.group].push(item);
         });
@@ -1063,9 +1085,9 @@
         var popout = new URLSearchParams(location.search).get("popout");
         if (popout === "dialer") {
           document.body.classList.add("popoutMode");
-          route("dialer");
+          route(canPage("dialer") ? "dialer" : firstAccessiblePage());
         } else {
-          route("dashboard");
+          route(canPage("dashboard") ? "dashboard" : firstAccessiblePage());
         }
       }
 
@@ -1171,6 +1193,10 @@
 
       async function route(page) {
         if (page === "portal") page = "leads";
+        if (page !== "control" && !canPage(page)) {
+          showToast("That section is not enabled for this user.", true);
+          page = firstAccessiblePage();
+        }
         setActivePage(page);
         if (page === "dashboard") return loadDashboard();
         if (page === "leads") return loadLeadsView();
@@ -1490,6 +1516,7 @@
             field("State", "ldState", addr.state) +
             field("ZIP", "ldZip", addr.zip) +
           '</div>' +
+          '<div style="margin-top:12px"><div class="toolbar" style="justify-content:space-between;align-items:center"><div><b>Tags</b><div id="leadTagsSearchHint" class="sub">' + esc((lead.tags || []).join(", ")) + '</div></div></div><div id="leadTagChips" style="margin-top:8px">' + renderLeadTagChips(lead.tags || [], true) + '</div><div class="toolbar" style="margin-top:8px"><input id="leadTagInput" placeholder="Add tag, e.g. HELOC, VA, hot lead"><button class="btn small primary" data-action="add-lead-tag">Add tag</button></div></div>' +
           '<label>Notes<textarea id="ldNote" placeholder="Add an internal note..."></textarea></label><div class="toolbar"><button class="btn" data-action="add-note">Add note</button><span class="sub">Save lead also stores anything typed here.</span></div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Notes</h3><div class="sub">Internal notes saved on this lead.</div></div><span id="leadNotesCount" class="badge blue">' + notes.length + ' notes</span></div><div id="leadNotesList" class="list" style="margin-top:12px">' + renderLeadNotes(notes) + '</div></section>' +
           '<section class="card pad leadWide"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Previous message history</h3><div class="sub">SMS, iMessage, WhatsApp, email, calls, voicemail, and system timeline.</div></div><span id="leadHistoryCount" class="badge blue">' + activities.length + ' events</span></div><div id="leadHistoryList" class="list" style="margin-top:12px">' + renderLeadHistory(activities) + '</div></section>' +
@@ -1628,6 +1655,22 @@
         var el = $(id);
         return el ? String(el.value || "").trim() : "";
       }
+      function splitTagInput(value) {
+        return String(value || "").split(/[,\n;]/).map(function (tag) { return tag.trim().replace(/\s+/g, " "); }).filter(Boolean);
+      }
+      function renderLeadTagChips(tags, removable) {
+        tags = Array.isArray(tags) ? tags : [];
+        if (!tags.length) return '<div class="empty" style="padding:10px">No tags yet.</div>';
+        return tags.map(function (tag) {
+          return '<span class="badge blue" style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0">' + esc(tag) +
+            (removable ? ' <button class="btn tiny ghost" data-action="remove-lead-tag" data-tag="' + esc(tag) + '" title="Remove tag" style="padding:0 4px">x</button>' : '') +
+          '</span>';
+        }).join("");
+      }
+      function updateLeadTagPanel(lead) {
+        if ($("leadTagChips")) $("leadTagChips").innerHTML = renderLeadTagChips((lead && lead.tags) || [], true);
+        if ($("leadTagsSearchHint")) $("leadTagsSearchHint").textContent = ((lead && lead.tags) || []).join(", ");
+      }
       function splitFullName(full) {
         var parts = String(full || "").trim().split(/\s+/).filter(Boolean);
         return { first: parts.shift() || "", last: parts.join(" ") };
@@ -1686,6 +1729,45 @@
         else if (state.page === "leadpool") await refreshLeadPool();
         else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
         await openLead(lead.id);
+      }
+
+      async function refreshOpenLeadLists() {
+        if (state.page === "leads" && $("leadListWrap")) await loadLeads();
+        else if (state.page === "leadpool") await refreshLeadPool();
+        else if (["contacts","pastclients","deleted"].indexOf(state.page) >= 0) await loadLeadBucket(state.page);
+      }
+
+      async function addTagsToCurrentLead() {
+        var lead = state.selectedLead;
+        if (!lead) return;
+        var tags = splitTagInput(inputVal("leadTagInput"));
+        if (!tags.length) { status("leadSaveMsg", "Type a tag first.", "warnText"); return; }
+        status("leadSaveMsg", "Saving tag...");
+        var latest = null;
+        for (var i = 0; i < tags.length; i++) {
+          var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/tags", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tag: tags[i] })
+          });
+          latest = data.lead;
+        }
+        state.selectedLead = latest || lead;
+        if ($("leadTagInput")) $("leadTagInput").value = "";
+        updateLeadTagPanel(state.selectedLead);
+        status("leadSaveMsg", "Tag saved.", "okText");
+        await refreshOpenLeadLists();
+      }
+
+      async function removeTagFromCurrentLead(tag) {
+        var lead = state.selectedLead;
+        if (!lead || !tag) return;
+        status("leadSaveMsg", "Removing tag...");
+        var data = await json("/api/leads/" + encodeURIComponent(lead.id) + "/tags/" + encodeURIComponent(tag), { method: "DELETE" });
+        state.selectedLead = data.lead || lead;
+        updateLeadTagPanel(state.selectedLead);
+        status("leadSaveMsg", "Tag removed.", "okText");
+        await refreshOpenLeadLists();
       }
 
       async function deleteCurrentLead() {
@@ -2698,7 +2780,7 @@
       async function loadPowerDialer() {
         pageShell("Power Dialer", "Progressive dialing with answering-machine detection before CRM/cell bridge.", '<button class="btn" data-action="refresh-power-status">Status</button>',
           '<div class="grid cols2">' +
-            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Call list<select id="powerList"><option value="">Search / manual selection</option></select></label><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto smart local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn" data-action="load-power-list">Load list</button><button class="btn" data-action="edit-power-list">Edit list</button><button class="btn" data-action="replace-power-list">Replace with selected</button><button class="btn danger" data-action="delete-power-list">Delete list</button><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div id="powerMsg" class="statusLine"></div></section>' +
+            '<section class="card pad"><h2 style="margin-top:0">Dial settings</h2><div class="fieldGrid"><label>Call list<select id="powerList"><option value="">Search / manual selection</option></select></label><label>Search leads<input id="powerSearch" type="search" placeholder="Name, phone, email..."></label><label>Connect answered humans to<select id="powerConnect"><option value="crm">CRM direct</option><option value="cell">My cell</option></select></label><label>Call from<select id="powerFrom"><option value="">Auto smart local line</option></select></label><label>Concurrency<select id="powerConcurrency"><option value="1">1 line</option><option value="2">2 lines</option><option value="3">3 lines</option></select></label></div><div class="toolbar" style="margin-top:10px"><button class="btn primary" data-action="start-available-power-lists">Start dialing available lists</button><button class="btn" data-action="load-power-list">Load list</button><button class="btn" data-action="edit-power-list">Edit list</button><button class="btn" data-action="replace-power-list">Replace with selected</button><button class="btn danger" data-action="delete-power-list">Delete list</button><button class="btn" data-action="refresh-power-leads">Search</button><button class="btn primary" data-action="start-power-dialer">Start selected</button><button class="btn danger" data-action="stop-power-dialer">Stop queue</button></div><div class="sub" style="margin-top:8px">CALL - AZ/PT/MT/CT/ET lists are hard-blocked outside 9:00 AM-6:00 PM in their local timezone.</div><div id="powerMsg" class="statusLine"></div></section>' +
             '<section class="card pad"><h2 style="margin-top:0">Queue status</h2><div id="powerStatus" class="list"><div class="empty">No status loaded.</div></div></section>' +
           '</div>' +
           '<section class="card"><div class="cardHead"><div><h2>Dial list</h2><div id="powerListHint" class="sub">Search leads or load a call list.</div></div><div class="toolbar"><button class="btn small" data-action="save-power-selection">Save selected as list</button><button class="btn small" data-action="refresh-power-leads">Refresh</button></div></div><div id="powerLeadWrap" class="tableWrap"></div></section>' +
@@ -2708,13 +2790,24 @@
         await loadPowerLists();
         await refreshPowerLeads();
         await refreshPowerStatus();
+        if (state.powerDialerStatusTimer) clearInterval(state.powerDialerStatusTimer);
+        state.powerDialerStatusTimer = setInterval(function () {
+          if (state.page !== "powerdialer") {
+            clearInterval(state.powerDialerStatusTimer);
+            state.powerDialerStatusTimer = null;
+            return;
+          }
+          refreshPowerStatus().catch(function () {});
+        }, 5000);
       }
       async function loadPowerLists() {
         var data = await json("/calls/power-dialer/lists").catch(function () { return { lists: [] }; });
         state.powerDialerLists = data.lists || [];
         if ($("powerList")) {
           $("powerList").innerHTML = '<option value="">Search / manual selection</option>' + state.powerDialerLists.map(function (l) {
-            return '<option value="' + esc(l.id) + '">' + esc(l.name) + ' (' + Number(l.count || 0) + ')</option>';
+            var win = l.callWindow || {};
+            var label = win.timezone ? (win.allowed ? "open" : "closed") + " " + (win.localTime || "") : "manual";
+            return '<option value="' + esc(l.id) + '"' + (!l.callableNow ? ' data-closed="1" disabled' : '') + '>' + esc(l.name) + ' (' + Number(l.count || 0) + ') - ' + esc(label) + '</option>';
           }).join("");
           $("powerList").value = state.powerDialerActiveListId || "";
         }
@@ -2847,18 +2940,70 @@
         status("powerMsg", "Queued " + data.queued + ", active " + data.active + ".", "okText");
         await refreshPowerStatus();
       }
+      async function startAvailablePowerLists() {
+        if (($("powerConnect") && $("powerConnect").value) === "crm" && !state.dialerClient) {
+          await connectCrmLine();
+        }
+        status("powerMsg", "Starting available timezone lists...");
+        var data = await json("/calls/power-dialer/start-available-lists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            connectTo: $("powerConnect").value,
+            from: $("powerFrom").value || undefined,
+            concurrency: Number($("powerConcurrency").value || 1)
+          })
+        });
+        var availableNames = (data.available || []).map(function (l) { return l.name; }).slice(0, 5).join(", ");
+        status("powerMsg", "Auto-queued " + data.added + " across available lists" + (availableNames ? ": " + availableNames : "") + ".", "okText");
+        await loadPowerLists();
+        await refreshPowerStatus();
+      }
       async function stopPowerDialer() {
         var data = await json("/calls/power-dialer/stop", { method: "POST" });
         status("powerMsg", "Stopped queue. Cleared " + data.cleared + ", active " + data.active + ".", "warnText");
         await refreshPowerStatus();
       }
+      function powerStatusBadge(text) {
+        var cls = /(answered|agent|connected|human|monitor)/i.test(text || "") ? "green" : /(machine|voicemail|failed|skipped|ended|closed)/i.test(text || "") ? "amber" : "blue";
+        return '<span class="badge ' + cls + '">' + esc(text || "calling") + '</span>';
+      }
+      function renderPowerLines(lines) {
+        if (!lines || !lines.length) return '<div class="empty">No active live lines right now.</div>';
+        return lines.slice(0, 3).map(function (line, idx) {
+          var label = line.status || line.stage || "calling";
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>Line ' + (idx + 1) + ': ' + esc(line.name || line.phone || "Calling") + '</b><div class="sub">' + esc([line.phone, line.listName, line.from ? "from " + line.from : "", line.outcome].filter(Boolean).join(" | ")) + '</div></div>' + powerStatusBadge(label) + '</div><div class="toolbar" style="margin-top:10px"><button class="btn small teal" data-action="power-monitor-line" data-ccid="' + esc(line.callControlId || "") + '">Listen / connect</button><button class="btn small call" data-action="dial-answer">Answer CRM call</button><button class="btn small" data-action="power-disposition-line" data-id="' + esc(line.leadId || "") + '">Disposition</button><button class="btn small danger" data-action="power-end-line" data-ccid="' + esc(line.callControlId || "") + '">End call</button></div></div>';
+        }).join("");
+      }
+      function maybeOpenPowerDisposition(lines) {
+        if (!lines || $("modalShade").classList.contains("hidden") === false) return;
+        var line = lines.find(function (r) {
+          var key = r.callControlId || r.leadId;
+          var hot = /(ringing-agent|agent-answered|answered|connected|human)/i.test([r.status, r.outcome].filter(Boolean).join(" "));
+          return key && hot && !state.powerDialerDispositionShown.has(key);
+        });
+        if (!line) return;
+        state.powerDialerDispositionShown.add(line.callControlId || line.leadId);
+        openPowerDispositionModal(line.leadId, line.name || line.phone || "Power Dialer call");
+      }
+      function openPowerDispositionModal(leadId, label) {
+        if (!leadId) return;
+        openModal("Power Dialer disposition",
+          '<p class="muted">' + esc(label) + ' answered. Mark the result and add a quick note.</p><label>Result<select id="powerPopupOutcome"><option value="answered">Answered</option><option value="follow-up">Follow up</option><option value="not-interested">Not interested</option><option value="voicemail">Voicemail</option><option value="bad-number">Bad number</option><option value="dnc-request">DNC request</option></select></label><label>Quick note<textarea id="powerPopupNote" placeholder="What happened on the call?"></textarea></label><div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Close</button><button class="btn primary" data-action="power-save-popup-disposition" data-id="' + esc(leadId) + '">Save disposition</button></div><div id="powerPopupMsg" class="statusLine"></div>');
+      }
       async function refreshPowerStatus() {
         if (!$("powerStatus")) return;
         var data = await json("/calls/power-dialer/status");
         state.powerDialerRecent = data.recent || [];
+        state.powerDialerLines = data.lines || [];
+        if (data.lists) state.powerDialerLists = data.lists;
         $("powerStatus").innerHTML =
           '<div class="item"><b>' + (data.running ? "Running" : "Stopped") + '</b><div class="sub">Queued ' + esc(data.queued) + ' | Active ' + esc(data.active) + ' | Concurrency ' + esc(data.concurrency) + '</div>' + (data.lastError ? '<div class="badText">' + esc(data.lastError) + '</div>' : '') + '</div>' +
-          ((data.queue || []).length ? '<div class="item"><b>Next up</b><div class="sub">' + esc((data.queue || []).slice(0, 5).map(function (q) { return q.name || q.phone || q.leadId; }).join(", ")) + '</div></div>' : '');
+          '<div class="item"><b>Live lines</b><div class="sub">Tap Listen / connect to join a live line. Max 3 active lines.</div></div>' +
+          renderPowerLines(data.lines || []) +
+          ((data.queue || []).length ? '<div class="item"><b>Next up</b><div class="sub">' + esc((data.queue || []).slice(0, 5).map(function (q) { return (q.listName ? q.listName + ": " : "") + (q.name || q.phone || q.leadId); }).join(", ")) + '</div></div>' : '') +
+          ((data.lists || []).length ? '<div class="item"><b>List windows</b><div class="sub">' + esc((data.lists || []).map(function (l) { var w = l.callWindow || {}; return l.name + " - " + (w.timezone ? (w.allowed ? "open " : "closed ") + (w.localTime || "") : "manual"); }).join(" | ")) + '</div></div>' : '');
+        maybeOpenPowerDisposition(data.lines || []);
         renderPowerActivity(data.recent || []);
         if ($("powerLeadWrap") && state.powerDialerLeads.length) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads);
       }
@@ -2876,6 +3021,31 @@
         await json("/calls/power-dialer/disposition", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leadId: id, outcome: outcome, note: note }) });
         if (noteEl) noteEl.value = "";
         showToast("Power Dialer result saved.");
+        await refreshPowerStatus();
+      }
+      async function savePopupPowerDisposition(id) {
+        status("powerPopupMsg", "Saving...");
+        await json("/calls/power-dialer/disposition", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leadId: id, outcome: inputVal("powerPopupOutcome") || "answered", note: inputVal("powerPopupNote") }) });
+        closeModal();
+        showToast("Power Dialer disposition saved.");
+        await refreshPowerStatus();
+      }
+      async function monitorPowerLine(ccid) {
+        if (!ccid) return;
+        if (($("powerConnect") && $("powerConnect").value) === "crm" && !state.dialerClient) await connectCrmLine();
+        status("powerMsg", "Connecting to live line...");
+        var data = await json("/calls/power-dialer/lines/" + encodeURIComponent(ccid) + "/monitor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connectTo: $("powerConnect") ? $("powerConnect").value : "crm" })
+        });
+        status("powerMsg", "Ringing " + data.connectTo + " for live line.", "okText");
+        await refreshPowerStatus();
+      }
+      async function endPowerLine(ccid) {
+        if (!ccid) return;
+        await json("/calls/power-dialer/lines/" + encodeURIComponent(ccid) + "/end", { method: "POST" });
+        status("powerMsg", "Line ended.", "warnText");
         await refreshPowerStatus();
       }
 
@@ -4352,24 +4522,51 @@
         $("resendDiag").innerHTML = '<div class="' + ((data.failed || []).length ? "warnText" : "okText") + '">' + esc(lines.join(" | ")) + '</div>';
       }
 
+      function permissionCheckboxes(userId, selected, role) {
+        var selectedSet = new Set(role === "admin" ? allFeaturePages() : (Array.isArray(selected) ? selected : allFeaturePages()));
+        var disabled = role === "admin" ? " disabled" : "";
+        return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px;margin-top:10px">' +
+          controlItems.map(function (item) {
+            var checked = selectedSet.has(item.id) ? " checked" : "";
+            return '<label style="display:flex;align-items:center;gap:8px;font-weight:800"><input type="checkbox" data-user-permission="1" data-user-id="' + esc(userId) + '" value="' + esc(item.id) + '" style="width:auto"' + checked + disabled + '> ' + esc(item.label) + '</label>';
+          }).join("") +
+        '</div>';
+      }
+      function selectedAdminPermissions(userId) {
+        return Array.from(document.querySelectorAll('input[data-user-permission="1"][data-user-id="' + userId + '"]'))
+          .filter(function (input) { return input.checked; })
+          .map(function (input) { return input.value; });
+      }
+      function permissionSummary(user) {
+        if (user.role === "admin") return "Full admin access";
+        var count = Array.isArray(user.permissions) ? user.permissions.length : allFeaturePages().length;
+        return count + " of " + allFeaturePages().length + " sections enabled";
+      }
       async function loadAdminPage() {
-        pageShell("Admin / Sub-Accounts", "Manage admin users, sub-account users, passwords, roles, and account access.",
+        pageShell("Admin / Sub-Accounts", "Manage admin users, sub-account users, passwords, roles, and feature access.",
           '<button class="btn" data-action="refresh-admin">Refresh</button>',
-          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
+          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><h3>Feature access</h3><div class="sub">Uncheck anything this user should not see or use.</div>' + permissionCheckboxes("new", allFeaturePages(), "user") + '<button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section></div>');
         await refreshAdminPage();
       }
       async function refreshAdminPage() {
         var data = await json("/api/users").catch(function (e) { return { users: [], error: e.message }; });
         if (!$("adminUsersWrap")) return;
         $("adminUsersWrap").innerHTML = data.error ? '<div class="empty badText">' + esc(data.error) + '</div>' : (data.users || []).length ? data.users.map(function (u) {
-          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.username) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div><div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.username) + ' | ' + esc(permissionSummary(u)) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div>' +
+            '<details style="margin-top:10px" ' + (u.role === "admin" ? "" : "open") + '><summary style="cursor:pointer;font-weight:900">Feature access</summary>' + permissionCheckboxes(u.id, u.permissions || [], u.role) + '<button class="btn small primary" data-action="admin-save-permissions" data-id="' + esc(u.id) + '" style="margin-top:10px"' + (u.role === "admin" ? " disabled" : "") + '>Save permissions</button></details>' +
+            '<div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
         }).join("") : '<div class="empty">No users found.</div>';
       }
       async function createAdminUser() {
         status("adminMsg", "Creating user...");
-        await json("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("adminUserName").value, username: $("adminUsername").value, password: $("adminPassword").value, role: $("adminRole").value }) });
+        await json("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("adminUserName").value, username: $("adminUsername").value, password: $("adminPassword").value, role: $("adminRole").value, permissions: selectedAdminPermissions("new") }) });
         status("adminMsg", "User created.", "okText");
         $("adminPassword").value = "";
+        await refreshAdminPage();
+      }
+      async function saveAdminPermissions(id) {
+        await json("/api/users/" + encodeURIComponent(id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permissions: selectedAdminPermissions(id) }) });
+        showToast("Permissions saved.");
         await refreshAdminPage();
       }
       async function resetAdminPassword(id) {
@@ -4712,6 +4909,7 @@
           else if (a === "admin-reset-pass") await resetAdminPassword(btn.dataset.id);
           else if (a === "admin-toggle-user") await toggleAdminUser(btn.dataset.id, btn.dataset.disabled === "1");
           else if (a === "admin-toggle-role") await toggleAdminRole(btn.dataset.id, btn.dataset.role);
+          else if (a === "admin-save-permissions") await saveAdminPermissions(btn.dataset.id);
           else if (a === "cal-prev") shiftCalendarMonth(-1);
           else if (a === "cal-next") shiftCalendarMonth(1);
           else if (a === "cal-today") { state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(); await loadCalendar(); }
@@ -4750,6 +4948,8 @@
           else if (a === "delete-pool") await deletePoolLead(btn.dataset.id);
           else if (a === "open-lead") await openLead(btn.dataset.id);
           else if (a === "open-lead-from-pipeline") await openLead(btn.dataset.id);
+          else if (a === "add-lead-tag") await addTagsToCurrentLead();
+          else if (a === "remove-lead-tag") await removeTagFromCurrentLead(btn.dataset.tag);
           else if (a === "close-detail") $("leadDrawer").innerHTML = '<div class="empty">Select a lead to open the full workspace.</div>';
           else if (a === "toggle-select") { btn.checked ? state.selectedIds.add(btn.dataset.id) : state.selectedIds.delete(btn.dataset.id); }
           else if (a === "select-all") { state.leads.forEach(function (l) { btn.checked ? state.selectedIds.add(l.id) : state.selectedIds.delete(l.id); }); await loadLeads(); }
@@ -4782,8 +4982,13 @@
           else if (a === "save-power-call-list") await savePowerCallList();
           else if (a === "save-edited-power-list") await saveEditedPowerList();
           else if (a === "power-save-disposition") await savePowerDisposition(btn.dataset.id);
+          else if (a === "power-save-popup-disposition") await savePopupPowerDisposition(btn.dataset.id);
+          else if (a === "power-disposition-line") openPowerDispositionModal(btn.dataset.id, "Power Dialer call");
+          else if (a === "power-monitor-line") await monitorPowerLine(btn.dataset.ccid);
+          else if (a === "power-end-line") await endPowerLine(btn.dataset.ccid);
           else if (a === "power-select") { btn.checked ? state.powerDialerSelectedIds.add(btn.dataset.id) : state.powerDialerSelectedIds.delete(btn.dataset.id); }
           else if (a === "power-select-all") { state.powerDialerLeads.forEach(function (l) { btn.checked ? state.powerDialerSelectedIds.add(l.id) : state.powerDialerSelectedIds.delete(l.id); }); if ($("powerLeadWrap")) $("powerLeadWrap").innerHTML = powerDialerTable(state.powerDialerLeads); }
+          else if (a === "start-available-power-lists") await startAvailablePowerLists();
           else if (a === "start-power-dialer") await startPowerDialer();
           else if (a === "stop-power-dialer") await stopPowerDialer();
           else if (a === "refresh-power-status") await refreshPowerStatus();

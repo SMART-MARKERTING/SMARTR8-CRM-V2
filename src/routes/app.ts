@@ -5,7 +5,7 @@ import { randomUUID, createHash } from "crypto";
 import { hideMessage, hiddenMessageSigs, hideConversation, unhideConversation, hiddenConversationIds, hideContacts, hiddenContactPhones } from "../store/db";
 import { config } from "../config";
 import { log } from "../logger";
-import { checkPass, requirePass } from "../util/auth";
+import { checkPass, requirePass, requireFeatureForCurrentPath } from "../util/auth";
 import { mintWebrtcToken } from "../services/telnyxWebrtc";
 import { sendOutbound, getMessagingMode, setMessagingMode, MessagingMode } from "../services/router";
 import { lookupNumber } from "../services/telnyxLookup";
@@ -92,6 +92,8 @@ appRouter.get("/media/:file", (req, res) => {
   res.set("Cache-Control", "public, max-age=3600");
   fs.createReadStream(full).pipe(res);
 });
+
+appRouter.use(requireFeatureForCurrentPath);
 
 // Mint a short-lived Telnyx WebRTC token for the browser SDK. Passcode-gated.
 appRouter.post("/webrtc/token", async (req, res) => {

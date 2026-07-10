@@ -185,6 +185,14 @@ export const config = {
     // here so /v2 stays live while both apps run side-by-side. Prefer a dedicated secret;
     // LEAD_WEBHOOK_SECRET is a fallback so existing Render envs can be wired quickly.
     legacySyncSecret: env("CRM_V2_SYNC_SECRET", env("CRM_SYNC_SECRET", env("LEAD_WEBHOOK_SECRET"))),
+    // Optional V2 -> current CRM sync sender. Set these on the V2 Render service when
+    // crm.smartr8.com exposes the matching receiver so edits flow both directions.
+    legacyOutboundSyncEnabled: env("CRM_LEGACY_SYNC_ENABLED", env("CRM_V1_SYNC_ENABLED", "true")) !== "false",
+    legacyOutboundSyncUrl: env("CRM_LEGACY_SYNC_URL", env("CRM_V1_SYNC_URL", "")),
+    legacyOutboundSyncSecret: env("CRM_LEGACY_SYNC_SECRET", env("CRM_V1_SYNC_SECRET", env("CRM_SYNC_SECRET", ""))),
+    legacyOutboundSyncDebounceMs: parseInt(env("CRM_LEGACY_SYNC_DEBOUNCE_MS", "750"), 10),
+    legacyOutboundSyncNotesLimit: parseInt(env("CRM_LEGACY_SYNC_NOTES_LIMIT", "100"), 10),
+    legacyOutboundSyncActivitiesLimit: parseInt(env("CRM_LEGACY_SYNC_ACTIVITIES_LIMIT", "200"), 10),
     // Public origin of this service (e.g. https://smartr8-texting-1wx7.onrender.com),
     // used to build email unsubscribe links + List-Unsubscribe headers. Falls back
     // to the OAuth redirect URI's origin when unset.
