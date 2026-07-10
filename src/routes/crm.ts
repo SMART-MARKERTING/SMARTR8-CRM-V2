@@ -131,6 +131,7 @@ import { sendLeadEvent } from "../services/metaCapi";
 import { recordAudit, listAuditEvents } from "../services/audit";
 import { buildCrmReport, reportPdfBuffer } from "../services/reports";
 import { listCallSummaries, processCallSummary } from "../services/callSummary";
+import { leadAgentStatus, listLeadAgentRuns, maybeRunLeadAgent, runLeadAgent } from "../services/leadAgent";
 import {
   handleInboundWhatsAppWebhook,
   listWhatsAppMessages,
@@ -401,6 +402,7 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
         meta: input.custom,
       });
       const fresh = getLead(existing.id)!;
+      maybeRunLeadAgent(existing.id, "website_resubmitted");
       const diag = diagnoseEnrollment("lead_created", fresh);
       res.json({ ok: true, leadId: existing.id, duplicate: true, automationStarted: 0, note: diag.note ?? "Existing lead updated; active campaigns were not restarted." });
       return;
@@ -419,6 +421,7 @@ crmRouter.post("/webhooks/lead", (req: Request, res: Response) => {
       eventSourceUrl: pickStr(body, ["page_url", "pageUrl", "url", "source_url"]) || (funnel || undefined),
     }).catch(() => {});
     const started = fireTrigger("lead_created", lead);
+    maybeRunLeadAgent(lead.id, "website_lead_created");
     // Explain a 0-enrollment right in the response + logs, so "nothing texted"
     // comes with the reason instead of being silent.
     const diag = diagnoseEnrollment("lead_created", lead);
@@ -2894,6 +2897,36 @@ crmRouter.get("/api/leads/:id", requirePass, async (req, res) => {
   // suppressed)? Drives the console's ✅ / ❌ contactability badge.
   const dnc = lead.phone ? await isOnDnc(lead.phone) : false;
   res.json({ lead, dnc, notes: listNotes(lead.id), activities: listActivities(lead.id) });
+});
+
+/** Lead-intelligence foundation status. No secret values are returned. */
+crmRouter.get("/api/agent/status", requirePass, (_req, res) => {
+  res.json(leadAgentStatus());
+});
+
+/** Previous auditable recommendations for a lead. */
+crmRouter.get("/api/leads/:id/agent/runs", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 25;
+  res.json({ runs: listLeadAgentRuns(lead.id, limit) });
+});
+
+/** Manually analyze one lead. Step 1 requires human review and never contacts the lead. */
+crmRouter.post("/api/leads/:id/agent/analyze", requirePass, async (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  if (!config.leadAgent.enabled) {
+    res.status(503).json({ error: "lead agent is disabled", status: leadAgentStatus() });
+    return;
+  }
+  try {
+    const run = await runLeadAgent(lead.id, `manual:${req.authUser?.username || "operator"}`);
+    res.json({ ok: true, run });
+  } catch (error) {
+    log.error("manual lead agent run failed", { leadId: lead.id, error: String(error) });
+    res.status(500).json({ error: "lead analysis failed" });
+  }
 });
 
 /** Assign / reassign a lead to a user (admin only). Body: { userId } ("" or null = unassign). */
