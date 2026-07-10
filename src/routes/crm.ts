@@ -1670,6 +1670,8 @@ crmRouter.get("/api/contacts/all", requirePass, (req, res) => {
     email: lead.email,
     source: lead.source,
     scope: leadContactScope(lead),
+    pipeline_stage: lead.pipeline_stage,
+    tags: lead.tags,
     status: lead.pipeline_stage || lead.status,
     address: leadContactAddress(lead),
     last_contact_at: lead.last_activity_at || lead.updated_at || lead.created_at,
@@ -3416,6 +3418,56 @@ crmRouter.patch("/api/leads/:id", requirePass, (req, res) => {
     markPastClient(existing.id); // sets the flag + fires the past_client trigger once (0->1)
   }
   res.json({ ok: true, lead: getLead(existing.id) });
+});
+
+/** Return a Past Client/contact-only record to the active Leads workflow. */
+crmRouter.post("/api/leads/:id/activate", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const custom = { ...(lead.custom || {}) };
+  custom.lead_pool = false;
+  custom.reactivated_at = new Date().toISOString();
+  custom.reactivated_by = req.authUser?.username || "CRM user";
+  const updated = updateLead(lead.id, {
+    past_client: false,
+    contact_only: false,
+    pipeline_stage: "Lead-In",
+    custom,
+  });
+  logActivity(lead.id, {
+    type: "lead_reactivated",
+    direction: "system",
+    channel: "system",
+    body: "Moved from Past Clients to active Leads",
+    status: "active",
+    meta: { author: req.authUser?.username || "CRM user" },
+  });
+  res.json({ ok: true, lead: updated });
+});
+
+/** Move any active/contact record into Lead Pool without deleting its history or files. */
+crmRouter.post("/api/leads/:id/to-lead-pool", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const custom = { ...(lead.custom || {}) };
+  custom.lead_pool = true;
+  custom.lead_pool_moved_at = new Date().toISOString();
+  custom.lead_pool_moved_by = req.authUser?.username || "CRM user";
+  const updated = updateLead(lead.id, {
+    past_client: false,
+    contact_only: true,
+    custom,
+  });
+  stopLeadAutomations(lead.id, "moved to Lead Pool");
+  logActivity(lead.id, {
+    type: "lead_pool_move",
+    direction: "system",
+    channel: "system",
+    body: "Moved to Lead Pool",
+    status: "lead-pool",
+    meta: { author: req.authUser?.username || "CRM user" },
+  });
+  res.json({ ok: true, lead: updated });
 });
 
 crmRouter.post("/api/leads/:id/tags", requirePass, (req, res) => {
