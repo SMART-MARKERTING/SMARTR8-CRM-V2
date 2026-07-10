@@ -4,7 +4,8 @@ import { config } from "../config";
 import { log } from "../logger";
 import { db } from "../store/db";
 import { toE164 } from "../util/phone";
-import { addNote, addTodo, Lead, listLeads } from "./leads";
+import { addNote, addTodo, Lead, listLeads, logActivity } from "./leads";
+import { buildCallFollowUpRecommendation, CallFollowUpRecommendation } from "./callFollowUp";
 
 type CallSummaryStatus = "pending" | "processed" | "unmatched" | "needs_review" | "failed" | "ignored";
 
@@ -84,6 +85,7 @@ export interface CallSummaryRow {
   transcript_url: string | null;
   transcript_text: string | null;
   summary_json: string | null;
+  follow_up_json: string | null;
   crm_note_id: string | null;
   task_id: string | null;
   status: CallSummaryStatus;
@@ -327,12 +329,21 @@ function setSummaryStatus(id: string, status: CallSummaryStatus, errorMessage?: 
   db.prepare(`UPDATE call_summaries SET status = ?, error_message = ?, updated_at = ? WHERE id = ?`).run(status, errorMessage || null, Date.now(), id);
 }
 
-function updateProcessed(row: CallSummaryRow, summary: MortgageCallSummary, noteId: string, taskId: string | null, leadId: string, transcriptText: string): void {
+function updateProcessed(
+  row: CallSummaryRow,
+  summary: MortgageCallSummary,
+  followUp: CallFollowUpRecommendation,
+  noteId: string,
+  taskId: string | null,
+  leadId: string,
+  transcriptText: string,
+): void {
   db.prepare(
     `UPDATE call_summaries
         SET lead_id = @leadId,
             crm_contact_id = @leadId,
             summary_json = @summaryJson,
+            follow_up_json = @followUpJson,
             crm_note_id = @noteId,
             task_id = @taskId,
             transcript_text = @transcriptText,
@@ -344,6 +355,7 @@ function updateProcessed(row: CallSummaryRow, summary: MortgageCallSummary, note
     id: row.id,
     leadId,
     summaryJson: JSON.stringify(summary),
+    followUpJson: JSON.stringify(followUp),
     noteId,
     taskId,
     transcriptText: config.callSummary.storeTranscript ? transcriptText : null,
@@ -392,18 +404,35 @@ export async function processCallSummary(rowId: string, opts: ProcessCallSummary
     const metadata = summaryMetadata(row, match.lead);
     const summary = opts.generateSummary ? await opts.generateSummary(transcript, metadata) : await generateMortgageCallSummary(transcript, metadata);
     const validated = validateMortgageCallSummary(summary);
+    const followUp = buildCallFollowUpRecommendation(validated, match.lead, row);
     const noteBody = formatCallSummaryNote(validated, row);
     const note = addNote(match.lead.id, noteBody, "Telnyx AI Call Summary");
     let taskId: string | null = null;
-    if (config.callSummary.createTasks && validated.follow_up_needed) {
+    if (config.callSummary.createTasks && followUp.taskTitle) {
       const todos = addTodo(match.lead.id, {
-        text: "Follow up after call",
-        due_date: parseFollowUpDate(validated.follow_up_date),
-        description: validated.next_steps.length ? validated.next_steps.join("\n") : validated.short_summary,
+        text: followUp.taskTitle,
+        due_date: followUp.dueAt,
+        description: `${followUp.nextAction}\n\nReasons:\n${followUp.reasons.map((reason) => `- ${reason}`).join("\n")}`,
       });
       taskId = todos?.[todos.length - 1]?.id || null;
     }
-    updateProcessed(row, validated, note.id, taskId, match.lead.id, transcript);
+    logActivity(match.lead.id, {
+      type: "call_follow_up_recommendation",
+      direction: "system",
+      channel: "voice",
+      subject: followUp.taskTitle || "Post-call review",
+      body: followUp.nextAction,
+      status: "review-required",
+      meta: {
+        callSummaryId: row.id,
+        outcome: followUp.outcome,
+        priority: followUp.priority,
+        permittedChannels: followUp.permittedChannels,
+        taskId,
+        consumerContactedAutomatically: false,
+      },
+    });
+    updateProcessed(row, validated, followUp, note.id, taskId, match.lead.id, transcript);
   } catch (err) {
     log.error("call summary processing failed", { rowId, err: safeError(err) });
     setSummaryStatus(row.id, "failed", safeError(err));
@@ -735,6 +764,20 @@ export function verifyTelnyxWebhookSignature(req: Request): boolean {
   }
 }
 
-export function listCallSummaries(limit = 100): CallSummaryRow[] {
-  return db.prepare(`SELECT * FROM call_summaries ORDER BY updated_at DESC LIMIT ?`).all(Math.min(Math.max(limit, 1), 500)) as CallSummaryRow[];
+export type CallSummaryView = CallSummaryRow & { follow_up_recommendation: CallFollowUpRecommendation | null };
+
+export function listCallSummaries(limit = 100, leadId?: string): CallSummaryView[] {
+  const safeLimit = Math.min(Math.max(limit, 1), 500);
+  const rows = (leadId
+    ? db.prepare(`SELECT * FROM call_summaries WHERE lead_id = ? ORDER BY updated_at DESC LIMIT ?`).all(leadId, safeLimit)
+    : db.prepare(`SELECT * FROM call_summaries ORDER BY updated_at DESC LIMIT ?`).all(safeLimit)) as CallSummaryRow[];
+  return rows.map((row) => {
+    let followUp: CallFollowUpRecommendation | null = null;
+    try {
+      followUp = row.follow_up_json ? JSON.parse(row.follow_up_json) as CallFollowUpRecommendation : null;
+    } catch {
+      followUp = null;
+    }
+    return { ...row, follow_up_recommendation: followUp };
+  });
 }

@@ -876,6 +876,14 @@ crmRouter.post("/api/call-summaries/:id/retry", requirePass, async (req, res) =>
   }
 });
 
+/** Post-call summaries and structured follow-up recommendations for one lead. */
+crmRouter.get("/api/leads/:id/call-summaries", requirePass, (req, res) => {
+  const lead = accessibleLead(req, res);
+  if (!lead) return;
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 10;
+  res.json({ ok: true, call_summaries: listCallSummaries(limit, lead.id) });
+});
+
 /** Dismiss one dashboard item (reply/lead) from its panel — non-destructive.
  *  Body: { kind: 'reply'|'lead', id }. */
 crmRouter.post("/api/dashboard/dismiss", requirePass, (req, res) => {
