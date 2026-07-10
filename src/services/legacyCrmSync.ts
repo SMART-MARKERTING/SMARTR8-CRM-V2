@@ -9,7 +9,7 @@ const LEAD_POOL_MARKER_SQL = `(custom LIKE '%"lead_pool":true%' OR custom LIKE '
 const LEGACY_OLD_LIST_SQL =
   `(LOWER(COALESCE(source, '')) IN ('lead-pool', 'lead pool', 'leadpool', 'old lead', 'old leads', 'open lead') ` +
   `OR (LOWER(COALESCE(source, '')) = 'lead' AND (LOWER(COALESCE(tags, '')) LIKE '%open lead%' OR LOWER(COALESCE(custom, '')) LIKE '%open lead%' OR contact_only = 1)))`;
-const NOT_LEAD_POOL_CANDIDATE_SQL = `NOT (${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL})`;
+const NOT_LEAD_POOL_CANDIDATE_SQL = `(past_client = 1 OR NOT (${LEAD_POOL_MARKER_SQL} OR ${LEGACY_OLD_LIST_SQL}))`;
 
 export interface LegacyCrmSyncPayload {
   eventId?: string;
@@ -109,8 +109,19 @@ function isLegacyLeadPoolCandidate(source: unknown, tags: unknown, custom: JsonO
   return false;
 }
 
+function isLegacyPastClient(lead: JsonObject, tags: string[], custom: JsonObject): boolean {
+  if (boolInt(lead.past_client ?? lead.pastClient ?? lead.is_past_client ?? lead.isPastClient) === 1) return true;
+  if (boolInt(lead.closed_client ?? lead.closedClient ?? lead.funded) === 1) return true;
+  const stage = String(lead.pipeline_stage || lead.stage || lead.status || "").trim().toLowerCase();
+  if (["funded", "closed", "won", "past client", "past-client"].includes(stage)) return true;
+  if (tags.some((tag) => /^(past[-\s_]*client|funded|closed)$/i.test(tag))) return true;
+  if (boolInt(custom.past_client ?? custom.pastClient ?? custom.closed_client ?? custom.closedClient ?? custom.funded) === 1) return true;
+  return false;
+}
+
 function isLeadPoolRow(row: SyncLeadRow | null | undefined): boolean {
   if (!row) return false;
+  if (boolInt(row.past_client) === 1) return false;
   const custom = readCustom(row);
   return custom.lead_pool === true || custom.lead_pool === "true" || isLegacyLeadPoolCandidate(row.source, row.tags, custom, row.contact_only);
 }
@@ -175,7 +186,8 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
   const incomingTags = normalizeTags(lead.tags);
   const source = asString(lead.source) || "legacy-crm-sync";
   const incomingIsLeadPool = isLegacyLeadPoolCandidate(source, incomingTags, incomingCustom, lead.contact_only);
-  const shouldBeLeadPool = existingIsLeadPool || incomingIsLeadPool;
+  const shouldBePastClient = isLegacyPastClient(lead, incomingTags, incomingCustom) || boolInt(existing?.past_client) === 1;
+  const shouldBeLeadPool = !shouldBePastClient && (existingIsLeadPool || incomingIsLeadPool);
   const custom: JsonObject = {
     ...existingCustom,
     ...incomingCustom,
@@ -189,6 +201,11 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     custom.lead_pool = true;
     custom.lead_pool_synced_at = new Date(now).toISOString();
     custom.lead_pool_sync_reason = incomingIsLeadPool ? "legacy-open-lead" : "existing-lead-pool";
+  }
+  if (shouldBePastClient) {
+    delete custom.lead_pool;
+    delete custom.lead_pool_sync_reason;
+    custom.legacy_past_client_synced_at = new Date(now).toISOString();
   }
   const row = {
     id,
@@ -216,8 +233,8 @@ function applyLead(payload: LegacyCrmSyncPayload): { id: string; legacyLeadId: s
     email_unsubscribed: boolInt(lead.email_unsubscribed ?? lead.emailUnsubscribed),
     consent_at: nullableNumber(lead.consent_at ?? lead.consentAt),
     deleted_at: nullableNumber(lead.deleted_at ?? lead.deletedAt),
-    past_client: shouldBeLeadPool ? 0 : boolInt(lead.past_client ?? lead.pastClient ?? lead.is_past_client ?? lead.isPastClient ?? lead.closed_client ?? lead.closedClient ?? lead.funded),
-    contact_only: shouldBeLeadPool ? 1 : boolInt(lead.contact_only ?? lead.contactOnly),
+    past_client: shouldBePastClient ? 1 : 0,
+    contact_only: shouldBePastClient ? 0 : shouldBeLeadPool ? 1 : boolInt(lead.contact_only ?? lead.contactOnly),
     owner_user_id: existing?.owner_user_id || null,
     todos: JSON.stringify(normalizeTodos(lead.todos)),
   };
