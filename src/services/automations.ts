@@ -338,20 +338,28 @@ export function diagnoseEnrollment(trigger: string, lead: Lead): EnrollmentDiagn
 
 /** Cancel a lead's pending automation steps (e.g. once a human is engaged). Returns count. */
 export function stopLeadAutomations(leadId: string, reason = "lead replied"): number {
+  const run = db
+    .prepare(`SELECT id FROM automation_runs WHERE lead_id=? AND status='running' ORDER BY created_at DESC LIMIT 1`)
+    .get(leadId) as { id: string } | undefined;
+  if (!run) return 0;
   const now = Date.now();
   const r = db
-    .prepare(`UPDATE automation_jobs SET status='paused', last_error=?, updated_at=? WHERE lead_id=? AND status='pending'`)
-    .run(reason, now, leadId);
-  db.prepare(`UPDATE automation_runs SET status='stopped' WHERE lead_id=? AND status='running'`).run(leadId);
+    .prepare(`UPDATE automation_jobs SET status='paused', last_error=?, updated_at=? WHERE run_id=? AND status='pending'`)
+    .run(reason, now, run.id);
+  db.prepare(`UPDATE automation_runs SET status='stopped' WHERE id=?`).run(run.id);
   return r.changes ?? 0;
 }
 
 /** Resume a paused campaign: paused steps -> pending, re-staggered from now so the next
  *  step fires ~immediately and the rest keep their original cadence. */
 export function resumeLeadAutomations(leadId: string): number {
+  const run = db
+    .prepare(`SELECT id FROM automation_runs WHERE lead_id=? AND status='stopped' ORDER BY created_at DESC LIMIT 1`)
+    .get(leadId) as { id: string } | undefined;
+  if (!run) return 0;
   const paused = db
-    .prepare(`SELECT * FROM automation_jobs WHERE lead_id=? AND status='paused' ORDER BY step_index`)
-    .all(leadId) as JobRow[];
+    .prepare(`SELECT * FROM automation_jobs WHERE run_id=? AND status='paused' ORDER BY step_index`)
+    .all(run.id) as JobRow[];
   if (!paused.length) return 0;
   const now = Date.now();
   const earliest = Math.min(...paused.map((j) => j.run_at));
@@ -368,13 +376,23 @@ export function resumeLeadAutomations(leadId: string): number {
 export interface CampaignState {
   enrolled: boolean;
   runId?: string;
+  automationId?: string;
   name?: string;
   status?: string;
   paused: boolean;
   stepDone: number;
   stepTotal: number;
+  nextStepIndex?: number;
   nextStepType?: string;
   nextRunAt?: number;
+  jobs?: Array<{
+    id: string;
+    stepIndex: number;
+    type: StepType;
+    status: string;
+    runAt: number;
+    lastError?: string;
+  }>;
 }
 
 /** Snapshot of a lead's most recent campaign run for the console (phase + status). */
@@ -382,7 +400,7 @@ export function leadCampaignState(leadId: string): CampaignState {
   const run = db
     .prepare(`SELECT id, automation_id, status FROM automation_runs WHERE lead_id=? ORDER BY created_at DESC LIMIT 1`)
     .get(leadId) as { id: string; automation_id: string; status: string } | undefined;
-  if (!run) return { enrolled: false, paused: false, stepDone: 0, stepTotal: 0 };
+  if (!run) return { enrolled: false, paused: false, stepDone: 0, stepTotal: 0, jobs: [] };
   const jobs = db.prepare(`SELECT * FROM automation_jobs WHERE run_id=? ORDER BY step_index`).all(run.id) as JobRow[];
   const done = jobs.filter((j) => j.status === "done" || j.status === "skipped" || j.status === "error").length;
   const next = jobs.find((j) => j.status === "pending" || j.status === "paused");
@@ -391,40 +409,103 @@ export function leadCampaignState(leadId: string): CampaignState {
     try { nextStepType = (JSON.parse(next.step) as Step).type; } catch { /* ignore */ }
   }
   return {
-    enrolled: true,
+    enrolled: run.status !== "unenrolled",
     runId: run.id,
+    automationId: run.automation_id,
     name: getAutomation(run.automation_id)?.name,
     status: run.status,
     paused: jobs.some((j) => j.status === "paused"),
     stepDone: done,
     stepTotal: jobs.length,
+    nextStepIndex: next?.step_index,
     nextStepType,
     nextRunAt: next?.run_at,
+    jobs: jobs.map((job) => ({
+      id: job.id,
+      stepIndex: job.step_index,
+      type: safeParse<Step>(job.step, { type: "wait" }).type,
+      status: job.status,
+      runAt: job.run_at,
+      ...(job.last_error ? { lastError: job.last_error } : {}),
+    })),
   };
 }
 
-/** Skip ahead: run the next pending/paused step now. */
+/** Run the next pending/paused step immediately without changing its meaning. */
 export function advancePhase(leadId: string): boolean {
-  const run = db.prepare(`SELECT id FROM automation_runs WHERE lead_id=? ORDER BY created_at DESC LIMIT 1`).get(leadId) as { id: string } | undefined;
+  const run = db.prepare(`SELECT id FROM automation_runs WHERE lead_id=? AND status IN ('running','stopped') ORDER BY created_at DESC LIMIT 1`).get(leadId) as { id: string } | undefined;
   if (!run) return false;
   const next = db.prepare(`SELECT id FROM automation_jobs WHERE run_id=? AND status IN ('pending','paused') ORDER BY step_index LIMIT 1`).get(run.id) as { id: string } | undefined;
   if (!next) return false;
   const now = Date.now();
   db.prepare(`UPDATE automation_jobs SET status='pending', run_at=?, updated_at=? WHERE id=?`).run(now, now, next.id);
   db.prepare(`UPDATE automation_runs SET status='running' WHERE id=? AND status='stopped'`).run(run.id);
+  logActivity(leadId, {
+    type: "automation", direction: "system", channel: "system",
+    body: "Workflow next step queued to run now", status: "running",
+  });
   queueAutomationTick();
   return true;
 }
 
+/** Skip the current pending/paused step without unexpectedly sending the following step. */
+export function skipPhase(leadId: string): boolean {
+  const run = db.prepare(`SELECT id FROM automation_runs WHERE lead_id=? AND status IN ('running','stopped') ORDER BY created_at DESC LIMIT 1`).get(leadId) as { id: string } | undefined;
+  if (!run) return false;
+  const jobs = db
+    .prepare(`SELECT id, step_index FROM automation_jobs WHERE run_id=? AND status IN ('pending','paused') ORDER BY step_index LIMIT 2`)
+    .all(run.id) as Array<{ id: string; step_index: number }>;
+  if (!jobs.length) return false;
+  const now = Date.now();
+  db.prepare(`UPDATE automation_jobs SET status='skipped', last_error='skipped from console', updated_at=? WHERE id=?`).run(now, jobs[0].id);
+  if (!jobs[1]) {
+    db.prepare(`UPDATE automation_runs SET status='done' WHERE id=?`).run(run.id);
+  }
+  logActivity(leadId, {
+    type: "automation", direction: "system", channel: "system",
+    body: `Skipped workflow step ${jobs[0].step_index + 1}${jobs[1] ? "; the next scheduled step remains in place" : ""}`,
+    status: jobs[1] ? "skipped" : "done",
+  });
+  return true;
+}
+
+/** Permanently remove the most recent (or specified) campaign run from active enrollment. */
+export function unenrollLeadFromAutomation(leadId: string, automationId?: string, reason = "unenrolled from console"): number {
+  const run = db
+    .prepare(
+      `SELECT id, automation_id FROM automation_runs
+       WHERE lead_id=? ${automationId ? "AND automation_id=?" : ""}
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(...(automationId ? [leadId, automationId] : [leadId])) as { id: string; automation_id: string } | undefined;
+  if (!run) return -1;
+  const now = Date.now();
+  const changed = db
+    .prepare(`UPDATE automation_jobs SET status='skipped', last_error=?, updated_at=? WHERE run_id=? AND status IN ('pending','paused')`)
+    .run(reason, now, run.id).changes ?? 0;
+  db.prepare(`UPDATE automation_runs SET status='unenrolled' WHERE id=?`).run(run.id);
+  const automation = getAutomation(run.automation_id);
+  logActivity(leadId, {
+    type: "automation", direction: "system", channel: "system",
+    body: `Unenrolled from campaign: ${automation?.name || run.automation_id}`,
+    status: "unenrolled", meta: { automationId: run.automation_id, runId: run.id, reason },
+  });
+  return changed;
+}
+
 /** Go back: re-queue the most recent completed step to run now. */
 export function rewindPhase(leadId: string): boolean {
-  const run = db.prepare(`SELECT id FROM automation_runs WHERE lead_id=? ORDER BY created_at DESC LIMIT 1`).get(leadId) as { id: string } | undefined;
+  const run = db.prepare(`SELECT id FROM automation_runs WHERE lead_id=? AND status IN ('running','stopped','done') ORDER BY created_at DESC LIMIT 1`).get(leadId) as { id: string } | undefined;
   if (!run) return false;
   const last = db.prepare(`SELECT id FROM automation_jobs WHERE run_id=? AND status IN ('done','skipped','error') ORDER BY step_index DESC LIMIT 1`).get(run.id) as { id: string } | undefined;
   if (!last) return false;
   const now = Date.now();
   db.prepare(`UPDATE automation_jobs SET status='pending', run_at=?, attempts=0, last_error=NULL, updated_at=? WHERE id=?`).run(now, now, last.id);
   db.prepare(`UPDATE automation_runs SET status='running' WHERE id=? AND status IN ('stopped','done')`).run(run.id);
+  logActivity(leadId, {
+    type: "automation", direction: "system", channel: "system",
+    body: "Moved workflow back one completed step", status: "running",
+  });
   queueAutomationTick();
   return true;
 }
