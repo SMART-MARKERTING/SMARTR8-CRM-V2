@@ -655,7 +655,20 @@
       .globalSearch { display: none; }
       .globalSearchWrap { display: none; }
       .fieldGrid { grid-template-columns: 1fr; }
-      .modal.fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
+      .modalShade { padding: 0; }
+      .modal.fullscreen { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+      .modal.fullscreen .cardHead,
+      .modal.fullscreen .modalBody { width: 100%; min-width: 0; }
+      .modal.fullscreen .modalBody { overflow-x: hidden; padding: 14px; }
+      .modal.fullscreen .leadProfileHero,
+      .modal.fullscreen .leadProfileGrid,
+      .modal.fullscreen .leadProfileGrid > *,
+      .modal.fullscreen .leadProfileTop,
+      .modal.fullscreen .leadCell { min-width: 0; max-width: 100%; }
+      .modal.fullscreen .leadProfileTop .leadCell > div { min-width: 0; }
+      .modal.fullscreen .leadProfileTop h2,
+      .modal.fullscreen .leadProfileTop .sub { overflow-wrap: anywhere; }
+      .modal.fullscreen .leadQuickBar > * { max-width: 100%; }
       .tableWrap { overflow-x: auto; }
       .table { min-width: 760px; }
       .emailShell { display: block; min-height: auto; }
@@ -1131,7 +1144,7 @@
       }
       function when(ms) {
         var stamp = dateMillis(ms);
-        if (!stamp) return "Never";
+        if (!stamp) return "No date";
         var diff = Date.now() - stamp;
         var mins = Math.round(diff / 60000);
         if (mins < 2) return "Now";
@@ -3250,11 +3263,20 @@
         pageShell("Conversations", "Team inbox across SMS, iMessage, email, and WhatsApp.", '<button class="btn" data-action="refresh">Refresh</button>',
           '<section id="conversationShell" class="card conversationShell"><div class="conversationListPane"><div class="cardHead"><div style="width:100%"><h2>Team inbox</h2><input id="conversationSearch" type="search" placeholder="Search conversations" style="margin-top:12px"></div></div><div class="conversationFilters"><button class="btn small primary">Recent</button><button class="btn small">Unread</button><button class="btn small">Starred</button><button class="btn small">Assigned to me</button></div><div id="convList"></div></div>' +
           '<div class="conversationThreadPane"><div class="toolbar" style="justify-content:space-between;margin-bottom:12px"><button class="btn small" data-action="back-conversations">Back</button><h2 style="margin:0">Conversation</h2><button class="btn small" data-action="refresh-thread">Refresh</button></div><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button><button class="btn small" data-action="conv-compose-mode" data-mode="whatsapp">WhatsApp</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Type and send via SMS..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div><div id="convWhatsappPanel" class="grid hidden" style="margin-top:10px"><label>To WhatsApp<input id="waPhone" placeholder="+16232808351"></label><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="waBody" rows="6">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div></div></section>');
+        var threadHeader = document.querySelector("#conversationShell .conversationThreadPane > .toolbar");
+        if (threadHeader) {
+          var openLeadButton = document.createElement("button");
+          openLeadButton.id = "conversationOpenButton";
+          openLeadButton.className = "btn small primary hidden";
+          openLeadButton.dataset.action = "conversation-open-contact";
+          openLeadButton.textContent = "Open Lead";
+          threadHeader.insertBefore(openLeadButton, threadHeader.lastElementChild);
+        }
         var data = await json("/api/conversations");
         state.conversations = data.conversations || [];
         $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
           var label = c.name || c.phone || "Conversation";
-          return '<button class="conversationRow clickable" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><span class="avatar">' + esc(initials(label)) + '</span><span class="conversationRowBody"><b class="conversationName">' + esc(label) + '</b><span class="conversationPreview">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "No messages yet") + '</span></span><span class="conversationTime">' + esc(when(c.lastMessageAt || c.updatedAt || c.updated_at)) + '</span></button>';
+          return '<button class="conversationRow clickable" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><span class="avatar">' + esc(initials(label)) + '</span><span class="conversationRowBody"><b class="conversationName">' + esc(label) + '</b><span class="conversationPreview">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "No messages yet") + '</span></span><span class="conversationTime">' + esc(when(c.lastMessageDate || c.last_message_at || c.lastMessageAt || c.updatedAt || c.updated_at)) + '</span></button>';
         }).join("") : '<div class="empty">No conversations yet.</div>';
         if ($("conversationSearch")) $("conversationSearch").addEventListener("input", function () {
           var q = this.value.toLowerCase();
@@ -3288,7 +3310,7 @@
         $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
           var label = c.name || c.phone || c.email || "Conversation";
           var active = String(c.contactId) === String(state.activeThread || "");
-          return '<button class="conversationRow clickable' + (active ? ' active' : '') + '" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><span class="avatar">' + esc(initials(label)) + '</span><span class="conversationRowBody"><b class="conversationName">' + esc(label) + '</b><span class="conversationPreview">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "No messages yet") + '</span></span><span class="conversationTime">' + esc(when(c.lastMessageAt || c.updatedAt || c.updated_at)) + '</span></button>';
+          return '<button class="conversationRow clickable' + (active ? ' active' : '') + '" data-action="open-thread" data-id="' + esc(c.contactId) + '" data-phone="' + esc(c.phone || "") + '" data-email="' + esc(c.email || "") + '"><span class="avatar">' + esc(initials(label)) + '</span><span class="conversationRowBody"><b class="conversationName">' + esc(label) + '</b><span class="conversationPreview">' + esc(c.lastMessage || c.lastMessageBody || c.preview || "No messages yet") + '</span></span><span class="conversationTime">' + esc(when(c.lastMessageDate || c.last_message_at || c.lastMessageAt || c.updatedAt || c.updated_at)) + '</span></button>';
         }).join("") : '<div class="empty">No conversations yet.</div>';
       }
       function filterConversationList() {
@@ -3335,6 +3357,7 @@
         var data = await json("/api/messages/" + encodeURIComponent(id));
         state.activeThreadContact = data.contact || null;
         if (data.contact) state.selectedLead = data.contact;
+        if ($("conversationOpenButton")) $("conversationOpenButton").classList.toggle("hidden", !data.contact);
         if ($("waPhone")) $("waPhone").value = (data.contact && (data.contact.whatsapp_phone || data.contact.phone)) || phone || "";
         if ($("waOptInWarning")) {
           var ok = data.contact && data.contact.whatsapp_opt_in_status;
