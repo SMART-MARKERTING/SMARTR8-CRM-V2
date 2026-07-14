@@ -896,7 +896,7 @@
       .notificationList { max-height: min(68vh, 660px); padding-right: 2px; }
       .notificationItem { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 14px; }
       .notificationIcon { width: 42px; height: 42px; }
-      .notificationActions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+      .notificationActions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
       .notificationActions .btn, .notificationActions .badge { width: 100%; min-width: 0; justify-content: center; padding-left: 7px; padding-right: 7px; }
       .notificationCenterToolbar { align-items: center; }
       .mobileBottomNav {
@@ -1520,7 +1520,7 @@
             '<span class="notificationIcon">' + esc(notificationIcon(n.kind)) + '</span>' +
             '<div class="notificationBody"><b>' + esc(n.title || "Notification") + '</b><div class="sub">' + esc([n.name, n.contact].filter(Boolean).join(" | ")) + '</div>' +
             '<div class="sub">' + esc(when(n.at)) + (n.preview ? " | " + esc(String(n.preview).slice(0, 160)) : "") + '</div></div>' +
-            '<div class="toolbar notificationActions">' + taskBtn + leadBtn + '<button class="btn small danger" data-action="notification-delete" data-notification-id="' + esc(n.id) + '">Delete</button></div>' +
+            '<div class="toolbar notificationActions">' + taskBtn + leadBtn + '<button class="btn small" data-action="notification-clear" data-notification-id="' + esc(n.id) + '">Clear notification</button><button class="btn small danger" data-action="notification-delete" data-notification-id="' + esc(n.id) + '">Delete</button></div>' +
           '</div>';
         }).join("") + '</div>';
       }
@@ -1566,12 +1566,26 @@
       async function deleteNotification(notificationId) {
         if (!notificationId) return;
         await json("/api/notifications/" + encodeURIComponent(notificationId), { method: "DELETE" });
+        removeNotificationFromCenter(notificationId);
+        showToast("Notification and inbox item moved to Trash.");
+      }
+      async function clearNotification(notificationId) {
+        if (!notificationId) return;
+        await json("/api/notifications/" + encodeURIComponent(notificationId) + "/clear", { method: "POST" });
+        removeNotificationFromCenter(notificationId);
+        showToast("Notification cleared.");
+      }
+      function removeNotificationFromCenter(notificationId) {
         state.notifications = (state.notifications || []).filter(function (n) { return n.id !== notificationId; });
-        await refreshNotificationCount();
+        state.notificationCount = state.notifications.length;
+        var badge = $("notificationCount");
+        if (badge) {
+          badge.textContent = state.notificationCount > 99 ? "99+" : String(state.notificationCount);
+          badge.classList.toggle("hidden", state.notificationCount <= 0);
+        }
         if ($("modalBody") && !$("modalShade").classList.contains("hidden")) {
           $("modalBody").innerHTML = renderNotificationCenter(state.notifications);
         }
-        showToast("Notification deleted.");
       }
       async function clearNotifications() {
         await json("/api/notifications/clear", { method: "POST" });
@@ -6005,6 +6019,7 @@
           }
           else if (a === "toggle-theme") toggleTheme();
           else if (a === "notifications") await openNotifications();
+          else if (a === "notification-clear") await clearNotification(btn.dataset.notificationId);
           else if (a === "notification-delete") await deleteNotification(btn.dataset.notificationId);
           else if (a === "notifications-clear") await clearNotifications();
           else if (a === "notification-task") openNotificationTask(btn.dataset.notificationId);

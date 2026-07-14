@@ -829,12 +829,9 @@ function notificationVisibleToRequest(req: Request, notificationId: string): boo
           AND a.deleted_at IS NULL
           AND l.deleted_at IS NULL
           AND a.direction = 'inbound'
-          AND (
-            a.type IN ('sms','imessage','whatsapp')
-            OR a.channel IN ('sms','imessage','whatsapp')
-            OR a.type = 'email'
-            OR a.channel = 'email'
-          )
+          AND ${kind === "email"
+            ? "(a.type = 'email' OR a.channel = 'email')"
+            : "(a.type IN ('sms','imessage','whatsapp') OR a.channel IN ('sms','imessage','whatsapp'))"}
           ${owner ? "AND l.owner_user_id = @owner" : ""}
         LIMIT 1`,
     )
@@ -842,7 +839,8 @@ function notificationVisibleToRequest(req: Request, notificationId: string): boo
   return Boolean(row);
 }
 
-crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) => {
+/** Remove one alert from Notification Center while preserving its source record. */
+crmRouter.post("/api/notifications/:notificationId/clear", requirePass, (req, res) => {
   const notificationId = cleanText(req.params.notificationId);
   if (!notificationId) {
     res.status(400).json({ error: "notification id required" });
@@ -853,7 +851,43 @@ crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) =
     return;
   }
   dismissDashboardItem("notification", notificationId);
-  res.json({ ok: true, id: notificationId });
+  res.json({ ok: true, id: notificationId, sourceDeleted: false });
+});
+
+/** Delete the Notification Center item and move its linked inbox source to Trash. */
+crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) => {
+  const notificationId = cleanText(req.params.notificationId);
+  if (!notificationId) {
+    res.status(400).json({ error: "notification id required" });
+    return;
+  }
+  if (!notificationVisibleToRequest(req, notificationId)) {
+    res.status(404).json({ error: "notification not found" });
+    return;
+  }
+
+  const [kind, sourceId] = notificationId.split(":");
+  const deletedAt = Date.now();
+  let mailboxId = "";
+  if (kind === "call") {
+    db.prepare(`UPDATE call_log SET deleted_at = COALESCE(deleted_at, ?) WHERE id = ?`).run(deletedAt, sourceId);
+  } else {
+    const row = db.prepare(`SELECT direction, meta FROM activities WHERE id = ?`).get(sourceId) as
+      | { direction: string | null; meta: string | null }
+      | undefined;
+    db.prepare(`UPDATE activities SET deleted_at = COALESCE(deleted_at, ?) WHERE id = ?`).run(deletedAt, sourceId);
+
+    if (kind === "email" && row) {
+      const meta = safeMeta(row.meta) || {};
+      const resendId = cleanText(meta.resend_id || meta.resend_email_id || meta.id);
+      if (resendId) {
+        mailboxId = `${row.direction === "inbound" ? "resend-received" : "resend"}:${resendId}`;
+        setResendMailboxState(req, mailboxId, "delete");
+      }
+    }
+  }
+  dismissDashboardItem("notification", notificationId);
+  res.json({ ok: true, id: notificationId, sourceDeleted: true, sourceKind: kind, mailboxId: mailboxId || null });
 });
 
 /** Clear the notification feed without deleting the underlying calls or messages. */
