@@ -636,6 +636,24 @@
       font-weight: 950;
       color: var(--text);
     }
+    .faxLayout { display: grid; grid-template-columns: minmax(330px, 420px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .faxComposer { position: sticky; top: 64px; }
+    .faxDialDisplay { font-size: 20px; font-weight: 800; letter-spacing: 0; min-height: 46px; }
+    .faxDialPad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .faxDialKey { min-height: 44px; font-size: 17px; font-weight: 800; }
+    .faxRecordList { display: grid; gap: 8px; }
+    .faxRecord { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); padding: 11px; background: var(--card); }
+    .faxDirection { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--soft); font-weight: 900; }
+    .faxRecordMeta { min-width: 0; }
+    .faxRecordMeta b, .faxRecordMeta span { overflow-wrap: anywhere; }
+    .faxLeadResults { max-height: 220px; overflow: auto; margin-top: 8px; }
+    .faxLeadResult { width: 100%; text-align: left; justify-content: flex-start; }
+    @media (max-width: 900px) {
+      .faxLayout { grid-template-columns: 1fr; }
+      .faxComposer { position: static; }
+      .faxRecord { grid-template-columns: 38px minmax(0, 1fr); }
+      .faxRecord .toolbar { grid-column: 1 / -1; }
+    }
     .calendarLeadResults { max-height: 260px; overflow: auto; }
     .toast {
       position: fixed;
@@ -1078,6 +1096,11 @@
         emailContactsLoaded: false,
         emailLoading: false,
         emailAttachmentDrafts: { composer: [], lead: [], conversation: [] },
+        faxRecords: [],
+        faxConfig: null,
+        faxSelectedLead: null,
+        faxLeadResults: [],
+        faxAssignId: null,
         notifications: [],
         notificationCount: 0,
         notificationTimer: null,
@@ -1174,6 +1197,7 @@
         if (kind === "missed_call") return "MC";
         if (kind === "email") return "EM";
         if (kind === "text") return "TX";
+        if (kind === "fax") return "FX";
         return "!";
       }
       function todoTitle(todo) {
@@ -1293,6 +1317,7 @@
         pastclients: "Past Clients",
         deleted: "Deleted",
         email: "Email",
+        fax: "Fax",
         admin: "Admin / Sub-Accounts",
         settings: "Settings",
         control: "Control Panel"
@@ -1316,6 +1341,7 @@
         { id: "pastclients", label: "Past Clients", icon: "PC", group: "Control Panel", desc: "Closed and funded client records." },
         { id: "deleted", label: "Deleted", icon: "DL", group: "Control Panel", desc: "Soft-deleted records and cleanup." },
         { id: "email", label: "Email", icon: "EM", group: "Control Panel", desc: "Inbox, replies, folders, and outbound mail." },
+        { id: "fax", label: "Fax", icon: "FX", group: "Control Panel", desc: "Send, receive, file, and track borrower faxes." },
         { id: "admin", label: "Admin / Sub-Accounts", icon: "AD", group: "Control Panel", desc: "Users, roles, passwords, and access." },
         { id: "settings", label: "Settings", icon: "ST", group: "Control Panel", desc: "Provider credentials, security, audit, and integrations." }
       ];
@@ -1652,6 +1678,7 @@
         if (page === "contacts") return loadContactsPage();
         if (["pastclients","deleted"].indexOf(page) >= 0) return loadLeadBucketView(page);
         if (page === "email") return loadEmailPage();
+        if (page === "fax") return loadFaxPage();
         if (page === "admin") return loadAdminPage();
         if (page === "reports") return loadReports();
         if (page === "settings") return loadSettings();
@@ -2008,7 +2035,7 @@
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
             '<div class="leadProfileTop"><div class="leadCell"><span class="avatar">' + esc(initials(name)) + '</span><div><h2 style="margin:0">' + esc(name) + '</h2><div class="sub">' + esc([lead.phone, lead.email, addr.street].filter(Boolean).join(" | ")) + '</div></div></div><div class="toolbar">' + statusBadge(lead.pipeline_stage || "Lead-In") + smsConsentInline("leadSmsConsentState", lead.sms_consent) + '</div></div>' +
-            '<div class="leadQuickBar">' + quickStage + '<button class="btn call" data-action="call-lead">Call</button><button class="btn primary" data-action="open-lead-panel" data-panel="text">Text</button><button class="btn" data-action="open-lead-panel" data-panel="email">Email</button><button class="btn teal" data-action="open-lead-panel" data-panel="whatsapp">WhatsApp</button><button class="btn" data-action="open-lead-panel" data-panel="appointment">Book appointment</button><button class="btn" data-action="open-lead-panel" data-panel="todo">To-Do</button><button class="btn" data-action="open-lead-panel" data-panel="campaign">Campaign / workflow</button><a class="btn primary" href="https://los.smartr8.com">Start application</a><button class="btn" data-action="open-lead-panel" data-panel="files">File folders</button>' + consentButton + activateButton + poolButton + '</div>' +
+            '<div class="leadQuickBar">' + quickStage + '<button class="btn call" data-action="call-lead">Call</button><button class="btn primary" data-action="open-lead-panel" data-panel="text">Text</button><button class="btn" data-action="open-lead-panel" data-panel="email">Email</button><button class="btn" data-action="fax-current-lead">Fax</button><button class="btn teal" data-action="open-lead-panel" data-panel="whatsapp">WhatsApp</button><button class="btn" data-action="open-lead-panel" data-panel="appointment">Book appointment</button><button class="btn" data-action="open-lead-panel" data-panel="todo">To-Do</button><button class="btn" data-action="open-lead-panel" data-panel="campaign">Campaign / workflow</button><a class="btn primary" href="https://los.smartr8.com">Start application</a><button class="btn" data-action="open-lead-panel" data-panel="files">File folders</button>' + consentButton + activateButton + poolButton + '</div>' +
             '<div id="leadActionMsg" class="statusLine"></div>' +
           '</section>' +
           '<div class="leadProfileGrid">' +
@@ -4796,6 +4823,162 @@
           }).join("") + '</tbody></table>' : '<div class="empty">No successful automation sends found yet.</div>';
       }
 
+      function faxStatusTone(value) {
+        var statusValue = String(value || "").toLowerCase();
+        if (["received", "delivered", "filed"].indexOf(statusValue) >= 0) return "green";
+        if (["failed", "canceled"].indexOf(statusValue) >= 0) return "red";
+        if (["sending", "receiving", "queued", "preparing", "media_processed", "media_processing"].indexOf(statusValue) >= 0) return "amber";
+        return "blue";
+      }
+      function faxStatusLabel(value) {
+        return String(value || "Processing").replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+      }
+      function faxLeadSelectionHtml() {
+        var lead = state.faxSelectedLead;
+        if (!lead) return '<div class="empty">No borrower selected. Admins can still send a one-off fax.</div>';
+        return '<div class="toolbar" style="justify-content:space-between"><div><b>' + esc(lead.name || "Borrower") + '</b><div class="sub">' + esc(lead.phone || "No phone") + '</div></div><button class="btn small" data-action="fax-clear-lead">Clear</button></div>';
+      }
+      function faxDialPadHtml() {
+        return '<div class="faxDialPad">' + ["1","2","3","4","5","6","7","8","9","+","0","⌫"].map(function (key) {
+          return '<button class="btn faxDialKey" data-action="fax-dial-key" data-key="' + esc(key) + '">' + esc(key) + '</button>';
+        }).join("") + '</div>';
+      }
+      async function loadFaxPage() {
+        pageShell("Fax", "Send, receive, file, and track borrower documents through Telnyx.",
+          '<button class="btn" data-action="refresh-fax">Refresh</button>',
+          '<div class="faxLayout">' +
+            '<section class="card pad faxComposer"><div class="cardHead" style="padding:0 0 12px"><div><h2>Send fax</h2><div id="faxConfigLine" class="sub">Checking Telnyx...</div></div><span class="badge blue">+1 (888) 815-0027</span></div>' +
+              '<label>Find borrower<input id="faxLeadSearch" type="search" placeholder="Name, phone, email, or address..."></label><div class="toolbar" style="margin-top:8px"><button class="btn" data-action="fax-search-leads">Search</button></div><div id="faxLeadResults" class="faxLeadResults"></div>' +
+              '<div id="faxSelectedLead" style="margin-top:10px">' + faxLeadSelectionHtml() + '</div>' +
+              '<label style="margin-top:12px">Destination fax number<input id="faxTo" class="faxDialDisplay" inputmode="tel" placeholder="+1 602 555 0100"></label>' + faxDialPadHtml() +
+              '<label style="margin-top:12px">Use an existing borrower PDF<select id="faxDocument"><option value="">Upload a new PDF below</option></select></label>' +
+              '<label>PDF attachment<input id="faxAttachment" type="file" accept="application/pdf,.pdf"></label><div class="sub">One PDF, up to 10 MB. Uploaded borrower files are saved in the Fax folder.</div>' +
+              '<button class="btn primary" style="width:100%;margin-top:12px" data-action="fax-send">Send fax</button><div id="faxSendMsg" class="statusLine"></div>' +
+            '</section>' +
+            '<section class="card"><div class="cardHead"><div><h2>Fax activity</h2><div id="faxCounter" class="sub">Loading...</div></div><div class="toolbar"><span class="badge green">Received</span><span class="badge blue">Sent</span></div></div><div id="faxRecordList" class="faxRecordList" style="padding:12px"><div class="spinner"></div></div></section>' +
+          '</div>');
+        if ($("faxLeadSearch")) $("faxLeadSearch").addEventListener("keydown", function (event) { if (event.key === "Enter") { event.preventDefault(); searchFaxLeads(); } });
+        if (state.faxSelectedLead) await loadFaxLeadDocuments(state.faxSelectedLead.id);
+        await refreshFaxPage();
+      }
+      async function refreshFaxPage() {
+        var results = await Promise.all([
+          json("/api/fax/status").catch(function (e) { return { configured: false, error: e.message }; }),
+          json("/api/fax?limit=250").catch(function (e) { return { records: [], error: e.message }; })
+        ]);
+        state.faxConfig = results[0] || {};
+        state.faxRecords = results[1].records || [];
+        if ($("faxConfigLine")) {
+          var missing = [];
+          if (!state.faxConfig.apiKeySet) missing.push("API key");
+          if (!state.faxConfig.applicationIdSet) missing.push("Fax app ID");
+          if (!state.faxConfig.publicKeySet) missing.push("webhook public key");
+          if (!state.faxConfig.fromNumber) missing.push("fax number");
+          $("faxConfigLine").textContent = state.faxConfig.configured ? "Telnyx fax is configured" : "Setup needed: " + (missing.join(", ") || state.faxConfig.error || "provider unavailable");
+          $("faxConfigLine").className = "sub " + (state.faxConfig.configured ? "okText" : "warnText");
+        }
+        renderFaxRecords();
+      }
+      function renderFaxRecords() {
+        var rows = state.faxRecords || [];
+        if ($("faxCounter")) $("faxCounter").textContent = rows.length + " fax" + (rows.length === 1 ? "" : "es");
+        if (!$("faxRecordList")) return;
+        $("faxRecordList").innerHTML = rows.length ? rows.map(function (row) {
+          var inbound = row.direction === "inbound";
+          var other = inbound ? row.from_number : row.to_number;
+          var fileBtn = row.fileAvailable ? '<a class="btn small" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener">Open PDF</a>' : '';
+          var assignBtn = !row.lead_id && row.fileAvailable ? '<button class="btn small primary" data-action="fax-file" data-id="' + esc(row.id) + '">File to lead</button>' : '';
+          var leadBtn = row.lead_id ? '<button class="btn small" data-action="open-lead" data-id="' + esc(row.lead_id) + '">Open lead</button>' : '';
+          return '<div class="faxRecord"><span class="faxDirection">' + (inbound ? "IN" : "OUT") + '</span><div class="faxRecordMeta"><div class="toolbar" style="gap:6px"><b>' + esc(inbound ? "Received fax" : "Sent fax") + '</b><span class="badge ' + faxStatusTone(row.status) + '">' + esc(faxStatusLabel(row.status)) + '</span></div><span class="sub" style="display:block">' + esc((inbound ? "From " : "To ") + other) + (row.lead_name ? " | " + esc(row.lead_name) : " | Unfiled") + '</span><span class="sub" style="display:block">' + esc(formatDateTime(row.created_at)) + (row.page_count ? " | " + row.page_count + " page" + (row.page_count === 1 ? "" : "s") : "") + (row.original_name ? " | " + esc(row.original_name) : "") + '</span>' + (row.failure_reason ? '<div class="warnText">' + esc(row.failure_reason) + '</div>' : '') + '</div><div class="toolbar">' + fileBtn + assignBtn + leadBtn + '<button class="btn small danger" data-action="fax-delete" data-id="' + esc(row.id) + '">Delete</button></div></div>';
+        }).join("") : '<div class="empty">No faxes yet. Received and sent faxes will appear here.</div>';
+      }
+      async function searchFaxLeads() {
+        var q = inputVal("faxLeadSearch");
+        if (q.length < 2) { if ($("faxLeadResults")) $("faxLeadResults").innerHTML = '<div class="empty">Type at least two characters.</div>'; return; }
+        if ($("faxLeadResults")) $("faxLeadResults").innerHTML = '<div class="spinner"></div>';
+        var data = await json("/api/contacts/all?limit=25&q=" + encodeURIComponent(q));
+        state.faxLeadResults = data.contacts || [];
+        if ($("faxLeadResults")) $("faxLeadResults").innerHTML = state.faxLeadResults.length ? state.faxLeadResults.map(function (lead) {
+          return '<button class="btn faxLeadResult" data-action="fax-select-lead" data-id="' + esc(lead.id) + '" data-name="' + esc(lead.name || "Borrower") + '" data-phone="' + esc(lead.phone || "") + '"><span class="avatar">' + esc(initials(lead.name || "Lead")) + '</span><span><b>' + esc(lead.name || "Lead") + '</b><span class="sub" style="display:block">' + esc([lead.phone, lead.email, lead.scope].filter(Boolean).join(" | ")) + '</span></span></button>';
+        }).join("") : '<div class="empty">No matching borrowers.</div>';
+      }
+      async function selectFaxLead(button) {
+        state.faxSelectedLead = { id: button.dataset.id, name: button.dataset.name || "Borrower", phone: button.dataset.phone || "" };
+        if ($("faxSelectedLead")) $("faxSelectedLead").innerHTML = faxLeadSelectionHtml();
+        if ($("faxLeadResults")) $("faxLeadResults").innerHTML = "";
+        if ($("faxLeadSearch")) $("faxLeadSearch").value = "";
+        if ($("faxTo") && !$("faxTo").value) $("faxTo").value = state.faxSelectedLead.phone || "";
+        await loadFaxLeadDocuments(state.faxSelectedLead.id);
+      }
+      async function loadFaxLeadDocuments(leadId) {
+        if (!$("faxDocument")) return;
+        $("faxDocument").innerHTML = '<option value="">Loading borrower PDFs...</option>';
+        var data = await json("/api/leads/" + encodeURIComponent(leadId) + "/documents").catch(function () { return { documents: [] }; });
+        var docs = (data.documents || []).filter(function (doc) { return doc.mime === "application/pdf" || /\.pdf$/i.test(doc.original_name || ""); });
+        $("faxDocument").innerHTML = '<option value="">Upload a new PDF below</option>' + docs.map(function (doc) { return '<option value="' + esc(doc.id) + '">' + esc((doc.folder_name || "General") + " / " + (doc.display_name || doc.original_name)) + '</option>'; }).join("");
+      }
+      function clearFaxLead() {
+        state.faxSelectedLead = null;
+        if ($("faxSelectedLead")) $("faxSelectedLead").innerHTML = faxLeadSelectionHtml();
+        if ($("faxDocument")) $("faxDocument").innerHTML = '<option value="">Upload a new PDF below</option>';
+      }
+      function faxDialKey(key) {
+        if (!$("faxTo")) return;
+        if (key === "⌫") $("faxTo").value = $("faxTo").value.slice(0, -1);
+        else if (key === "+" && $("faxTo").value.indexOf("+") >= 0) return;
+        else $("faxTo").value += key;
+      }
+      async function sendFaxFromPage() {
+        var to = inputVal("faxTo");
+        var documentId = inputVal("faxDocument");
+        var file = $("faxAttachment") && $("faxAttachment").files ? $("faxAttachment").files[0] : null;
+        if (!to) { status("faxSendMsg", "Enter the destination fax number.", "warnText"); return; }
+        if (!documentId && !file) { status("faxSendMsg", "Choose an existing borrower PDF or upload one.", "warnText"); return; }
+        if (file && !/\.pdf$/i.test(file.name || "")) { status("faxSendMsg", "Fax attachments must be PDF files.", "warnText"); return; }
+        if (file && file.size > 10 * 1024 * 1024) { status("faxSendMsg", "Keep the PDF under 10 MB.", "warnText"); return; }
+        status("faxSendMsg", "Uploading and sending fax...");
+        var body = { to: to, leadId: state.faxSelectedLead ? state.faxSelectedLead.id : "", documentId: documentId };
+        if (!documentId && file) body.attachment = { filename: file.name, content: await fileAsBase64(file) };
+        var data = await json("/api/fax/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        status("faxSendMsg", "Fax queued. Delivery updates will appear on the right.", "okText");
+        if ($("faxAttachment")) $("faxAttachment").value = "";
+        if ($("faxDocument")) $("faxDocument").value = "";
+        await refreshFaxPage();
+      }
+      async function openCurrentLeadFax() {
+        if (!state.selectedLead) return;
+        state.faxSelectedLead = { id: state.selectedLead.id, name: nameOf(state.selectedLead), phone: state.selectedLead.phone || "" };
+        closeLeadPanel();
+        await route("fax");
+        if ($("faxTo") && !$("faxTo").value) $("faxTo").value = state.faxSelectedLead.phone || "";
+      }
+      function openFaxFileModal(faxId) {
+        state.faxAssignId = faxId;
+        openModal("File fax to a lead", '<label>Search borrower<input id="faxAssignSearch" type="search" placeholder="Name, phone, email, or address..."></label><button class="btn primary" data-action="fax-assign-search">Search</button><div id="faxAssignResults" class="faxLeadResults"></div>');
+      }
+      async function searchFaxAssignLeads() {
+        var q = inputVal("faxAssignSearch");
+        if (q.length < 2) return;
+        if ($("faxAssignResults")) $("faxAssignResults").innerHTML = '<div class="spinner"></div>';
+        var data = await json("/api/contacts/all?limit=25&q=" + encodeURIComponent(q));
+        if ($("faxAssignResults")) $("faxAssignResults").innerHTML = (data.contacts || []).map(function (lead) {
+          return '<button class="btn faxLeadResult" data-action="fax-assign-lead" data-id="' + esc(lead.id) + '"><span class="avatar">' + esc(initials(lead.name || "Lead")) + '</span><span><b>' + esc(lead.name || "Lead") + '</b><span class="sub" style="display:block">' + esc([lead.phone, lead.email, lead.scope].filter(Boolean).join(" | ")) + '</span></span></button>';
+        }).join("") || '<div class="empty">No matching borrowers.</div>';
+      }
+      async function assignFaxLead(leadId) {
+        if (!state.faxAssignId) return;
+        await json("/api/fax/" + encodeURIComponent(state.faxAssignId) + "/assign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leadId: leadId }) });
+        closeModal();
+        state.faxAssignId = null;
+        showToast("Fax saved in the borrower Fax folder.");
+        await refreshFaxPage();
+      }
+      async function deleteFax(id) {
+        await json("/api/fax/" + encodeURIComponent(id), { method: "DELETE" });
+        state.faxRecords = (state.faxRecords || []).filter(function (row) { return row.id !== id; });
+        renderFaxRecords();
+      }
+
       async function loadEmailPage() {
         state.emailReaderOpen = false;
         state.emailReaderExpanded = false;
@@ -6163,6 +6346,17 @@
           else if (a === "send-report-email") await sendReportEmail();
           else if (a === "refresh-contacts") await refreshContacts();
           else if (a === "refresh-campaigns") await refreshCampaigns();
+          else if (a === "refresh-fax") await refreshFaxPage();
+          else if (a === "fax-search-leads") await searchFaxLeads();
+          else if (a === "fax-select-lead") await selectFaxLead(btn);
+          else if (a === "fax-clear-lead") clearFaxLead();
+          else if (a === "fax-dial-key") faxDialKey(btn.dataset.key || "");
+          else if (a === "fax-send") await sendFaxFromPage();
+          else if (a === "fax-current-lead") await openCurrentLeadFax();
+          else if (a === "fax-file") openFaxFileModal(btn.dataset.id);
+          else if (a === "fax-assign-search") await searchFaxAssignLeads();
+          else if (a === "fax-assign-lead") await assignFaxLead(btn.dataset.id);
+          else if (a === "fax-delete") await deleteFax(btn.dataset.id);
           else if (a === "refresh-email-page") await refreshEmailPage();
           else if (a === "email-box") { state.emailBox = btn.dataset.box || "inbox"; state.activeEmailId = null; state.emailReaderOpen = false; state.emailReaderExpanded = false; state.emailSelectedIds.clear(); await refreshEmailPage(); }
           else if (a === "email-mobile-back") closeEmailMobileReader();

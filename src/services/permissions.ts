@@ -25,6 +25,7 @@ export const FEATURE_PERMISSION_CATALOG: FeaturePermissionItem[] = [
   { id: "pastclients", label: "Past Clients", group: "Control Panel" },
   { id: "deleted", label: "Deleted", group: "Control Panel" },
   { id: "email", label: "Email", group: "Control Panel" },
+  { id: "fax", label: "Fax", group: "Control Panel" },
   { id: "admin", label: "Admin / Sub-Accounts", group: "Control Panel" },
   { id: "settings", label: "Settings", group: "Control Panel" },
 ];
@@ -88,6 +89,8 @@ export function featureForRequest(req: Request): string | null {
   if (path.startsWith("/api/duplicates")) return "duplicates";
   if (path.startsWith("/api/reports")) return "reports";
   if (path.startsWith("/api/email")) return "email";
+  if (path.startsWith("/api/fax/media/")) return null;
+  if (path.startsWith("/api/fax")) return "fax";
   if (path.startsWith("/api/automations")) return "automations";
   if (path.startsWith("/api/campaigns")) return "campaigns";
   if (path.startsWith("/api/applications")) return "leads";

@@ -73,6 +73,11 @@ export const config = {
     numbers: env("TELNYX_NUMBERS"),
   },
 
+  fax: {
+    applicationId: env("TELNYX_FAX_APPLICATION_ID"),
+    fromNumber: env("TELNYX_FAX_FROM_NUMBER"),
+  },
+
   callSummary: {
     enabled: env("CALL_SUMMARY_ENABLED", "true") !== "false",
     storeTranscript: env("CALL_SUMMARY_STORE_TRANSCRIPT", "false") === "true",
