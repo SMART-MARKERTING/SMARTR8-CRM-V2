@@ -40,9 +40,15 @@ services:
         sync: false
       - key: TELNYX_API_KEY
         sync: false
+      - key: TELNYX_PUBLIC_KEY
+        sync: false
       - key: TELNYX_FROM_NUMBER
         sync: false
       - key: TELNYX_MESSAGING_PROFILE_ID
+        sync: false
+      - key: TELNYX_FAX_APPLICATION_ID
+        sync: false
+      - key: TELNYX_FAX_FROM_NUMBER
         sync: false
       - key: TELNYX_VOICE_APP_ID
         sync: false

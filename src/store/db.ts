@@ -374,6 +374,40 @@ db.exec(`
     deleted_at    INTEGER
   );
   CREATE INDEX IF NOT EXISTS idx_lead_documents_lead ON lead_documents(lead_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS fax_records (
+    id                 TEXT PRIMARY KEY,
+    provider_fax_id    TEXT UNIQUE,
+    lead_id            TEXT REFERENCES leads(id) ON DELETE SET NULL,
+    document_id        TEXT REFERENCES lead_documents(id) ON DELETE SET NULL,
+    direction          TEXT NOT NULL,
+    from_number        TEXT NOT NULL,
+    to_number          TEXT NOT NULL,
+    status             TEXT NOT NULL,
+    page_count         INTEGER,
+    failure_reason     TEXT,
+    original_name      TEXT,
+    stored_name        TEXT,
+    mime               TEXT,
+    size               INTEGER,
+    access_token       TEXT UNIQUE,
+    access_expires_at  INTEGER,
+    created_at         INTEGER NOT NULL,
+    updated_at         INTEGER NOT NULL,
+    completed_at       INTEGER,
+    deleted_at         INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_fax_records_created ON fax_records(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_fax_records_lead ON fax_records(lead_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_fax_records_status ON fax_records(status, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS fax_events (
+    event_id    TEXT PRIMARY KEY,
+    fax_id      TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_fax_events_fax ON fax_events(fax_id, created_at DESC);
 `);
 
 // Idempotent column migrations (the leads table may predate these fields). SQLite has

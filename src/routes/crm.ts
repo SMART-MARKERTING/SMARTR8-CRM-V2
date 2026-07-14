@@ -722,7 +722,7 @@ crmRouter.get("/api/dashboard", requirePass, (req, res) => {
 });
 
 /** Top-bar notification feed: recent missed calls, inbound texts/iMessages/WhatsApp,
- *  and inbound Resend emails. */
+ *  inbound Resend emails, and received faxes. */
 crmRouter.get("/api/notifications", requirePass, (req, res) => {
   try {
     const parsedLimit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 75;
@@ -765,6 +765,21 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
           LIMIT @limit`,
       )
       .all({ owner: owner || "", limit }) as Array<{ id: string; lead_id: string; type: string; channel: string | null; body: string | null; subject: string | null; created_at: number; first_name: string | null; last_name: string | null; phone: string | null; email: string | null }>;
+    const faxAllowed = req.authUser?.role === "admin" || Boolean(req.authUser?.permissions?.includes("fax"));
+    const inboundFaxes = faxAllowed
+      ? db.prepare(
+          `SELECT f.id, f.lead_id, f.from_number, f.to_number, f.page_count, f.original_name, f.created_at,
+                  l.first_name, l.last_name, l.phone, l.email
+             FROM fax_records f
+             LEFT JOIN leads l ON l.id = f.lead_id
+            WHERE f.deleted_at IS NULL
+              AND f.direction = 'inbound'
+              AND f.status = 'received'
+              ${owner ? "AND f.lead_id IS NOT NULL AND l.owner_user_id = @owner" : ""}
+            ORDER BY f.created_at DESC
+            LIMIT @limit`,
+        ).all({ owner: owner || "", limit }) as Array<{ id: string; lead_id: string | null; from_number: string; to_number: string; page_count: number | null; original_name: string | null; created_at: number; first_name: string | null; last_name: string | null; phone: string | null; email: string | null }>
+      : [];
     const notifications = [
       ...missedCalls.map((c) => ({
         id: `call:${c.id}`,
@@ -790,6 +805,16 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
           preview: isEmail ? a.subject || a.body || "" : a.body || a.subject || "",
         };
       }),
+      ...inboundFaxes.map((f) => ({
+        id: `fax:${f.id}`,
+        kind: "fax",
+        title: "Incoming fax",
+        at: f.created_at,
+        leadId: f.lead_id,
+        name: [f.first_name, f.last_name].filter(Boolean).join(" ") || f.from_number || "Unfiled fax",
+        contact: f.from_number,
+        preview: `${f.page_count || 0} page${f.page_count === 1 ? "" : "s"}${f.original_name ? ` | ${f.original_name}` : ""}`,
+      })),
     ]
       .filter((n) => !dismissedNotifications.has(n.id) && n.at > notificationsClearedAt)
       .sort((a, b) => b.at - a.at)
@@ -804,7 +829,7 @@ crmRouter.get("/api/notifications", requirePass, (req, res) => {
 /** True when a generated Notification Center item still exists and belongs to this user. */
 function notificationVisibleToRequest(req: Request, notificationId: string): boolean {
   const [kind, sourceId] = notificationId.split(":");
-  if (!kind || !sourceId || !/^(call|email|message)$/.test(kind)) return false;
+  if (!kind || !sourceId || !/^(call|email|message|fax)$/.test(kind)) return false;
   const owner = ownerScope(req);
   if (kind === "call") {
     const row = db
@@ -820,6 +845,21 @@ function notificationVisibleToRequest(req: Request, notificationId: string): boo
           LIMIT 1`,
       )
       .get({ id: sourceId, owner: owner || "" }) as { id: string } | undefined;
+    return Boolean(row);
+  }
+  if (kind === "fax") {
+    if (req.authUser?.role !== "admin" && !req.authUser?.permissions?.includes("fax")) return false;
+    const row = db.prepare(
+      `SELECT f.id
+         FROM fax_records f
+         LEFT JOIN leads l ON l.id = f.lead_id
+        WHERE f.id = @id
+          AND f.deleted_at IS NULL
+          AND f.direction = 'inbound'
+          AND f.status = 'received'
+          ${owner ? "AND f.lead_id IS NOT NULL AND l.owner_user_id = @owner" : ""}
+        LIMIT 1`,
+    ).get({ id: sourceId, owner: owner || "" }) as { id: string } | undefined;
     return Boolean(row);
   }
   const row = db
@@ -873,6 +913,8 @@ crmRouter.delete("/api/notifications/:notificationId", requirePass, (req, res) =
   let mailboxId = "";
   if (kind === "call") {
     db.prepare(`UPDATE call_log SET deleted_at = COALESCE(deleted_at, ?) WHERE id = ?`).run(deletedAt, sourceId);
+  } else if (kind === "fax") {
+    db.prepare(`UPDATE fax_records SET deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE id = ?`).run(deletedAt, deletedAt, sourceId);
   } else {
     const row = db.prepare(`SELECT direction, meta FROM activities WHERE id = ?`).get(sourceId) as
       | { direction: string | null; meta: string | null }
