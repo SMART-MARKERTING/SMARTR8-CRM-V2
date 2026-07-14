@@ -418,6 +418,18 @@
     }
     .emailReader.emailExpanded .emailMessagePreview { max-height: none; overflow: visible; }
     .emailReader.emailExpanded .emailMessagePreview::after { display: none; }
+    .emailAttachmentDrafts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .emailAttachmentDraft {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      max-width: 100%;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--item);
+    }
+    .emailAttachmentDraft span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .emailReaderToggle { margin-top: 12px; width: 100%; justify-content: center; }
     .emailPlainFallback { margin-top: 12px; }
     .statusLine {
@@ -1065,6 +1077,7 @@
         emailReceivedError: "",
         emailContactsLoaded: false,
         emailLoading: false,
+        emailAttachmentDrafts: { composer: [], lead: [], conversation: [] },
         notifications: [],
         notificationCount: 0,
         notificationTimer: null,
@@ -2064,8 +2077,9 @@
         } else if (panel === "email") {
           title.textContent = "Email " + nameOf(lead);
           sub.textContent = lead.email || "No email address";
+          clearEmailAttachmentDrafts("lead");
           body.innerHTML = leadDrawerHistory("leadEmailHistory", ["email"], "No previous emails.") +
-            '<label>Subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Message<textarea id="ldEmailBody" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><button class="btn primary" data-action="send-lead-email">Send email</button><div id="leadEmailMsg" class="statusLine"></div>';
+            '<label>Subject<input id="ldEmailSubject" value="Quick follow-up, {{first_name}}"></label><label>Message<textarea id="ldEmailBody" rows="10">Hi {{first_name}},\n\nI wanted to follow up because you previously reached out about a home equity line of credit.\n\nIf you are still interested, reply with HELOC and I will send over the next steps.</textarea></label><label>Attachments<input id="leadEmailAttachments" type="file" multiple data-action="email-attachments-select" data-scope="lead"></label><div id="leadEmailAttachmentDrafts" class="emailAttachmentDrafts"></div><button class="btn primary" data-action="send-lead-email">Send email</button><div id="leadEmailMsg" class="statusLine"></div>';
         } else if (panel === "whatsapp") {
           title.textContent = "WhatsApp " + nameOf(lead);
           sub.textContent = lead.whatsapp_phone || lead.phone || "No WhatsApp number";
@@ -3257,13 +3271,14 @@
       });
 
       async function loadMessages() {
+        clearEmailAttachmentDrafts("conversation");
         if (isDesktopLayout()) return loadMessagesDesktop();
         return loadMessagesMobile();
       }
       async function loadMessagesMobile() {
         pageShell("Conversations", "Team inbox across SMS, iMessage, email, and WhatsApp.", '<button class="btn" data-action="refresh">Refresh</button>',
           '<section id="conversationShell" class="card conversationShell"><div class="conversationListPane"><div class="cardHead"><div style="width:100%"><h2>Team inbox</h2><input id="conversationSearch" type="search" placeholder="Search conversations" style="margin-top:12px"></div></div><div class="conversationFilters"><button class="btn small primary">Recent</button><button class="btn small">Unread</button><button class="btn small">Starred</button><button class="btn small">Assigned to me</button></div><div id="convList"></div></div>' +
-          '<div class="conversationThreadPane"><div class="toolbar" style="justify-content:space-between;margin-bottom:12px"><button class="btn small" data-action="back-conversations">Back</button><h2 style="margin:0">Conversation</h2><button class="btn small" data-action="refresh-thread">Refresh</button></div><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button><button class="btn small" data-action="conv-compose-mode" data-mode="whatsapp">WhatsApp</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Type and send via SMS..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div><div id="convWhatsappPanel" class="grid hidden" style="margin-top:10px"><label>To WhatsApp<input id="waPhone" placeholder="+16232808351"></label><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="waBody" rows="6">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div></div></section>');
+          '<div class="conversationThreadPane"><div class="toolbar" style="justify-content:space-between;margin-bottom:12px"><button class="btn small" data-action="back-conversations">Back</button><h2 style="margin:0">Conversation</h2><button class="btn small" data-action="refresh-thread">Refresh</button></div><div id="thread" class="thread">Select a conversation.</div><div class="toolbar" style="margin-top:12px"><button class="btn small primary" data-action="conv-compose-mode" data-mode="text">Text</button><button class="btn small" data-action="conv-compose-mode" data-mode="email">Email</button><button class="btn small" data-action="conv-compose-mode" data-mode="whatsapp">WhatsApp</button></div><div id="convTextPanel" class="grid" style="margin-top:10px"><label>To phone<input id="msgPhone" placeholder="+16232808351"></label><label>Message<textarea id="msgBody" placeholder="Type and send via SMS..."></textarea></label><div class="toolbar"><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div><div id="convEmailPanel" class="grid hidden" style="margin-top:10px"><label>To email<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label><label>Email<textarea id="convEmailBody" rows="7">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea></label><label>Attachments<input id="convEmailAttachments" type="file" multiple data-action="email-attachments-select" data-scope="conversation"></label><div id="convEmailAttachmentDrafts" class="emailAttachmentDrafts"></div><div class="toolbar"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div><div id="convWhatsappPanel" class="grid hidden" style="margin-top:10px"><label>To WhatsApp<input id="waPhone" placeholder="+16232808351"></label><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>WhatsApp message<textarea id="waBody" rows="6">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label><div class="toolbar"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div></div></section>');
         var data = await json("/api/conversations");
         state.conversations = data.conversations || [];
         $("convList").innerHTML = state.conversations.length ? state.conversations.map(function (c) {
@@ -3283,7 +3298,7 @@
               '<div id="thread" class="thread"><div class="empty">Choose a conversation from the left.</div></div>' +
               '<div class="conversationComposer"><div class="conversationChannelBar"><select id="convChannelSelect" class="conversationChannelSelect"><option value="text">Text / iMessage first</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select><span id="conversationRecipient" class="sub">No contact selected</span></div>' +
                 '<div id="convTextPanel"><input id="msgPhone" type="hidden"><textarea id="msgBody" placeholder="Type a message..."></textarea><div class="toolbar" style="justify-content:space-between;margin-top:8px"><span class="sub">iMessage is attempted first, then SMS fallback.</span><button class="btn primary" data-action="send-thread">Send text</button></div><div id="msgStatus" class="statusLine"></div></div>' +
-                '<div id="convEmailPanel" class="hidden"><div class="fieldGrid"><label>To<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label></div><textarea id="convEmailBody" rows="5" style="margin-top:8px">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea><div class="toolbar" style="justify-content:flex-end;margin-top:8px"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div>' +
+                '<div id="convEmailPanel" class="hidden"><div class="fieldGrid"><label>To<input id="convEmailTo" placeholder="borrower@email.com"></label><label>Subject<input id="convEmailSubject" value="Quick follow-up"></label></div><textarea id="convEmailBody" rows="5" style="margin-top:8px">Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal</textarea><label style="margin-top:8px">Attachments<input id="convEmailAttachments" type="file" multiple data-action="email-attachments-select" data-scope="conversation"></label><div id="convEmailAttachmentDrafts" class="emailAttachmentDrafts"></div><div class="toolbar" style="justify-content:flex-end;margin-top:8px"><button class="btn primary" data-action="send-conv-email">Send email</button></div><div id="convEmailStatus" class="statusLine"></div></div>' +
                 '<div id="convWhatsappPanel" class="hidden"><input id="waPhone" type="hidden"><div id="waOptInWarning" class="warnBox">Open a contact to check WhatsApp opt-in.</div><div class="fieldGrid" style="margin-top:8px"><label>Template<select id="waTemplate"><option value="heloc_follow_up">HELOC follow-up</option><option value="quote_app_link">Quote / app link</option><option value="appointment_follow_up">Appointment follow-up</option></select></label><label>Message<textarea id="waBody" rows="3">Hi {{first_name}}, Mykoal with Adaxa Home here. Still interested in checking home equity options?</textarea></label></div><div class="toolbar" style="justify-content:flex-end;margin-top:8px"><button class="btn primary" data-action="send-whatsapp-thread">Send WhatsApp</button><button class="btn" data-action="send-whatsapp-template">Send template</button></div><div id="whatsappStatus" class="statusLine"></div></div>' +
               '</div></div>' +
             '<aside class="conversationContactPane"><div class="contactPaneHead"><b>Contact details</b><div class="sub">Profile, stage, tags, and loan context</div></div><div id="conversationContactBody" class="contactPaneBody"><div class="empty">Select a conversation to view the contact.</div></div></aside>' +
@@ -3340,6 +3355,7 @@
         if ($("convChannelSelect")) $("convChannelSelect").value = mode;
       }
       async function openThread(id, phone, email) {
+        if (state.activeThread && String(state.activeThread) !== String(id || "")) clearEmailAttachmentDrafts("conversation");
         state.activeThread = id || null;
         state.activeThreadContact = null;
         if ($("conversationShell")) $("conversationShell").classList.add("threadOpen");
@@ -3394,13 +3410,15 @@
         var body = $("convEmailBody").value.trim();
         if (!to) { status("convEmailStatus", "Enter an email address.", "warnText"); return; }
         if (!subject || !body) { status("convEmailStatus", "Subject and message are required.", "warnText"); return; }
-        status("convEmailStatus", "Sending...");
+        status("convEmailStatus", "Preparing attachments and sending...");
+        var attachments = await emailAttachmentPayload("conversation");
         var data = await json("/api/email/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: to, subject: subject, body: body })
+          body: JSON.stringify({ to: to, subject: subject, body: body, attachments: attachments })
         });
         status("convEmailStatus", data.ok ? "Email sent." : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
+        if (data.ok) clearEmailAttachmentDrafts("conversation");
         if (data.ok && state.activeThread) await openThread(state.activeThread, inputVal("msgPhone"), to);
       }
 
@@ -4868,13 +4886,80 @@
       function emailAttachmentName(a) {
         return String((a && (a.filename || a.name || a.id || a.attachment_id)) || "Attachment");
       }
-      function renderEmailAttachment(a, allowFetch) {
+      function renderEmailAttachment(a) {
         var id = emailAttachmentId(a);
         var name = emailAttachmentName(a);
         var url = String((a && (a.download_url || a.downloadUrl || a.url)) || "");
-        if (url) return '<button class="btn small" data-action="email-open-attachment" data-attachment-url="' + esc(url) + '">' + esc(name) + '</button>';
-        if (id && allowFetch !== false) return '<button class="btn small" data-action="email-open-attachment" data-attachment-id="' + esc(id) + '">' + esc(name) + '</button>';
+        if (id) return '<button class="btn small" data-action="email-open-attachment" data-attachment-id="' + esc(id) + '">Open ' + esc(name) + '</button>';
+        if (url) return '<button class="btn small" data-action="email-open-attachment" data-attachment-url="' + esc(url) + '">Open ' + esc(name) + '</button>';
         return '<span class="badge purple">' + esc(name) + '</span>';
+      }
+      function emailAttachmentDraftConfig(scope) {
+        if (scope === "lead") return { inputId: "leadEmailAttachments", listId: "leadEmailAttachmentDrafts" };
+        if (scope === "conversation") return { inputId: "convEmailAttachments", listId: "convEmailAttachmentDrafts" };
+        return { inputId: "emailAttachmentInput", listId: "emailAttachmentDrafts" };
+      }
+      function formatFileSize(bytes) {
+        var size = Number(bytes || 0);
+        if (size < 1024) return size + " B";
+        if (size < 1024 * 1024) return Math.round(size / 1024) + " KB";
+        return (size / (1024 * 1024)).toFixed(1) + " MB";
+      }
+      function renderEmailAttachmentDrafts(scope) {
+        var config = emailAttachmentDraftConfig(scope);
+        var box = $(config.listId);
+        if (!box) return;
+        var files = state.emailAttachmentDrafts[scope] || [];
+        box.innerHTML = files.map(function (file, index) {
+          return '<div class="emailAttachmentDraft"><span title="' + esc(file.name) + '">' + esc(file.name) + ' <small>(' + esc(formatFileSize(file.size)) + ')</small></span><button class="btn tiny danger" data-action="email-remove-draft-attachment" data-scope="' + esc(scope) + '" data-index="' + index + '" title="Remove attachment">x</button></div>';
+        }).join("");
+      }
+      function selectEmailAttachmentDrafts(scope, fileList) {
+        var selected = Array.from(fileList || []);
+        var files = selected.slice(0, 10);
+        if (selected.length > files.length) showToast("Only the first 10 attachments were selected.", true);
+        var total = files.reduce(function (sum, file) { return sum + Number(file.size || 0); }, 0);
+        if (total > 9 * 1024 * 1024) {
+          var config = emailAttachmentDraftConfig(scope);
+          state.emailAttachmentDrafts[scope] = [];
+          if ($(config.inputId)) $(config.inputId).value = "";
+          renderEmailAttachmentDrafts(scope);
+          showToast("Keep combined email attachments under 9 MB.", true);
+          return;
+        }
+        state.emailAttachmentDrafts[scope] = files;
+        renderEmailAttachmentDrafts(scope);
+      }
+      function removeEmailAttachmentDraft(scope, index) {
+        var files = state.emailAttachmentDrafts[scope] || [];
+        files.splice(Number(index), 1);
+        state.emailAttachmentDrafts[scope] = files;
+        var config = emailAttachmentDraftConfig(scope);
+        if ($(config.inputId)) $(config.inputId).value = "";
+        renderEmailAttachmentDrafts(scope);
+      }
+      function clearEmailAttachmentDrafts(scope) {
+        state.emailAttachmentDrafts[scope] = [];
+        var config = emailAttachmentDraftConfig(scope);
+        if ($(config.inputId)) $(config.inputId).value = "";
+        renderEmailAttachmentDrafts(scope);
+      }
+      function fileAsBase64(file) {
+        return new Promise(function (resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function () {
+            var result = String(reader.result || "");
+            resolve(result.indexOf(",") >= 0 ? result.slice(result.indexOf(",") + 1) : result);
+          };
+          reader.onerror = function () { reject(new Error("Could not read " + file.name + ".")); };
+          reader.readAsDataURL(file);
+        });
+      }
+      async function emailAttachmentPayload(scope) {
+        var files = state.emailAttachmentDrafts[scope] || [];
+        return Promise.all(files.map(async function (file) {
+          return { filename: file.name, content: await fileAsBase64(file) };
+        }));
       }
       function resendSentMessage(row) {
         row = row || {};
@@ -5170,7 +5255,7 @@
           : (m.direction === "inbound" && m.resend_id)
             ? '<button class="btn" data-action="email-refresh-resend">Load received content</button>'
             : ((m.direction !== "inbound" && m.resend_id) ? '<button class="btn" data-action="email-refresh-resend">Refresh Resend status</button>' : "");
-        var attachmentListButton = (m.direction !== "inbound" && (m.resend_id || m.resend_api)) ? '<button class="btn" data-action="email-list-attachments">List attachments</button>' : "";
+        var attachmentListButton = (m.resend_id || m.resend_api || m.resend_received_api) ? '<button class="btn" data-action="email-list-attachments">Load attachments</button>' : "";
         var rescheduleButton = (m.direction !== "inbound" && (m.resend_id || m.resend_api)) ? '<button class="btn" data-action="email-reschedule">Reschedule</button>' : "";
         var canCancel = m.direction !== "inbound" && (m.resend_id || m.resend_api) && (m.scheduled_at || /scheduled/i.test([m.status, m.last_event].join(" ")));
         var cancelButton = canCancel ? '<button class="btn danger" data-action="email-cancel-scheduled">Cancel send</button>' : "";
@@ -5195,7 +5280,7 @@
           '<div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + esc(m.subject || "(no subject)") + '</h2><div class="sub">' + esc(formatDateTime(m.created_at)) + '</div></div><div class="toolbar">' + filedBadge + emailStatusHtml(m) + '</div></div>' +
           '<div class="emailAddressLine"><div><b>From:</b> ' + esc(m.from || "") + '</div><div><b>To:</b> ' + esc(m.to || "") + '</div>' + (m.cc && m.cc.length ? '<div><b>CC:</b> ' + esc(m.cc.join(", ")) + '</div>' : '') + (m.bcc && m.bcc.length ? '<div><b>BCC:</b> ' + esc(m.bcc.join(", ")) + '</div>' : '') + receivedForLine + '<div><b>Lead:</b> ' + esc(m.lead_name || "-") + '</div>' + scheduledLine + '</div>' +
           '<div class="toolbar" style="margin:12px 0"><button class="btn primary" data-action="email-reply">Reply</button><button class="btn" data-action="email-reply-all">Reply all</button><button class="btn" data-action="email-forward">Forward</button>' + fileButton + mailboxButtons + resendButton + attachmentListButton + rawButton + rescheduleButton + cancelButton + '<button class="btn" data-action="refresh-email-page">Refresh</button>' + leadButton + '</div>' +
-          (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a, m.direction !== "inbound"); }).join("") + '</div>' : '') +
+          (attachments.length ? '<div class="toolbar" style="margin-bottom:12px">' + attachments.map(function (a) { return renderEmailAttachment(a); }).join("") + '</div>' : '') +
           contentStatus +
           '<div class="emailMessagePreview">' + renderEmailBody(m) + '</div>' +
           '<button class="btn primary emailReaderToggle" data-action="email-toggle-expand">' + readerToggleLabel + '</button>' +
@@ -5344,6 +5429,7 @@
       }
       function openEmailComposer(mode) {
         mode = mode || "compose";
+        clearEmailAttachmentDrafts("composer");
         var m = (state.emailMessages || []).find(function (row) { return row.id === state.activeEmailId; });
         var to = "";
         var cc = "";
@@ -5371,18 +5457,20 @@
           '<div class="fieldGrid"><label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label><label>BCC<input id="emailBcc" value="' + esc(bcc) + '" placeholder="hidden@email.com"></label></div>' +
           '<label>Schedule send (optional)<input id="emailScheduledAt" type="datetime-local"></label>' +
           '<label>Email body<textarea id="emailBody" rows="12">' + esc(body) + '</textarea></label>' +
+          '<label>Attachments<input id="emailAttachmentInput" type="file" multiple data-action="email-attachments-select" data-scope="composer"></label><div class="sub">Up to 10 files, 9 MB combined.</div><div id="emailAttachmentDrafts" class="emailAttachmentDrafts"></div>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-email-page">Send email</button></div><div id="emailPageMsg" class="statusLine"></div>');
       }
       async function sendEmailPage() {
-        status("emailPageMsg", "Sending...");
+        status("emailPageMsg", "Preparing attachments and sending...");
         var scheduledAt = isoFromLocalDateInput(inputVal("emailScheduledAt"));
+        var attachments = await emailAttachmentPayload("composer");
         var data = await json("/api/email/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: inputVal("emailFrom"), to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: inputVal("emailCc"), bcc: inputVal("emailBcc"), scheduled_at: scheduledAt })
+          body: JSON.stringify({ from: inputVal("emailFrom"), to: $("emailTo").value, subject: $("emailSubject").value, body: $("emailBody").value, cc: inputVal("emailCc"), bcc: inputVal("emailBcc"), scheduled_at: scheduledAt, attachments: attachments })
         });
         status("emailPageMsg", data.ok ? (scheduledAt ? "Email scheduled." : "Email sent.") : (data.detail || "Email failed."), data.ok ? "okText" : "warnText");
-        if (data.ok) closeModal();
+        if (data.ok) { clearEmailAttachmentDrafts("composer"); closeModal(); }
         state.emailBox = "sent";
         state.activeEmailId = null;
         await refreshEmailPage();
@@ -5482,9 +5570,9 @@
         if (!m) return;
         var resendId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
         if (!resendId) { showToast("This email has no Resend id for attachments.", true); return; }
-        var path = m.resend_api
-          ? "/api/email/sent/" + encodeURIComponent(resendId) + "/attachments?limit=100"
-          : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments?limit=100";
+        var path = m.direction === "inbound"
+          ? (m.resend_received_api ? "/api/email/received/" + encodeURIComponent(resendId) + "/attachments?limit=100" : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments?limit=100")
+          : (m.resend_api ? "/api/email/sent/" + encodeURIComponent(resendId) + "/attachments?limit=100" : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments?limit=100");
         var data = await json(path);
         m.attachments = Array.isArray(data.attachments) ? data.attachments : [];
         showToast(m.attachments.length + " attachment" + (m.attachments.length === 1 ? "" : "s") + " loaded" + (data.has_more ? " (more available)" : "") + ".");
@@ -5502,14 +5590,21 @@
         var attachmentId = btn.dataset.attachmentId || "";
         var resendId = m.resend_id || String(m.id || "").replace(/^resend:/, "");
         if (!attachmentId || !resendId) { showToast("Attachment id is missing.", true); return; }
-        var path = m.resend_api
-          ? "/api/email/sent/" + encodeURIComponent(resendId) + "/attachments/" + encodeURIComponent(attachmentId)
-          : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments/" + encodeURIComponent(attachmentId);
-        var data = await json(path);
-        var attachment = data.attachment || {};
-        var url = attachment.download_url || attachment.downloadUrl || "";
-        if (!url) { showToast("Resend did not return a download URL.", true); return; }
-        window.open(url, "_blank", "noopener");
+        var path = m.direction === "inbound"
+          ? (m.resend_received_api ? "/api/email/received/" + encodeURIComponent(resendId) + "/attachments/" + encodeURIComponent(attachmentId) : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments/" + encodeURIComponent(attachmentId))
+          : (m.resend_api ? "/api/email/sent/" + encodeURIComponent(resendId) + "/attachments/" + encodeURIComponent(attachmentId) : "/api/email/activity/" + encodeURIComponent(m.id) + "/attachments/" + encodeURIComponent(attachmentId));
+        var attachmentWindow = window.open("about:blank", "_blank");
+        try {
+          var data = await json(path);
+          var attachment = data.attachment || {};
+          var url = attachment.download_url || attachment.downloadUrl || "";
+          if (!url) throw new Error("Resend did not return a download URL.");
+          if (attachmentWindow) attachmentWindow.location.replace(url);
+          else window.open(url, "_blank", "noopener");
+        } catch (error) {
+          if (attachmentWindow) attachmentWindow.close();
+          throw error;
+        }
       }
       function openRawEmail(btn) {
         var url = btn.dataset.rawUrl || "";
@@ -5949,7 +6044,11 @@
         var path = "";
         var body = {};
         if (action === "text") { path = "/api/leads/" + lead.id + "/message"; body = { message: $("ldText").value }; }
-        if (action === "email") { path = "/api/leads/" + lead.id + "/email"; body = { subject: $("ldEmailSubject").value, body: $("ldEmailBody").value }; }
+        if (action === "email") {
+          path = "/api/leads/" + lead.id + "/email";
+          status(statusId || "leadActionMsg", "Preparing attachments and sending...");
+          body = { subject: $("ldEmailSubject").value, body: $("ldEmailBody").value, attachments: await emailAttachmentPayload("lead") };
+        }
         if (action === "note") {
           var noteBody = $("ldNote") ? $("ldNote").value.trim() : "";
           if (!noteBody) { status(statusId || "leadActionMsg", "Type a note first.", "warnText"); return; }
@@ -5962,10 +6061,11 @@
         if (action === "title") path = "/api/leads/" + lead.id + "/orders/title";
         if (action === "flood") path = "/api/leads/" + lead.id + "/orders/flood";
         if (!path) throw new Error("Unknown lead action: " + action);
-        status(statusId || "leadActionMsg", "Running...");
+        status(statusId || "leadActionMsg", action === "email" ? "Sending email..." : "Running...");
         var data = await json(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         status(statusId || "leadActionMsg", (data.detail || data.path || data.ok) ? JSON.stringify(data).slice(0, 260) : "Done.", data.ok === false ? "warnText" : "okText");
         if (action === "note" && $("ldNote")) $("ldNote").value = "";
+        if (action === "email" && data.ok) clearEmailAttachmentDrafts("lead");
         await refreshLeadTimelinePanels(lead.id);
         return data;
       }
@@ -6090,6 +6190,7 @@
           else if (a === "email-load-resend") await loadResendSentEmail();
           else if (a === "email-list-attachments") await listEmailAttachments();
           else if (a === "email-open-attachment") await openEmailAttachment(btn);
+          else if (a === "email-remove-draft-attachment") removeEmailAttachmentDraft(btn.dataset.scope || "composer", btn.dataset.index || "0");
           else if (a === "email-open-raw") openRawEmail(btn);
           else if (a === "email-reschedule") openEmailRescheduleModal();
           else if (a === "save-email-reschedule") await saveEmailReschedule();
@@ -6282,6 +6383,7 @@
         try {
           if (el.dataset.action === "auto-step-type") changeAutomationStepType(el);
           else if (el.dataset.action === "lead-stage-quick") await quickLeadStage(el);
+          else if (el.dataset.action === "email-attachments-select") selectEmailAttachmentDrafts(el.dataset.scope || "composer", el.files);
         } catch (err) {
           showToast(err.message || String(err), true);
           if ($("autoEditMsg")) status("autoEditMsg", err.message || String(err), "badText");

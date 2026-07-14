@@ -59,8 +59,10 @@ import {
   sendBatchEmails,
   listSentEmails,
   listSentEmailAttachments,
+  listReceivedEmailAttachments,
   updateScheduledEmail,
   cancelScheduledEmail,
+  retrieveReceivedEmailAttachment,
 } from "../services/email";
 import { getRecentResendInboundWebhookHits, selfTestResendWebhookSignature, storeReceivedEmail } from "../services/resendInbound";
 import { brand, renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
@@ -3709,20 +3711,36 @@ async function emailMxDiagnostics(domains: string[]): Promise<Array<{
   );
 }
 
-/** Validate attachments: [{ filename, content(base64) }]. Caps total size (~10MB base64). */
+const MAX_MANUAL_EMAIL_ATTACHMENTS = 10;
+const MAX_MANUAL_EMAIL_ATTACHMENT_BASE64 = 12_500_000;
+
+/** Validate attachments: [{ filename, content(base64) }]. The request limit leaves
+ * enough room for recipients and the message body while supporting about 9MB of files. */
 function parseAttachments(raw: unknown): Array<{ filename: string; content: string }> {
   if (!Array.isArray(raw)) return [];
   const out: Array<{ filename: string; content: string }> = [];
   let total = 0;
-  for (const a of raw) {
-    const filename = a && typeof a.filename === "string" ? a.filename.trim() : "";
+  for (const a of raw.slice(0, MAX_MANUAL_EMAIL_ATTACHMENTS)) {
+    const originalName = a && typeof a.filename === "string" ? a.filename.trim() : "";
+    const filename = originalName.replace(/[\\/\u0000-\u001f]/g, "_").slice(0, 180);
     const content = a && typeof a.content === "string" ? a.content : "";
     if (!filename || !content) continue;
     total += content.length;
-    if (total > 14_000_000) break; // ~10MB of binary once base64-decoded
+    if (total > MAX_MANUAL_EMAIL_ATTACHMENT_BASE64) {
+      throw new Error("attachments are too large; keep the combined files under 9 MB");
+    }
     out.push({ filename, content });
   }
   return out;
+}
+
+function requestAttachments(req: Request, res: Response): Array<{ filename: string; content: string }> | null {
+  try {
+    return parseAttachments(req.body?.attachments);
+  } catch (err) {
+    res.status(413).json({ error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
 }
 
 function parseResendTags(raw: unknown): Array<{ name: string; value: string }> {
@@ -3845,6 +3863,8 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
   const scheduledAt = scheduledAtFromBody(req.body);
+  const attachments = requestAttachments(req, res);
+  if (attachments === null) return;
   if (!subjectTemplate) {
     res.status(400).json({ error: "pass a subject" });
     return;
@@ -3864,7 +3884,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     text,
     cc,
     bcc,
-    attachments: parseAttachments(req.body?.attachments),
+    attachments,
     ...resendSendOptions(req),
     ...(scheduledAt ? { scheduledAt } : {}),
   });
@@ -3875,7 +3895,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     subject,
     body: bodyText,
     status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
-    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
+    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: req.body?.author },
   });
   res.json({ ok: r.ok, id: r.id, detail: r.detail });
 });
@@ -3895,6 +3915,8 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const bcc = parseEmailList(req.body?.bcc);
   const from = selectedEmailFrom(req.body?.from);
   const scheduledAt = scheduledAtFromBody(req.body);
+  const attachments = requestAttachments(req, res);
+  if (attachments === null) return;
   const template = parseResendTemplate(
     req.body?.template ||
       (req.body?.template_id || req.body?.templateId
@@ -3931,7 +3953,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
     ...(template ? { template } : { html, text }),
     cc,
     bcc,
-    attachments: parseAttachments(req.body?.attachments),
+    attachments,
     ...resendSendOptions(req),
     ...(scheduledAt ? { scheduledAt } : {}),
   });
@@ -3943,7 +3965,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
       subject: renderedSubject,
       body: renderedBody,
       status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
-      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, author: req.body?.author },
+      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: req.body?.author },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
@@ -4048,6 +4070,24 @@ crmRouter.get("/api/email/received/:emailId", requirePass, async (req, res) => {
     return;
   }
   res.json({ ok: true, email });
+});
+
+crmRouter.get("/api/email/received/:emailId/attachments", requirePass, async (req, res) => {
+  const result = await listReceivedEmailAttachments(req.params.emailId, resendListQuery(req));
+  if (!result.ok) {
+    res.status(400).json({ error: result.detail || "could not list received email attachments from Resend" });
+    return;
+  }
+  res.json(result);
+});
+
+crmRouter.get("/api/email/received/:emailId/attachments/:attachmentId", requirePass, async (req, res) => {
+  const attachment = await retrieveReceivedEmailAttachment(req.params.emailId, req.params.attachmentId);
+  if (!attachment) {
+    res.status(404).json({ error: "received email attachment not found in Resend" });
+    return;
+  }
+  res.json({ ok: true, attachment });
 });
 
 crmRouter.get("/api/email/sent/:emailId/attachments", requirePass, async (req, res) => {
@@ -4770,9 +4810,11 @@ crmRouter.get("/api/email/activity/:activityId/attachments", requirePass, async 
     res.status(400).json({ error: "this email activity has no Resend id for attachments" });
     return;
   }
-  const result = await listSentEmailAttachments(resendId, resendListQuery(req));
+  const result = activity.direction === "inbound"
+    ? await listReceivedEmailAttachments(resendId, resendListQuery(req))
+    : await listSentEmailAttachments(resendId, resendListQuery(req));
   if (!result.ok) {
-    res.status(400).json({ error: result.detail || "could not list sent email attachments from Resend" });
+    res.status(400).json({ error: result.detail || `could not list ${activity.direction === "inbound" ? "received" : "sent"} email attachments from Resend` });
     return;
   }
   res.json(result);
@@ -4803,9 +4845,11 @@ crmRouter.get("/api/email/activity/:activityId/attachments/:attachmentId", requi
     res.status(400).json({ error: "this email activity has no Resend id for attachments" });
     return;
   }
-  const attachment = await retrieveSentEmailAttachment(resendId, req.params.attachmentId);
+  const attachment = activity.direction === "inbound"
+    ? await retrieveReceivedEmailAttachment(resendId, req.params.attachmentId)
+    : await retrieveSentEmailAttachment(resendId, req.params.attachmentId);
   if (!attachment) {
-    res.status(404).json({ error: "sent email attachment not found in Resend" });
+    res.status(404).json({ error: `${activity.direction === "inbound" ? "received" : "sent"} email attachment not found in Resend` });
     return;
   }
   res.json({ ok: true, attachment });
