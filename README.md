@@ -3,6 +3,19 @@
 Standalone v2 CRM service for `crm.smartr8.com/v2`. This repo is split from
 `SMART-MARKERTING/Smartr8-texting`, which remains the root `crm.smartr8.com` app.
 
+## Application boundary
+
+- This repository owns the CRM experience at `crm.smartr8.com/v2`, including the
+  dashboard, conversations, appointments, campaigns, reputation, file storage,
+  settings, and the CRM-facing social-planner entry point.
+- `studio.smartr8.com` remains the standalone Content Studio and owns content
+  generation, hashtag groups, post locations, social connections, scheduling,
+  and publishing workflows.
+- CRM links to Content Studio in a separate browser tab. It must not embed Studio,
+  copy Studio publishing state into the browser, or replace Studio's interface.
+- Authentication, records, provider integrations, and existing API contracts stay
+  server-side and independent of this presentation boundary.
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/SMART-MARKERTING/LOANGENIUS)
 
 Open `/v2` after deploy. The same backend is also mounted under `/v2/api`, `/v2/calls`,

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow" />
-  <title>LoanGenius</title>
+  <title>SmartR8 CRM</title>
   <link rel="icon" href="/logo.svg" />
   <script defer src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
   <style>
@@ -201,6 +201,9 @@
     .globalSearchRow:hover { background: var(--hover); }
     .globalSearchRow .avatar { width: 32px; height: 32px; font-size: 10px; }
     .topActions { display: flex; align-items: center; gap: 10px; }
+    .studioLaunch { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border-color: #06a8b8; background: #ecfeff; color: #075985; white-space: nowrap; }
+    .studioLaunch::before { content: "CS"; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; background: linear-gradient(145deg, #1769ff, #06a8b8); color: #fff; font-size: 10px; font-weight: 950; }
+    .studioLaunch:hover { border-color: #0891b2; background: #cffafe; color: #164e63; }
     .iconBtn { width: 38px; min-width: 38px; padding: 0; display: grid; place-items: center; }
     .notifyBtn { position: relative; }
     .notifyDot {
@@ -701,8 +704,8 @@
       .emailMessagePreview { max-height: 280px; }
     }
 
-    /* LoanGenius V2 application shell — mobile interaction patterns inspired by
-       modern CRM apps, with original LoanGenius branding and mortgage workflows. */
+    /* SmartR8 V2 application shell: original mortgage CRM patterns with a
+       responsive information hierarchy inspired by modern sales workspaces. */
     :root {
       --blue: #1769ff;
       --blueStrong: #0758ec;
@@ -877,6 +880,8 @@
       .topTitleWrap { min-width: 0; flex: 1; }
       .topPageTitle { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .topActions { gap: 6px; }
+      .studioLaunch { width: 42px; min-width: 42px; height: 42px; padding: 0; justify-content: center; font-size: 0; border: 0; background: transparent; }
+      .studioLaunch::before { width: 38px; height: 38px; border-radius: 12px; font-size: 11px; }
       .topActions > #msgModeBadge, .topActions > #themeToggle, .topActions > .badge.green, .topActions > #userName, .topActions > #userInitials { display: none; }
       .iconBtn { border: 0; background: transparent; font-size: 0; width: 42px; }
       .iconBtn::before { content: "\1F514"; font-size: 20px; }
@@ -951,9 +956,9 @@
   <section id="gate" class="gate">
     <div class="loginCard">
       <div class="brandRow">
-        <div class="brandMark">LG</div>
+        <div class="brandMark">S8</div>
         <div>
-          <h1>LoanGenius</h1>
+          <h1>SmartR8 CRM</h1>
           <p style="margin:4px 0 0">Secure mortgage CRM workspace.</p>
         </div>
       </div>
@@ -969,9 +974,9 @@
   <section id="app" class="app hidden">
     <aside class="side">
       <div class="brandRow">
-        <div class="brandMark">LG</div>
+        <div class="brandMark">S8</div>
         <div>
-          <strong>LoanGenius</strong>
+          <strong>SmartR8 CRM</strong>
           <div class="sub">Adaxa Home workspace</div>
         </div>
       </div>
@@ -998,6 +1003,7 @@
         <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
         <div class="globalSearchWrap"><input id="topSearch" class="globalSearch" type="search" autocomplete="off" placeholder="Search every contact, conversation, phone number..." /><div id="globalSearchResults" class="globalSearchResults hidden"></div></div>
         <div class="topActions">
+          <a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer" title="Open Content Studio">Content Studio</a>
           <button id="desktopPhoneButton" class="btn iconBtn desktopPhoneButton" title="Phone" aria-label="Phone" data-action="toggle-phone-drawer">&#9742;</button>
           <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Notifications" data-action="notifications">!<span id="notificationCount" class="notifyDot hidden">0</span></button>
           <span id="msgModeBadge" class="badge blue">auto</span>
@@ -1306,10 +1312,10 @@
         messages: "Conversations",
         dialer: "Dialer",
         powerdialer: "Power Dialer",
-        campaigns: "Text Campaigns",
+        campaigns: "Campaigns",
         tasks: "Tasks",
         calendar: "Calendar",
-        documents: "File Folders",
+        documents: "File Storage",
         automations: "Automations",
         reports: "Reports",
         contacts: "Contacts",
@@ -1318,34 +1324,40 @@
         deleted: "Deleted",
         email: "Email",
         fax: "Fax",
+        notifications: "Notifications",
+        social: "Social Planner",
+        reputation: "Reputation",
         admin: "Admin / Sub-Accounts",
         settings: "Settings",
         control: "Control Panel"
       };
       var controlItems = [
-        { id: "dashboard", label: "Dashboard", icon: "DB", group: "Workspace", desc: "Live counts, recent leads, and application services." },
-        { id: "leads", label: "Leads", icon: "LD", group: "Workspace", desc: "Active CRM leads and daily lead work." },
-        { id: "pipeline", label: "Pipeline", icon: "PL", group: "Workspace", desc: "Drag leads across statuses and stages." },
-        { id: "messages", label: "Conversations", icon: "MS", group: "Workspace", desc: "Text and email threads tied to contacts." },
-        { id: "dialer", label: "Dialer", icon: "PH", group: "Workspace", desc: "Make, receive, forward, and merge calls." },
-        { id: "powerdialer", label: "Power Dialer", icon: "PD", group: "Workspace", desc: "Queue lists and connect only when answered." },
-        { id: "leadpool", label: "Lead Pool", icon: "LP", group: "Workspace", desc: "Old-list contacts kept outside active Leads." },
-        { id: "campaigns", label: "Text Campaigns", icon: "TC", group: "Workspace", desc: "Successful automation and campaign sends." },
-        { id: "tasks", label: "Tasks", icon: "TS", group: "Workspace", desc: "Open task list for follow-up work." },
-        { id: "calendar", label: "Calendar", icon: "CA", group: "Workspace", desc: "Monthly appointments and reminders." },
-        { id: "documents", label: "File Folders", icon: "FF", group: "Control Panel", desc: "Borrower folders, uploads, and named files." },
-        { id: "automations", label: "Automations", icon: "AU", group: "Control Panel", desc: "Flows, triggers, and campaign steps." },
-        { id: "reports", label: "Reports", icon: "RP", group: "Control Panel", desc: "Generate, download, or email CRM reports." },
-        { id: "contacts", label: "Contacts", icon: "CO", group: "Control Panel", desc: "All visible people across Leads, Pool, and Past Clients." },
-        { id: "duplicates", label: "Duplicate Leads", icon: "DU", group: "Control Panel", desc: "Find, merge, or delete duplicate contacts." },
-        { id: "pastclients", label: "Past Clients", icon: "PC", group: "Control Panel", desc: "Closed and funded client records." },
-        { id: "deleted", label: "Deleted", icon: "DL", group: "Control Panel", desc: "Soft-deleted records and cleanup." },
-        { id: "email", label: "Email", icon: "EM", group: "Control Panel", desc: "Inbox, replies, folders, and outbound mail." },
-        { id: "fax", label: "Fax", icon: "FX", group: "Control Panel", desc: "Send, receive, file, and track borrower faxes." },
-        { id: "admin", label: "Admin / Sub-Accounts", icon: "AD", group: "Control Panel", desc: "Users, roles, passwords, and access." },
-        { id: "settings", label: "Settings", icon: "ST", group: "Control Panel", desc: "Provider credentials, security, audit, and integrations." }
+        { id: "dashboard", label: "Dashboard", icon: "DB", group: "Sales & Operations", desc: "Live counts, recent leads, and application services." },
+        { id: "messages", label: "Conversations", icon: "MS", group: "Communication", desc: "Text, iMessage, WhatsApp, and email threads tied to contacts." },
+        { id: "dialer", label: "Dialer", icon: "PH", group: "Communication", desc: "Make, receive, forward, and merge calls." },
+        { id: "contacts", label: "Contacts", icon: "CO", group: "Communication", desc: "All visible people across Leads, Pool, and Past Clients." },
+        { id: "notifications", label: "Notifications", icon: "NT", group: "Communication", desc: "Missed calls, inbound messages, email, and follow-up alerts." },
+        { id: "email", label: "Email", icon: "EM", group: "Communication", desc: "Inbox, replies, folders, attachments, and outbound mail." },
+        { id: "leads", label: "Leads", icon: "LD", group: "Sales & Operations", desc: "Active CRM leads and daily lead work." },
+        { id: "pipeline", label: "Pipeline", icon: "PL", group: "Sales & Operations", desc: "Drag leads across statuses and stages." },
+        { id: "powerdialer", label: "Power Dialer", icon: "PD", group: "Sales & Operations", desc: "Queue lists and connect only when answered." },
+        { id: "leadpool", label: "Lead Pool", icon: "LP", group: "Sales & Operations", desc: "Old-list contacts kept outside active Leads." },
+        { id: "tasks", label: "Tasks", icon: "TS", group: "Sales & Operations", desc: "Open task list for follow-up work." },
+        { id: "calendar", label: "Calendar", icon: "CA", group: "Sales & Operations", desc: "Monthly appointments and reminders." },
+        { id: "documents", label: "File Storage", icon: "FS", group: "Sales & Operations", desc: "Borrower folders, uploads, previews, and named files." },
+        { id: "fax", label: "Fax", icon: "FX", group: "Sales & Operations", desc: "Send, receive, file, and track borrower faxes." },
+        { id: "pastclients", label: "Past Clients", icon: "PC", group: "Sales & Operations", desc: "Closed and funded client records." },
+        { id: "campaigns", label: "Campaigns", icon: "CP", group: "Marketing & Growth", desc: "Successful text, email, and voicemail campaign sends." },
+        { id: "social", label: "Social Planner", icon: "SP", group: "Marketing & Growth", desc: "Launch the standalone Content Studio publishing workflow." },
+        { id: "reputation", label: "Reputation", icon: "RP", group: "Marketing & Growth", desc: "Review activity, requests, and provider readiness." },
+        { id: "automations", label: "Automations", icon: "AU", group: "Marketing & Growth", desc: "Flows, triggers, branches, and campaign steps." },
+        { id: "reports", label: "Reports", icon: "RG", group: "Administration", desc: "Generate, download, or email CRM reports." },
+        { id: "duplicates", label: "Duplicate Leads", icon: "DU", group: "Administration", desc: "Find, merge, or delete duplicate contacts." },
+        { id: "deleted", label: "Deleted", icon: "DL", group: "Administration", desc: "Soft-deleted records and cleanup." },
+        { id: "admin", label: "Admin / Sub-Accounts", icon: "AD", group: "Administration", desc: "Users, roles, passwords, and access." },
+        { id: "settings", label: "Settings", icon: "ST", group: "Administration", desc: "Provider credentials, security, audit, and integrations." }
       ];
-      var defaultFavoritePages = ["documents", "automations", "reports", "contacts", "duplicates", "pastclients", "deleted", "email", "admin"];
+      var defaultFavoritePages = ["social", "messages", "documents", "campaigns", "automations", "contacts", "email"];
       function itemByPage(page) {
         return controlItems.find(function (item) { return item.id === page; });
       }
@@ -1427,10 +1439,11 @@
           groups[item.group] = groups[item.group] || [];
           groups[item.group].push(item);
         });
-        pageShell("Apps", "Your LoanGenius mortgage workspace.",
+        var groupOrder = ["Communication", "Sales & Operations", "Marketing & Growth", "Administration"];
+        pageShell("Apps", "Your SmartR8 mortgage workspace.",
           '<button class="btn" data-action="refresh">Refresh</button>',
-          Object.keys(groups).map(function (group) {
-            return '<section class="card pad appSection"><h2 class="appSectionTitle">' + esc(group === "Control Panel" ? "Mortgage operations" : group) + '</h2><div class="controlGrid">' + groups[group].map(controlTile).join("") + '</div></section>';
+          groupOrder.filter(function (group) { return groups[group] && groups[group].length; }).map(function (group) {
+            return '<section class="card pad appSection"><h2 class="appSectionTitle">' + esc(group) + '</h2><div class="controlGrid">' + groups[group].map(controlTile).join("") + '</div></section>';
           }).join("") + resendInboundSetupCard());
       }
       function pageShell(title, sub, actions, body) {
@@ -1669,6 +1682,9 @@
         if (page === "dialer") return loadDialer();
         if (page === "powerdialer") return loadPowerDialer();
         if (page === "campaigns") return loadCampaigns();
+        if (page === "social") return loadSocialPlanner();
+        if (page === "reputation") return loadReputation();
+        if (page === "notifications") return loadNotificationsPage();
         if (page === "tasks") return loadTasksPage();
         if (page === "calendar") return loadCalendar();
         if (page === "control") return loadControlPanel();
@@ -1692,8 +1708,26 @@
           '</section>');
       }
 
+      function loadSocialPlanner() {
+        pageShell("Social Planner", "Content creation and social publishing remain in the standalone Content Studio.",
+          '<a class="btn primary" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Open Content Studio</a>',
+          '<section class="card pad"><div class="grid cols2"><div><span class="badge blue">Separate application</span><h2>Smart Marketing Content Studio</h2><p class="muted">Create, review, approve, schedule, and publish social content without mixing CRM contact data into the publishing application.</p><a class="btn primary" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Launch studio.smartr8.com</a></div><div class="list"><div class="item"><b>Publishing workflow</b><div class="sub">Facebook, Instagram, LinkedIn, X, Google Business Profile, and TikTok.</div></div><div class="item"><b>Caption controls</b><div class="sub">Named hashtag groups, final-caption preview, and optional post locations.</div></div><div class="item"><b>Honest provider state</b><div class="sub">Connection, publish, error, and retry status are verified inside Content Studio.</div></div></div></div></section>');
+      }
+
+      function loadReputation() {
+        pageShell("Reputation", "Review activity and request workflows.",
+          '<button class="btn" data-nav="settings">Connection settings</button>',
+          '<div class="grid cols3">' + metric("Connected providers", 0, "No reputation provider is configured in this CRM") + metric("Review requests", "--", "Available after provider setup") + metric("Average rating", "--", "Available after provider setup") + '</div><section class="card pad" style="margin-top:14px"><h2 style="margin-top:0">Reputation provider required</h2><p class="muted">The CRM will not claim a review request was sent until a supported reputation provider and callback are connected. Use Conversations for a manual follow-up or open Settings to complete integration work.</p><div class="toolbar"><button class="btn primary" data-nav="messages">Open conversations</button><button class="btn" data-nav="settings">Open settings</button></div></section>');
+      }
+
+      function loadNotificationsPage() {
+        pageShell("Notifications", "Missed calls, inbound messages, email, and follow-up alerts.",
+          '<button class="btn primary" data-action="notifications">Open notification center</button>',
+          '<section class="card pad"><h2 style="margin-top:0">Notification center</h2><p class="muted">Open the notification center to clear an alert, delete its linked inbox item where supported, or convert it into a task.</p><button class="btn primary" data-action="notifications">View notifications</button></section>');
+      }
+
       async function loadDashboard() {
-        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your LoanGenius workspace.", '<button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
+        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your SmartR8 workspace.", '<a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Content Studio</a><button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
         var loadErrors = [];
         var results = await Promise.all([
           json("/api/dashboard").catch(function () { loadErrors.push("dashboard"); return {}; }),
@@ -1753,7 +1787,7 @@
             metric("Unread messages", messages.unread || messages.unreadMessages || dash.unreadMessages || 0, "Needs a response") +
             metric("Appointments", appointments.length, "Scheduled today") +
           '</div>' +
-          '<section class="card pad"><div class="cardHead" style="padding:0 0 16px;border:0"><h2>Pinned apps</h2><button class="btn small" data-nav="control">Edit</button></div><div class="controlGrid">' + ["leads","pipeline","dialer","documents"].map(itemByPage).filter(Boolean).map(controlTile).join("") + '</div></section>' +
+          '<section class="card pad"><div class="cardHead" style="padding:0 0 16px;border:0"><h2>Pinned apps</h2><button class="btn small" data-nav="control">Edit</button></div><div class="controlGrid">' + ["leads","pipeline","social","documents"].map(itemByPage).filter(Boolean).map(controlTile).join("") + '</div></section>' +
           '<section class="card pad"><h2 style="margin-top:0">Quick actions</h2><div class="controlGrid">' +
             quickActionTile("Add contact", "new-lead", "+") + quickActionTile("Make a call", "quick-dial", "PH") + quickActionTile("New message", "quick-message", "MS") + quickActionTile("Book appointment", "cal-add-event", "CA") +
           '</div></section>' +
@@ -4330,7 +4364,7 @@
       }
 
       async function renderDocuments() {
-        pageShell("File Folders", "Every borrower file cabinet, visible without searching first.", '<button class="btn" data-action="refresh-doc-cabinet">Refresh cabinet</button>',
+        pageShell("File Storage", "Every borrower file cabinet, visible without searching first.", '<button class="btn" data-action="refresh-doc-cabinet">Refresh storage</button>',
           '<div class="grid cols2">' +
             '<section class="card pad"><h2 style="margin-top:0">Select borrower for upload</h2><div class="toolbar"><input id="docSearch" type="search" placeholder="Name, phone, email..." style="flex:1"><button class="btn" data-action="doc-search">Search</button></div><div id="docResults" class="list" style="margin-top:12px"><div class="empty">Use search or choose from the cabinet below.</div></div></section>' +
             '<section class="card pad"><h2 style="margin-top:0">Loan file folders</h2><div id="docLeadCard" class="empty">Select a borrower from search or the cabinet.</div><div class="fieldGrid" style="margin-top:12px"><label>Folder<input id="docFolder" list="emailFolderOptions" value="General" placeholder="Conditions"></label><label>File name<input id="docDisplayName" placeholder="Borrower authorization signed"></label><label>Type<select id="docType"><option value="auto">Auto detect</option><option value="photo_id">Photo ID</option><option value="borrower_authorization">Borrower Authorization</option><option value="loan_application">Loan application / URLA summary</option><option value="credit_report">Credit report</option><option value="income_assets">Income / assets documentation</option><option value="property_insurance">Property insurance</option><option value="purchase_contract">Purchase contract</option><option value="payoff_statement">Payoff statement</option><option value="rent_roll_or_lease">Rent roll / lease</option><option value="entity_documents">Entity documents</option><option value="other">Other</option></select></label><label>File<input id="docFile" type="file"></label></div><label style="margin-top:10px">Notes<input id="docNotes" placeholder="Optional notes"></label><button class="btn primary" data-action="doc-upload" style="margin-top:10px">Upload to folder</button><div id="docStatus" class="statusLine"></div><datalist id="emailFolderOptions">' + (state.emailFolderOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("") + '</datalist><div id="docList" class="list" style="margin-top:12px"></div><div class="warnBox" style="margin-top:14px">Borrower documents can contain PII. Verify borrower authorization, keep audit trail notes current, and avoid exposing sensitive files outside approved workspace users.</div></section>' +
@@ -4807,7 +4841,7 @@
       }
 
       async function loadCampaigns() {
-        pageShell("Text Campaigns", "Successful automation sends across text, email, and voicemail follow-up workflows.",
+        pageShell("Campaigns", "Successful automation sends across text, email, and voicemail follow-up workflows.",
           '<button class="btn" data-action="refresh-campaigns">Refresh</button><button class="btn primary" data-nav="automations">Open automations</button>',
           '<section class="card"><div class="cardHead"><h2>Successful automation sends</h2><span id="campaignCount" class="badge blue">0 shown</span></div><div id="campaignWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         await refreshCampaigns();
@@ -6276,7 +6310,7 @@
           else if (a === "quick-call-selected") { if (state.selectedLead && state.selectedLead.phone) { if ($("quickDialPhone")) $("quickDialPhone").value = state.selectedLead.phone; await showQuickPhoneTab("keypad"); await quickDialCall(); } }
           else if (a === "open-app") await route(btn.dataset.page);
           else if (a === "mobile-search") {
-            openModal("Search LoanGenius", '<label>Search leads, conversations, phone numbers, or email<input id="mobileGlobalSearch" type="search" placeholder="Start typing..."></label><button class="btn primary" data-action="run-mobile-search">Search</button>');
+            openModal("Search SmartR8", '<label>Search leads, conversations, phone numbers, or email<input id="mobileGlobalSearch" type="search" placeholder="Start typing..."></label><button class="btn primary" data-action="run-mobile-search">Search</button>');
             setTimeout(function () { if ($("mobileGlobalSearch")) $("mobileGlobalSearch").focus(); }, 0);
           }
           else if (a === "run-mobile-search") {
