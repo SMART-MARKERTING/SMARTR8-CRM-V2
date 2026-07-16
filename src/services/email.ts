@@ -383,7 +383,7 @@ export async function sendEmail(opts: {
     });
     const raw = await res.text().catch(() => "");
     if (!res.ok) {
-      log.error(`Resend send failed ${res.status}: ${raw}`);
+      log.error("Resend send failed", { status: res.status });
       return { ok: false, detail: `${res.status}: ${raw}` };
     }
     const data = raw ? (JSON.parse(raw) as { id?: string }) : {};
@@ -474,7 +474,7 @@ export async function sendBatchEmails(
     });
     const raw = await res.text().catch(() => "");
     if (!res.ok) {
-      log.error(`Resend batch send failed ${res.status}: ${raw}`);
+      log.error("Resend batch send failed", { status: res.status });
       return { ok: false, ids: [], detail: `${res.status}: ${raw}` };
     }
     const data = raw ? (JSON.parse(raw) as { data?: Array<{ id?: string }> }) : {};
@@ -497,7 +497,7 @@ export async function retrieveReceivedEmail(
     `/emails/receiving/${encodeURIComponent(id)}?html_format=${encodeURIComponent(format)}`,
   );
   if (!result.ok) {
-    log.error(`Resend received email retrieve failed ${result.status || "no-status"}: ${result.detail || ""}`);
+    log.error("Resend received email retrieve failed", { status: result.status || "no-status" });
     return null;
   }
   return result.data || null;

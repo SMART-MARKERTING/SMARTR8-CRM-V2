@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { config } from "../config";
 import { log } from "../logger";
 import { toE164 } from "../util/phone";
-import { requirePass, requireAdmin, requireFeatureForCurrentPath } from "../util/auth";
+import { requirePass, requireAdmin, requireVerifiedAdmin, rejectClientSuppliedIdentity, requireFeatureForCurrentPath } from "../util/auth";
 import { upsertContact, logCall } from "../services/ghl";
 import { addToDnc, listDnc, isOnDnc } from "../services/dnc";
 import { enqueueAutomated, queueStatus } from "../services/callQueue";
@@ -38,6 +38,7 @@ import {
 } from "../services/telnyxWebrtc";
 import { isVoicemailCall, handleVoicemailEvent } from "../services/voicemail";
 import { createNotificationEvent } from "../services/notifications";
+import { recordAudit } from "../services/audit";
 import {
   placeCall,
   placeCallWithAmd,
@@ -169,24 +170,9 @@ voiceRouter.get("/calls/click-to-call", requirePass, async (req, res) => {
   }
 });
 
-// GET /calls/diag — read-only check of the voice setup (no call placed). Open in a browser:
-//   https://<host>/calls/diag
-// Add ?place=1 to actually attempt the outbound call to MY_CELL_NUMBER (rings your
-// cell) — bypasses GHL so it isolates whether Telnyx itself accepts the call.
-voiceRouter.get("/calls/diag", requireAdmin, async (req, res) => {
-  if (req.query.place === "1") {
-    if (!config.voice.myCell) {
-      res.status(500).json({ placeAttempt: { ok: false, error: "MY_CELL_NUMBER not set" } });
-      return;
-    }
-    try {
-      const ccid = await placeCall(config.voice.myCell);
-      res.json({ placeAttempt: { ok: true, callControlId: ccid, note: "your cell should be ringing now" } });
-    } catch (err) {
-      res.json({ placeAttempt: { ok: false, error: String(err) } }); // raw Telnyx error incl. code/detail
-    }
-    return;
-  }
+// GET /calls/diag is read-only. Historical ?place=1 behavior is permanently
+// blocked before body parsing by productionSafetyRouter.
+voiceRouter.get("/calls/diag", requireAdmin, async (_req, res) => {
   const env = {
     TELNYX_API_KEY: Boolean(config.telnyx.apiKey),
     TELNYX_VOICE_APP_ID_OR_CONNECTION_ID: Boolean(config.voice.applicationId),
@@ -221,17 +207,20 @@ voiceRouter.get("/calls/diag", requireAdmin, async (req, res) => {
 });
 
 // Admin diagnostic: allow inbound SIP URI calls on the connection.
-voiceRouter.get("/calls/enable-sip-uri", requireAdmin, async (_req, res) => {
+voiceRouter.get("/calls/enable-sip-uri", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const result = await ensureSipUriCalling();
+  recordAudit({ req, action: "provider.telnyx_sip_uri.enable", statusCode: result.ok ? 200 : 502 });
   res.json(result);
 });
 
-voiceRouter.post("/calls/enable-sip-uri", requirePass, async (req, res) => {
+voiceRouter.post("/calls/enable-sip-uri", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const body = (req.body ?? {}) as { resetCredential?: boolean };
   if (body.resetCredential !== false) await resetWebrtcCredentialCache();
   const sipUriCalling = await ensureSipUriCalling();
-  const webrtc = await getWebrtcDiagnostic();
-  res.json({ ok: Boolean(sipUriCalling.ok && webrtc.ok), sipUriCalling, webrtc });
+  const webrtc = await getWebrtcDiagnostic({ createCredential: true });
+  const ok = Boolean(sipUriCalling.ok && webrtc.ok);
+  recordAudit({ req, action: "provider.telnyx_sip_uri.enable", statusCode: 200, meta: { credentialReset: body.resetCredential !== false, ok } });
+  res.json({ ok, sipUriCalling, webrtc });
 });
 
 /** Automated outbound: queue contacts for sequenced, gated, throttled dialing. */

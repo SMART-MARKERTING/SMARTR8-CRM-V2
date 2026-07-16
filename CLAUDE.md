@@ -36,7 +36,7 @@ fronted by **GoHighLevel (GHL)** so every message and call threads on the contac
 
 - `GET /health` — up + BlueBubbles reachability.
 - `GET /oauth/install`, `/oauth/callback` — GHL OAuth (tokens auto-refresh, stored on the disk).
-- `POST /providers/ghl/messages` — GHL conversation-provider Delivery URL (outbound send).
+- `POST /providers/ghl/messages` — retired GHL delivery URL (deterministic 410; never sends).
 - `POST /webhooks/telnyx` — inbound SMS → log to GHL + one-time iMessage probe.
 - `POST /webhooks/bluebubbles` — inbound iMessage → log to GHL.
 - `POST /webhooks/telnyx-voice` — inbound calls + all call events.

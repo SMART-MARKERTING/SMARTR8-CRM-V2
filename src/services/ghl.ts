@@ -126,9 +126,9 @@ export async function logCall(opts: {
   });
   if (!res.ok) {
     // Surfaced at error level + returned (not a silent warn) so /calls/diag records it.
-    const detail = await res.text().catch(() => "");
-    log.error(`GHL logCall failed ${res.status}: ${detail}`);
-    return { ok: false, status: res.status, detail };
+    await res.body?.cancel().catch(() => undefined);
+    log.error("GHL logCall failed", { status: res.status });
+    return { ok: false, status: res.status, detail: `GHL API error (${res.status})` };
   }
   return { ok: true, status: res.status };
 }
@@ -141,7 +141,7 @@ export async function addTags(contactId: string, tags: string[]): Promise<void> 
     headers: await authHeaders(),
     body: JSON.stringify({ tags }),
   });
-  if (!res.ok) throw new Error(`GHL addTags failed ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`GHL addTags failed (${res.status})`);
 }
 
 /** Remove tags from a contact (DELETE /contacts/{id}/tags). Best-effort. */
@@ -152,7 +152,7 @@ export async function removeTags(contactId: string, tags: string[]): Promise<voi
     headers: await authHeaders(),
     body: JSON.stringify({ tags }),
   });
-  if (!res.ok) log.warn(`GHL removeTags failed ${res.status}: ${await res.text()}`);
+  if (!res.ok) log.warn("GHL removeTags failed", { status: res.status });
 }
 
 /** Find contacts carrying a tag (Search Contacts endpoint, version 2023-02-21). */
@@ -168,7 +168,7 @@ export async function searchByTag(tag: string, limit = 5): Promise<GhlContact[]>
       filters: [{ field: "tags", operator: "contains", value: tag }],
     }),
   });
-  if (!res.ok) throw new Error(`GHL searchByTag failed ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`GHL searchByTag failed (${res.status})`);
   const data = (await res.json()) as { contacts?: GhlContact[] };
   return data.contacts ?? [];
 }
@@ -267,7 +267,7 @@ export async function getContactMessages(contactId: string, limit = 50): Promise
     );
     const convRaw = await convRes.text();
     if (!convRes.ok) {
-      log.warn(`GHL conversations/search failed ${convRes.status}: ${convRaw}`);
+      log.warn("GHL conversations search failed", { status: convRes.status });
       return [];
     }
     const conv = JSON.parse(convRaw) as { conversations?: Array<{ id?: string }> };
@@ -280,7 +280,7 @@ export async function getContactMessages(contactId: string, limit = 50): Promise
     );
     const msgRaw = await msgRes.text();
     if (!msgRes.ok) {
-      log.warn(`GHL messages read failed ${msgRes.status}: ${msgRaw}`);
+      log.warn("GHL messages read failed", { status: msgRes.status });
       return [];
     }
     const parsed = JSON.parse(msgRaw) as any;
@@ -324,7 +324,7 @@ export async function searchConversations(limit = 25): Promise<ConversationLite[
     );
     const raw = await res.text();
     if (!res.ok) {
-      log.warn(`GHL conversations search failed ${res.status}: ${raw}`);
+      log.warn("GHL conversations search failed", { status: res.status });
       return [];
     }
     const data = JSON.parse(raw) as { conversations?: Array<Record<string, any>> };
@@ -364,6 +364,6 @@ export async function updateMessageStatus(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    log.warn(`GHL updateMessageStatus(${status}) failed ${res.status}: ${await res.text()}`);
+    log.warn("GHL updateMessageStatus failed", { status: res.status, requestedStatus: status });
   }
 }

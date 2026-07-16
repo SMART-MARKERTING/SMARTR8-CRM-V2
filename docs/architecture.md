@@ -92,6 +92,10 @@ PIT scopes needed: `contacts.readonly`, `contacts.write`, `conversations.readonl
 
 ## GHL native app (next build) — intended shape
 
+> Security status: the historical `/providers/ghl/messages` delivery bridge is
+> retired and returns 410 at both root and `/v2` aliases. The diagram below is
+> historical design context, not an active or approved provider contract.
+
 Goal: send from GHL's conversation tab; keep n8n as the routing brain.
 
 ```

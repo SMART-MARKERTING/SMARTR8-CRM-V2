@@ -4,7 +4,14 @@ import path from "path";
 import { Router, Request, Response, raw } from "express";
 import { config } from "../config";
 import { log } from "../logger";
-import { requirePass, requireAdmin, requirePortalVerified, requireFeatureForCurrentPath } from "../util/auth";
+import {
+  requirePass,
+  requireAdmin,
+  requireVerifiedAdmin,
+  rejectClientSuppliedIdentity,
+  requirePortalVerified,
+  requireFeatureForCurrentPath,
+} from "../util/auth";
 import { getUser, listUsers } from "../services/auth";
 import { sendOutbound } from "../services/router";
 import { startClickToCall } from "../services/clickToCall";
@@ -144,7 +151,6 @@ import {
   listWhatsAppMessages,
   sendWhatsAppTemplate,
   sendWhatsAppText,
-  simulateInboundWhatsApp,
   whatsAppProviderStatus,
   whatsappTemplateOptions,
 } from "../services/whatsapp";
@@ -1125,45 +1131,35 @@ crmRouter.get("/api/whatsapp/debug", requireAdmin, (_req, res) => {
     ok: true,
     status: whatsAppProviderStatus(),
     templates: whatsappTemplateOptions(),
-    recent: listWhatsAppMessages(undefined, 25),
+    recent: listWhatsAppMessages(undefined, 25).map((message) => ({
+      direction: message.direction,
+      provider: message.provider,
+      templateName: message.template_name,
+      status: message.status,
+      errorCode: message.error_code,
+      hasBody: Boolean(message.body),
+      createdAt: message.created_at,
+    })),
   });
-});
-
-crmRouter.post("/api/whatsapp/debug/simulate-inbound", requireAdmin, (req, res) => {
-  const body = (req.body ?? {}) as { phone?: string; body?: string; message?: string };
-  if (!body.phone || !(body.body || body.message)) {
-    res.status(400).json({ error: "pass phone and body/message" });
-    return;
-  }
-  const result = simulateInboundWhatsApp({ phone: body.phone, body: body.body || body.message || "" });
-  res.json({ ok: true, leadId: result.lead.id, message: result.message });
 });
 
 crmRouter.get("/debug/whatsapp", requireAdmin, (_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhatsApp Debug</title>
+<title>WhatsApp Diagnostics</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0;padding:24px}main{max-width:980px;margin:auto}
 .card{background:#fff;border:1px solid #d8e0ec;border-radius:10px;padding:16px;margin:0 0 16px;box-shadow:0 1px 2px rgba(15,23,42,.06)}
-label{display:block;font-weight:700;margin:10px 0 4px}input,textarea,select{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit}
-button{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:9px 12px;font-weight:800;cursor:pointer}button.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ok{color:#047857}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;overflow:auto}
+button{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:9px 12px;font-weight:800;cursor:pointer}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px;overflow:auto}
 </style></head><body><main>
-<h1>WhatsApp Debug</h1>
-<section class="card"><h2>Status</h2><div id="status">Loading...</div><div class="toolbar"><button onclick="loadDebug()">Refresh</button></div></section>
-<section class="card"><h2>Send Test</h2><label>Lead ID or phone</label><input id="target" placeholder="Lead id or +1623..."><label>Message</label><textarea id="msg" rows="4">Hi {{first_name}}, Mykoal with Adaxa Home here. I can help you check home equity options. Subject to approval.</textarea><div class="toolbar"><button class="primary" onclick="sendTest()">Send free-form</button><button onclick="sendTemplate()">Send HELOC template</button></div><div id="sendOut"></div></section>
-<section class="card"><h2>Simulate Inbound</h2><label>Phone</label><input id="simPhone" placeholder="+1623..."><label>Inbound body</label><textarea id="simBody" rows="3">HELOC</textarea><div class="toolbar"><button class="primary" onclick="simulateInbound()">Simulate inbound webhook</button></div><div id="simOut"></div></section>
-<section class="card"><h2>Recent WhatsApp log</h2><pre id="log"></pre></section>
+<h1>WhatsApp Diagnostics</h1>
+<section class="card"><p>This page is read-only. Production simulations and test sends are disabled.</p><div class="toolbar"><button onclick="loadDebug()">Refresh</button></div></section>
+<section class="card"><h2>Redacted status</h2><pre id="log">Loading...</pre></section>
 </main><script>
 const token=localStorage.getItem("sp_token")||"";
-function headers(){return {"content-type":"application/json","x-session-token":token};}
-async function api(path,opts={}){opts.headers=Object.assign(headers(),opts.headers||{});const r=await fetch(path,opts);const t=await r.text();let j={};try{j=JSON.parse(t)}catch{j={raw:t}}if(!r.ok)throw new Error(j.error||t||r.statusText);return j;}
-async function loadDebug(){try{const j=await api("/api/whatsapp/debug");document.getElementById("status").innerHTML="<b>Provider:</b> "+j.status.provider+"<br><b>Configured:</b> "+j.status.configured+"<br><b>Warnings:</b> "+(j.status.warnings||[]).join("; ");document.getElementById("log").textContent=JSON.stringify(j.recent,null,2);}catch(e){document.getElementById("status").innerHTML='<span class="bad">'+e.message+"</span>";}}
-async function sendTest(){const target=document.getElementById("target").value.trim();const body={message:document.getElementById("msg").value};if(target.startsWith("+"))body.phone=target;else body.contactId=target;try{document.getElementById("sendOut").textContent=JSON.stringify(await api("/api/whatsapp/send",{method:"POST",body:JSON.stringify(body)}),null,2);await loadDebug();}catch(e){document.getElementById("sendOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
-async function sendTemplate(){const target=document.getElementById("target").value.trim();const body={templateName:"heloc_follow_up",templateVariables:{}};if(target.startsWith("+"))body.phone=target;else body.contactId=target;try{document.getElementById("sendOut").textContent=JSON.stringify(await api("/api/whatsapp/send",{method:"POST",body:JSON.stringify(body)}),null,2);await loadDebug();}catch(e){document.getElementById("sendOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
-async function simulateInbound(){try{document.getElementById("simOut").textContent=JSON.stringify(await api("/api/whatsapp/debug/simulate-inbound",{method:"POST",body:JSON.stringify({phone:document.getElementById("simPhone").value,body:document.getElementById("simBody").value})}),null,2);await loadDebug();}catch(e){document.getElementById("simOut").innerHTML='<span class="bad">'+e.message+"</span>";}}
+async function loadDebug(){const out=document.getElementById("log");try{const r=await fetch("/api/whatsapp/debug",{headers:{"x-session-token":token}});const t=await r.text();if(!r.ok)throw new Error(t||r.statusText);out.textContent=JSON.stringify(JSON.parse(t),null,2);}catch(e){out.textContent="Unable to load redacted diagnostics: "+e.message;}}
 loadDebug();
 </script></body></html>`);
 });
@@ -1248,7 +1244,7 @@ crmRouter.get("/api/settings/loan-services", requireAdmin, (_req, res) => {
   res.json({ ok: true, settings: listSettlementVendorSettings() });
 });
 
-crmRouter.post("/api/settings/loan-services/:kind", requireAdmin, (req, res) => {
+crmRouter.post("/api/settings/loan-services/:kind", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const kind = req.params.kind === "title" || req.params.kind === "flood" ? (req.params.kind as SettlementVendorKind) : null;
   if (!kind) {
     res.status(400).json({ error: "unknown loan service kind" });
@@ -1256,6 +1252,7 @@ crmRouter.post("/api/settings/loan-services/:kind", requireAdmin, (req, res) => 
   }
   try {
     const settings = saveSettlementVendorSettings(kind, (req.body ?? {}) as Record<string, unknown>, leadActionAuthor(req));
+    recordAudit({ req, action: "provider.settings.update", statusCode: 200, meta: { kind } });
     res.json({ ok: true, settings });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -1266,9 +1263,10 @@ crmRouter.get("/api/settings/elevenlabs", requireAdmin, (_req, res) => {
   res.json({ ok: true, settings: publicElevenLabsSettings() });
 });
 
-crmRouter.post("/api/settings/elevenlabs", requireAdmin, (req, res) => {
+crmRouter.post("/api/settings/elevenlabs", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   try {
     const settings = saveElevenLabsSettings((req.body ?? {}) as Record<string, unknown>, leadActionAuthor(req));
+    recordAudit({ req, action: "provider.elevenlabs.update", statusCode: 200 });
     res.json({ ok: true, settings });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -1426,7 +1424,7 @@ crmRouter.get("/api/settings/voicemail-audio", requireAdmin, (_req, res) => {
 
 const VOICEMAIL_AUDIO_EXTS = new Set([".mp3", ".m4a", ".wav", ".webm", ".ogg"]);
 
-crmRouter.post("/api/settings/voicemail-audio", requireAdmin, raw({ type: () => true, limit: "16mb" }), async (req, res) => {
+crmRouter.post("/api/settings/voicemail-audio", requireVerifiedAdmin, rejectClientSuppliedIdentity, raw({ type: () => true, limit: "16mb" }), async (req, res) => {
   const buf = req.body as Buffer;
   if (!buf || !buf.length) {
     res.status(400).json({ error: "empty audio upload" });
@@ -1448,6 +1446,7 @@ crmRouter.post("/api/settings/voicemail-audio", requireAdmin, raw({ type: () => 
       { url, file, mime: mimeForExt(ext), size: buf.length },
       leadActionAuthor(req),
     );
+    recordAudit({ req, action: "provider.voicemail_audio.update", statusCode: 200, meta: { mime: mimeForExt(ext), size: buf.length } });
     res.json({ ok: true, settings });
   } catch (err) {
     log.error("voicemail audio upload failed", { err: String(err) });
@@ -1455,7 +1454,7 @@ crmRouter.post("/api/settings/voicemail-audio", requireAdmin, raw({ type: () => 
   }
 });
 
-crmRouter.post("/api/settings/elevenlabs/test", requireAdmin, async (req, res) => {
+crmRouter.post("/api/settings/elevenlabs/test", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const text = (req.body?.text ?? "").toString().trim();
   if (!text) {
     res.status(400).json({ error: "pass test text" });
@@ -1463,6 +1462,7 @@ crmRouter.post("/api/settings/elevenlabs/test", requireAdmin, async (req, res) =
   }
   try {
     const audio = await generateVoicemailAudio(text, { baseUrl: requestPublicBase(req) });
+    recordAudit({ req, action: "provider.elevenlabs.preview", statusCode: 200, meta: { cached: audio.cached } });
     res.json({ ok: true, audio });
   } catch (err) {
     log.warn("elevenlabs test generation failed", { err: String(err) });
@@ -1961,13 +1961,14 @@ crmRouter.post("/api/contacts/materialize", requirePass, (req, res) => {
 // `meta` under `ghl_import` and polled via GET /api/contacts/import-ghl/status. After this,
 // the Contacts tab reads only the local DB (no live GHL pull), so deletes are permanent.
 let ghlImporting = false;
-crmRouter.post("/api/contacts/import-ghl", requirePass, (_req, res) => {
+crmRouter.post("/api/contacts/import-ghl", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   if (ghlImporting) {
     res.json({ ok: true, status: "running", message: getMeta("ghl_import") ?? "running" });
     return;
   }
   ghlImporting = true;
   setMeta("ghl_import", "running");
+  recordAudit({ req, action: "admin.ghl_import.start", statusCode: 200 });
   res.json({ ok: true, status: "started" });
   // Fire-and-forget: keep working after the response is sent.
   (async () => {
@@ -1985,12 +1986,12 @@ crmRouter.post("/api/contacts/import-ghl", requirePass, (_req, res) => {
   })();
 });
 
-crmRouter.get("/api/contacts/import-ghl/status", requirePass, (_req, res) => {
+crmRouter.get("/api/contacts/import-ghl/status", requireVerifiedAdmin, (_req, res) => {
   res.json({ running: ghlImporting, status: getMeta("ghl_import") ?? "never run" });
 });
 
 /** Read-only diagnostic: row counts + where the duplicates are (no mutation). */
-crmRouter.get("/api/contacts/diag", requirePass, (_req, res) => {
+crmRouter.get("/api/contacts/diag", requireVerifiedAdmin, (_req, res) => {
   res.json(contactsDiag());
 });
 
@@ -1999,42 +2000,49 @@ crmRouter.get("/api/contacts/diag", requirePass, (_req, res) => {
 // routes default to dryRun TRUE — the caller must send dryRun:false to actually change data.
 
 /** Leads grouped by source with today vs total counts (to choose what to remove). */
-crmRouter.get("/api/admin/source-audit", requirePass, (req, res) => {
+crmRouter.get("/api/admin/source-audit", requireVerifiedAdmin, (req, res) => {
   const since = parseInt(String(req.query.since ?? ""), 10) || Date.now() - 86_400_000;
   res.json({ since, sources: auditSources(since) });
 });
 
 /** Soft-delete imported leads: body { sources:[], since?:ms, dryRun?:bool(=true) }. */
-crmRouter.post("/api/admin/purge-imports", requirePass, (req, res) => {
+crmRouter.post("/api/admin/purge-imports", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const body = (req.body ?? {}) as { sources?: unknown; since?: unknown; dryRun?: unknown };
   if (!Array.isArray(body.sources) || !body.sources.length) {
     res.status(400).json({ error: "pass sources: string[]" });
     return;
   }
   const since = Number(body.since) || Date.now() - 86_400_000;
-  res.json(purgeImported(body.sources.map(String), since, body.dryRun !== false));
+  const result = purgeImported(body.sources.map(String), since, body.dryRun !== false);
+  recordAudit({ req, action: "admin.imports.purge", statusCode: 200, detail: result.dryRun ? "dry run" : "completed", meta: { matched: result.matched, deleted: result.deleted, sourceCount: body.sources.length } });
+  res.json(result);
 });
 
 /** Revert status/stage/past-client damage the import did to real (non-import) leads.
  *  body { importSources:[], since?:ms, dryRun?:bool(=true) }. */
-crmRouter.post("/api/admin/revert-import", requirePass, (req, res) => {
+crmRouter.post("/api/admin/revert-import", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const body = (req.body ?? {}) as { importSources?: unknown; since?: unknown; dryRun?: unknown };
   const since = Number(body.since) || Date.now() - 86_400_000;
   const importSources = Array.isArray(body.importSources) ? body.importSources.map(String) : [];
-  res.json(revertImportDamage(since, importSources, body.dryRun !== false));
+  const result = revertImportDamage(since, importSources, body.dryRun !== false);
+  recordAudit({ req, action: "admin.imports.revert", statusCode: 200, detail: result.dryRun ? "dry run" : "completed", meta: { scanned: result.scanned, reverted: result.reverted, sourceCount: importSources.length } });
+  res.json(result);
 });
 
 /** Merge-dedupe duplicate contacts (by phone, then email). Keeps the richest record, moves
  *  the others' messages/notes/automations onto it, unions tags, soft-deletes the extras.
  *  DRY RUN by default — send { dryRun: false } to actually merge. */
-crmRouter.post("/api/admin/dedupe-contacts", requirePass, (req, res) => {
+crmRouter.post("/api/admin/dedupe-contacts", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const body = (req.body ?? {}) as { dryRun?: unknown };
-  res.json(dedupeContacts(body.dryRun === false ? false : true));
+  const result = dedupeContacts(body.dryRun === false ? false : true);
+  recordAudit({ req, action: "admin.contacts.dedupe", statusCode: 200, detail: result.dryRun ? "dry run" : "completed", meta: { groups: result.groups, duplicates: result.duplicates, removed: result.removed } });
+  res.json(result);
 });
 
-crmRouter.post("/api/admin/repair-lead-pool", requireAdmin, (_req, res) => {
+crmRouter.post("/api/admin/repair-lead-pool", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const leadPool = repairLeadPoolVisibility();
   const pastClients = repairPastClientVisibility();
+  recordAudit({ req, action: "admin.lead_pool.repair", statusCode: 200, meta: { repaired: leadPool.repaired + pastClients.repaired } });
   res.json({ ok: true, repaired: leadPool.repaired + pastClients.repaired, leadPool, pastClients });
 });
 
@@ -2045,9 +2053,10 @@ crmRouter.get("/api/admin/sync/status", requireAdmin, (_req, res) => {
   res.json({ ok: true, reconciliation: getClassicCrmReconcileStatus(), eventCounts });
 });
 
-crmRouter.post("/api/admin/sync/classic", requireAdmin, async (req, res) => {
+crmRouter.post("/api/admin/sync/classic", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const full = req.body?.full === true;
   const status = await runClassicCrmReconciliation({ full, maxPages: full ? 10000 : 100 });
+  recordAudit({ req, action: "admin.classic_sync.run", statusCode: status.status === "error" || status.status === "not_configured" ? 503 : 200, meta: { full, status: status.status } });
   res.status(status.status === "error" || status.status === "not_configured" ? 503 : 200).json({ ok: status.status === "complete", reconciliation: status });
 });
 
@@ -4084,7 +4093,7 @@ crmRouter.get("/api/email/received", requirePass, async (req, res) => {
   res.json(result);
 });
 
-crmRouter.post("/api/email/received/sync", requireAdmin, async (req, res) => {
+crmRouter.post("/api/email/received/sync", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const bodyLimit = typeof req.body?.limit === "number" ? req.body.limit : Number(req.body?.limit || 50);
   const limit = Number.isFinite(bodyLimit) ? Math.max(1, Math.min(bodyLimit, 100)) : 50;
   const listed = await listReceivedEmails({ limit });
@@ -4101,6 +4110,7 @@ crmRouter.post("/api/email/received/sync", requireAdmin, async (req, res) => {
     else if (result.duplicate) duplicates += 1;
     else if (!result.ok) failed.push({ emailId: result.emailId || email.id || email.email_id || null, error: result.error || "unknown error" });
   }
+  recordAudit({ req, action: "provider.resend_inbound.sync", statusCode: 200, meta: { checked: listed.emails.length, stored, duplicates, failed: failed.length } });
   res.json({
     ok: true,
     checked: listed.emails.length,

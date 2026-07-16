@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { config } from "../config";
 import { log } from "../logger";
-import { requireAdmin } from "../util/auth";
+import { requireAdmin, requireVerifiedAdmin, rejectClientSuppliedIdentity } from "../util/auth";
+import { recordAudit } from "../services/audit";
 
 export const adminRouter = Router();
 
@@ -43,7 +44,7 @@ adminRouter.get("/admin/deploy", requireAdmin, async (_req, res) => {
 });
 
 /** Trigger a fresh deploy of the latest commit (clears build cache off). */
-adminRouter.post("/admin/redeploy", requireAdmin, async (_req, res) => {
+adminRouter.post("/admin/redeploy", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   if (!config.render.apiToken || !config.render.serviceId) {
     res.status(503).json({ error: "RENDER_API_TOKEN / RENDER_SERVICE_ID not set" });
     return;
@@ -65,6 +66,7 @@ adminRouter.post("/admin/redeploy", requireAdmin, async (_req, res) => {
     }
     const d = JSON.parse(raw) as { id?: string; status?: string; commit?: { id?: string } };
     log.info("triggered Render redeploy", { id: d.id, commit: d.commit?.id });
+    recordAudit({ req, action: "admin.render_redeploy", statusCode: 200, meta: { deployId: d.id || null } });
     res.json({ ok: true, deployId: d.id, status: d.status, commit: d.commit?.id?.slice(0, 7) });
   } catch (err) {
     res.status(500).json({ error: String(err) });

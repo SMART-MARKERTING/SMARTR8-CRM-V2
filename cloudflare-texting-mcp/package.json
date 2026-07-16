@@ -14,8 +14,10 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.0.5",
-    "@modelcontextprotocol/sdk": "^1.13.0",
-    "agents": "^0.0.109",
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "agents": "^0.4.0",
+    "ai": "^6.0.0",
+    "react": "^19.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

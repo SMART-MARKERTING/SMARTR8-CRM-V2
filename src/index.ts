@@ -14,6 +14,7 @@ import { crmRouter } from "./routes/crm";
 import { faxRouter } from "./routes/fax";
 import { usersRouter } from "./routes/users";
 import { pushRouter } from "./routes/push";
+import { productionSafetyRouter } from "./routes/productionSafety";
 import { startCallNowPoller } from "./services/callNowPoller";
 import { seedCampaigns, startAutomationWorker } from "./services/automations";
 import { seedAdminIfEmpty } from "./services/auth";
@@ -53,6 +54,11 @@ app.use((_req, res, next) => {
   );
   next();
 });
+// Security tombstones must run before raw/JSON/urlencoded body parsing. The retired
+// GHL bridge and test/simulator routes never inspect or log attacker-controlled bodies.
+app.use(productionSafetyRouter);
+app.use("/providers/ghl", providerRouter);
+app.use("/v2/providers/ghl", providerRouter);
 app.post(
   ["/api/webhooks/resend", "/v2/api/webhooks/resend"],
   express.raw({ type: "application/json", limit: "16mb" }),
@@ -116,7 +122,6 @@ function publicStatic() {
 }
 
 app.use("/oauth", oauthRouter);
-app.use("/providers/ghl", providerRouter);
 app.use("/webhooks", webhooksRouter);
 app.use(voiceRouter); // /calls/*, /dnc, /webhooks/telnyx-voice
 app.use(
@@ -139,7 +144,6 @@ app.use(faxRouter); // /api/fax + /api/webhooks/telnyx/fax
 app.use(crmRouter); // /webhooks/lead (intake) + /api/leads, /api/automations
 
 app.use("/v2/oauth", oauthRouter);
-app.use("/v2/providers/ghl", providerRouter);
 app.use("/v2/webhooks", webhooksRouter);
 app.use("/v2", voiceRouter);
 app.use("/v2/public", publicStatic());
