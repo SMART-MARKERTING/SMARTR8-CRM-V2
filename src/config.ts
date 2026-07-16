@@ -116,6 +116,24 @@ export const config = {
   bluebubbles: {
     url: env("BLUEBUBBLES_URL").replace(/\/+$/, ""),
     password: env("BLUEBUBBLES_PASSWORD"),
+    webhookSecret: env("BLUEBUBBLES_WEBHOOK_SECRET"),
+  },
+
+  webhooks: {
+    enforceTelnyxSms: env("WEBHOOK_ENFORCE_TELNYX_SMS", "false") === "true",
+    enforceBlueBubbles: env("WEBHOOK_ENFORCE_BLUEBUBBLES", "false") === "true",
+    enforceResend: env("WEBHOOK_ENFORCE_RESEND", "false") === "true",
+    enforceMeta: env("WEBHOOK_ENFORCE_META_WHATSAPP", "false") === "true",
+    enforceTwilio: env("WEBHOOK_ENFORCE_TWILIO_WHATSAPP", "false") === "true",
+  },
+
+  push: {
+    vapidPublicKey: env("WEB_PUSH_VAPID_PUBLIC_KEY"),
+    vapidPrivateKey: env("WEB_PUSH_VAPID_PRIVATE_KEY"),
+    contact: env("WEB_PUSH_CONTACT", "mailto:security@smartr8.com"),
+    workerPollMs: Math.max(1_000, parseInt(env("NOTIFICATION_WORKER_POLL_MS", "5000"), 10) || 5_000),
+    defaultNotificationUserId: env("DEFAULT_NOTIFICATION_USER_ID"),
+    appVersion: env("RENDER_GIT_COMMIT", env("SOURCE_VERSION", "dev")).slice(0, 64),
   },
 
   // Net-new Cloudflare texting + MCP Worker (Cowork connector). To keep Cowork's
@@ -301,6 +319,9 @@ export function reportMissingConfig(warn: (m: string) => void): void {
   if (!config.voice.applicationId) missing.push("TELNYX_VOICE_APP_ID or TELNYX_CONNECTION_ID");
   if (!config.voice.myCell) missing.push("MY_CELL_NUMBER");
   if (!config.borrowerData.encryptionKey) missing.push("BORROWER_DATA_KEY");
+  if (!config.push.vapidPublicKey || !config.push.vapidPrivateKey) {
+    missing.push("WEB_PUSH_VAPID_PUBLIC_KEY and WEB_PUSH_VAPID_PRIVATE_KEY (push remains disabled until set)");
+  }
   const twilioAny = Boolean(config.whatsapp.twilioAccountSid || config.whatsapp.twilioAuthToken || config.whatsapp.twilioFrom);
   const twilioReady = Boolean(config.whatsapp.twilioAccountSid && config.whatsapp.twilioAuthToken && config.whatsapp.twilioFrom);
   const metaAny = Boolean(config.whatsapp.accessToken || config.whatsapp.phoneNumberId || config.whatsapp.verifyToken || config.whatsapp.appSecret);

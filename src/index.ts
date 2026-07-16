@@ -13,12 +13,14 @@ import { adminRouter } from "./routes/admin";
 import { crmRouter } from "./routes/crm";
 import { faxRouter } from "./routes/fax";
 import { usersRouter } from "./routes/users";
+import { pushRouter } from "./routes/push";
 import { startCallNowPoller } from "./services/callNowPoller";
 import { seedCampaigns, startAutomationWorker } from "./services/automations";
 import { seedAdminIfEmpty } from "./services/auth";
 import { handleResendInboundWebhook } from "./services/resendInbound";
 import { db } from "./store/db";
 import { startClassicCrmReconcileWorker } from "./services/classicCrmReconcile";
+import { startNotificationWorker, stopNotificationWorker } from "./services/notificationWorker";
 
 const app = express();
 const publicDir = path.resolve(process.cwd(), "public");
@@ -132,6 +134,7 @@ app.use(appRouter); // /app (softphone UI), /webrtc/token
 app.use(ghlWorkflowRouter); // /ghl/workflow/* — GHL custom workflow actions
 app.use(adminRouter); // /admin/deploy, /admin/redeploy
 app.use(usersRouter); // /api/auth/* (login, me, logout, change-password) + /api/users (admin)
+app.use(pushRouter); // authenticated Web Push subscriptions, preferences, receipts, Notification Center
 app.use(faxRouter); // /api/fax + /api/webhooks/telnyx/fax
 app.use(crmRouter); // /webhooks/lead (intake) + /api/leads, /api/automations
 
@@ -144,12 +147,13 @@ app.use("/v2", appRouter);
 app.use("/v2", ghlWorkflowRouter);
 app.use("/v2", adminRouter);
 app.use("/v2", usersRouter);
+app.use("/v2", pushRouter);
 app.use("/v2", faxRouter);
 app.use("/v2", crmRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "not found" }));
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   log.info(`LoanGenius v2 CRM app listening on :${config.port}`);
   reportMissingConfig((m) => log.warn(m));
   seedAdminIfEmpty(); // one-time: seed the first admin from APP_PASSCODE + assign existing leads
@@ -157,4 +161,22 @@ app.listen(config.port, () => {
   seedCampaigns(); // one-time: seed the 5 category nurture campaigns (disabled)
   startAutomationWorker(); // run due CRM automation steps (email/text/voicemail)
   startClassicCrmReconcileWorker(); // continuously repair missed Classic <-> V2 lead changes
+  startNotificationWorker(); // deliver durable Web Push outbox rows
 });
+
+let shuttingDown = false;
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info("server shutdown requested", { signal });
+  stopNotificationWorker();
+  server.close((err) => {
+    if (err) log.error("server shutdown error", { error: err.message });
+    db.close();
+    process.exit(err ? 1 : 0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));

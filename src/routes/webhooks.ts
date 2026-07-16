@@ -9,8 +9,38 @@ import { findLead, createLead, logActivity, logActivityOnce } from "../services/
 import { forwardInbound } from "../services/textingMcpForward";
 import { log } from "../logger";
 import { requireAdmin } from "../util/auth";
+import { createHash, timingSafeEqual } from "crypto";
+import { verifyTelnyxWebhookSignature } from "../services/callSummary";
+import { createNotificationEvent } from "../services/notifications";
+import { db } from "../store/db";
 
 export const webhooksRouter = Router();
+
+function equalSecret(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function telnyxSmsAccepted(req: Parameters<typeof verifyTelnyxWebhookSignature>[0]): boolean {
+  if (config.telnyx.publicKey) return verifyTelnyxWebhookSignature(req);
+  if (config.webhooks.enforceTelnyxSms) return false;
+  log.warn("Telnyx SMS webhook verification is in rollout mode; set TELNYX_PUBLIC_KEY then WEBHOOK_ENFORCE_TELNYX_SMS=true");
+  return true;
+}
+
+function blueBubblesAccepted(req: Parameters<typeof verifyTelnyxWebhookSignature>[0]): boolean {
+  const configured = config.bluebubbles.webhookSecret;
+  if (!configured) {
+    if (config.webhooks.enforceBlueBubbles) return false;
+    log.warn("BlueBubbles webhook verification is in rollout mode; set BLUEBUBBLES_WEBHOOK_SECRET then WEBHOOK_ENFORCE_BLUEBUBBLES=true");
+    return true;
+  }
+  const authorization = req.get("authorization") || "";
+  const querySecret = typeof req.query.key === "string" ? req.query.key : "";
+  const provided = req.get("x-bluebubbles-secret") || (authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "") || querySecret;
+  return Boolean(provided && equalSecret(provided, configured));
+}
 
 /** Our public base URL, derived from the OAuth redirect URI's origin. */
 function publicBaseUrl(): string | null {
@@ -27,12 +57,31 @@ function publicBaseUrl(): string | null {
  * sends or on inbound iMessage.
  */
 webhooksRouter.post("/telnyx", async (req, res) => {
-  res.status(200).json({ received: true });
+  if (!telnyxSmsAccepted(req)) {
+    res.status(401).json({ error: "invalid Telnyx webhook signature" });
+    return;
+  }
   const data = (req.body ?? {}).data;
-  if (data?.event_type !== "message.received") return; // drop status/delivery events
+  if (data?.event_type !== "message.received") {
+    res.status(200).json({ received: true, ignored: true });
+    return;
+  }
+  const providerEventId = typeof data?.id === "string" ? data.id : typeof data?.payload?.id === "string" ? data.payload.id : "";
+  if (providerEventId) {
+    const duplicate = db.prepare(
+      `SELECT 1 FROM notification_events WHERE provider = 'telnyx' AND provider_event_id = ? LIMIT 1`,
+    ).get(providerEventId);
+    if (duplicate) {
+      res.status(200).json({ received: true, duplicate: true });
+      return;
+    }
+  }
   const from: string | undefined = data?.payload?.from?.phone_number;
   const text: string = data?.payload?.text ?? "";
-  if (!from) return;
+  if (!from) {
+    res.status(400).json({ error: "message.received is missing sender" });
+    return;
+  }
   // Relay a copy to the Cloudflare texting+MCP Worker (best-effort; never blocks).
   forwardInbound("telnyx", req.body);
   try {
@@ -45,22 +94,47 @@ webhooksRouter.post("/telnyx", async (req, res) => {
     // Thread the inbound text onto the CRM lead's timeline (GHL is retired; local is the
     // system of record). Find-or-create the lead so inbound from a new number shows up in Messages.
     const crmLead = findLead({ phone: from }) ?? createLead({ phone: from, source: "inbound-sms" });
-    logActivity(crmLead.id, { type: "sms", direction: "inbound", channel: "sms", body: text, status: "received" });
+    const activity = logActivity(crmLead.id, { type: "sms", direction: "inbound", channel: "sms", body: text, status: "received" });
+    createNotificationEvent({
+      kind: "incoming_message",
+      provider: "telnyx",
+      providerEventId: providerEventId || null,
+      sourceType: "activity",
+      sourceRecordId: activity.id,
+      leadId: crmLead.id,
+      deepLink: `/v2?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
+      contactFirstName: crmLead.first_name,
+    });
     log.info("logged inbound SMS", { from, leadId: crmLead.id, keyword: handled });
     // One-time iMessage capability probe (inbound SMS only; skip on a keyword reply).
     if (!handled) await runImessageProbe(contact);
+    res.status(200).json({ received: true, activityId: activity.id });
   } catch (err) {
     log.error("telnyx inbound handler error", { err: String(err) });
+    res.status(500).json({ error: "inbound SMS could not be persisted" });
   }
 });
 
 // Last few BlueBubbles webhook hits (raw), so GET /webhooks/bluebubbles/diag can
 // confirm whether the Mac is actually POSTing inbound events to us, and their shape.
-interface BbHit { at: string; type?: string; parsedFrom?: string; parsedText?: string; logged: boolean; reason?: string; raw: unknown }
+interface BbHit {
+  at: string;
+  type?: string;
+  hasSender?: boolean;
+  hasText?: boolean;
+  eventFingerprint?: string;
+  logged: boolean;
+  reason?: string;
+}
 const recentBbHits: BbHit[] = [];
 function recordBb(h: BbHit): void {
   recentBbHits.unshift(h);
   if (recentBbHits.length > 10) recentBbHits.pop();
+}
+
+function bbFingerprint(value: unknown): string | undefined {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? createHash("sha256").update(normalized).digest("hex").slice(0, 12) : undefined;
 }
 
 /** Pull the sender address out of the various BlueBubbles new-message shapes. */
@@ -96,18 +170,22 @@ function extractChatGuid(msg: any): string | undefined {
 
 /**
  * BlueBubbles inbound iMessage ("New Messages") -> upsert -> log. No probe here.
- * Records every hit (pre-filter) so /webhooks/bluebubbles/diag shows whether the
- * Mac is reaching us and the exact payload shape. Parses defensively.
+ * Records redacted metadata for diagnostics; raw payloads and message content
+ * never enter the diagnostics buffer.
  */
 webhooksRouter.post("/bluebubbles", async (req, res) => {
-  res.status(200).json({ received: true });
+  if (!blueBubblesAccepted(req)) {
+    res.status(401).json({ error: "invalid BlueBubbles webhook secret" });
+    return;
+  }
   const b = (req.body ?? {}) as Record<string, any>;
-  log.info("bluebubbles webhook hit", { type: b.type, raw: b }); // full raw shape in logs
+  log.info("bluebubbles webhook hit", { type: b.type, hasData: Boolean(b.data) });
   const msg = b.data ?? b;
 
   // Non-message events (typing, read receipts, etc.) — record + skip.
   if (b.type && b.type !== "new-message") {
-    recordBb({ at: new Date().toISOString(), type: b.type, logged: false, reason: "not a new-message event", raw: b });
+    recordBb({ at: new Date().toISOString(), type: b.type, logged: false, reason: "not a new-message event" });
+    res.status(200).json({ received: true, ignored: true });
     return;
   }
   if (msg?.isFromMe) {
@@ -118,13 +196,15 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
     //     iMessage on the matching lead so the conversation shows in the CRM thread.
     const tempGuid = String(msg?.tempGuid ?? "");
     if (tempGuid.indexOf("smartr8-") === 0) {
-      recordBb({ at: new Date().toISOString(), type: b.type, logged: false, reason: "isFromMe via CRM (already logged)", raw: b });
+      recordBb({ at: new Date().toISOString(), type: b.type, logged: false, reason: "isFromMe via CRM (already logged)", eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
+      res.status(200).json({ received: true, ignored: true });
       return;
     }
     const to = extractChatId(msg);
     const outText: string = msg?.text ?? "";
     if (!to || !/^\+?[0-9()\-.\s]{7,}$/.test(to) || !outText) {
-      recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: to, logged: false, reason: "isFromMe but no phone recipient or empty body — skipped", raw: b });
+      res.status(200).json({ received: true, ignored: true });
+      recordBb({ at: new Date().toISOString(), type: b.type, hasSender: Boolean(to), hasText: Boolean(outText), logged: false, reason: "isFromMe but no phone recipient or empty body — skipped", eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
       return;
     }
     forwardInbound("bluebubbles", req.body); // keep the Worker thread in sync
@@ -138,26 +218,30 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
         status: "sent",
         meta: { via: "device", messageGuid: extractMessageGuid(msg), chatGuid: extractChatGuid(msg) },
       });
-      recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: to, parsedText: outText, logged: true, reason: "isFromMe sent from device → logged outbound", raw: b });
-      log.info("logged outbound iMessage sent from device", { to, leadId: crmLead.id });
+      recordBb({ at: new Date().toISOString(), type: b.type, hasSender: true, hasText: true, logged: true, reason: "isFromMe sent from device → logged outbound", eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
+      log.info("logged outbound iMessage sent from device", { leadId: crmLead.id });
+      res.status(200).json({ received: true });
     } catch (err) {
-      recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: to, logged: false, reason: `error: ${String(err)}`, raw: b });
+      recordBb({ at: new Date().toISOString(), type: b.type, hasSender: true, hasText: Boolean(outText), logged: false, reason: `error: ${String(err)}`, eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
       log.error("bluebubbles isFromMe handler error", { err: String(err) });
+      res.status(500).json({ error: "outbound device message could not be persisted" });
     }
     return;
   }
   const from = extractFrom(msg);
   const text: string = msg?.text ?? "";
   if (!from) {
-    recordBb({ at: new Date().toISOString(), type: b.type, logged: false, reason: "no sender address found in payload", raw: b });
-    log.warn("bluebubbles inbound: could not find sender address", { raw: b });
+    recordBb({ at: new Date().toISOString(), type: b.type, hasSender: false, hasText: Boolean(text), logged: false, reason: "no sender address found in payload", eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
+    log.warn("bluebubbles inbound: could not find sender address", { type: b.type, eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
+    res.status(400).json({ error: "message sender is missing" });
     return;
   }
   // Skip non-phone senders (Apple Business Chat bots use urn:biz:... handles, emails, etc.)
   // GHL upsert requires a real phone number, so anything that isn't phone-like is ignored.
   const phoneLike = /^\+?[0-9()\-.\s]{7,}$/.test(from);
   if (!phoneLike) {
-    recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: from, logged: false, reason: "sender is not a phone number (e.g. Apple Business Chat) — skipped", raw: b });
+    res.status(200).json({ received: true, ignored: true });
+    recordBb({ at: new Date().toISOString(), type: b.type, hasSender: true, hasText: Boolean(text), logged: false, reason: "sender is not a phone number (e.g. Apple Business Chat) — skipped", eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
     return;
   }
   // Relay a copy to the Cloudflare texting+MCP Worker (best-effort; never blocks).
@@ -171,7 +255,7 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
     // Thread the inbound iMessage onto the CRM lead's timeline (GHL is retired; local is the
     // system of record). Find-or-create the lead so inbound from a new number shows up in Messages.
     const crmLead = findLead({ phone: from }) ?? createLead({ phone: from, source: "inbound-imessage" });
-    logActivityOnce(crmLead.id, {
+    const activity = logActivityOnce(crmLead.id, {
       type: "imessage",
       direction: "inbound",
       channel: "imessage",
@@ -179,11 +263,25 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
       status: "received",
       meta: { messageGuid: extractMessageGuid(msg), chatGuid: extractChatGuid(msg) },
     });
-    recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: from, parsedText: text, logged: true, raw: b });
-    log.info("logged inbound iMessage", { from, leadId: crmLead.id });
+    if (activity) {
+      createNotificationEvent({
+        kind: "incoming_message",
+        provider: "bluebubbles",
+        providerEventId: extractMessageGuid(msg) || activity.id,
+        sourceType: "activity",
+        sourceRecordId: activity.id,
+        leadId: crmLead.id,
+        deepLink: `/v2?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
+        contactFirstName: crmLead.first_name,
+      });
+    }
+    recordBb({ at: new Date().toISOString(), type: b.type, hasSender: true, hasText: Boolean(text), logged: true, eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
+    log.info("logged inbound iMessage", { leadId: crmLead.id });
+    res.status(200).json({ received: true, activityId: activity?.id || null, duplicate: !activity });
   } catch (err) {
-    recordBb({ at: new Date().toISOString(), type: b.type, parsedFrom: from, parsedText: text, logged: false, reason: `error: ${String(err)}`, raw: b });
+    recordBb({ at: new Date().toISOString(), type: b.type, hasSender: true, hasText: Boolean(text), logged: false, reason: `error: ${String(err)}`, eventFingerprint: bbFingerprint(extractMessageGuid(msg)) });
     log.error("bluebubbles inbound handler error", { err: String(err) });
+    res.status(500).json({ error: "inbound iMessage could not be persisted" });
   }
 });
 
@@ -206,11 +304,14 @@ webhooksRouter.all("/bluebubbles/register", requireAdmin, async (req, res) => {
     return res.status(500).json({ error: "could not derive public URL from GHL_REDIRECT_URI" });
   }
   const hookUrl = `${base}/webhooks/bluebubbles`;
+  const registeredHookUrl = config.bluebubbles.webhookSecret
+    ? `${hookUrl}?key=${encodeURIComponent(config.bluebubbles.webhookSecret)}`
+    : hookUrl;
   try {
     const existing = await listWebhooks();
-    const already = JSON.stringify(existing).includes(hookUrl);
+    const already = JSON.stringify(existing).includes(registeredHookUrl);
     if (!already) {
-      await registerWebhook(hookUrl);
+      await registerWebhook(registeredHookUrl);
       log.info("registered BlueBubbles webhook", { hookUrl });
     }
     if (wantsHtml) {
@@ -232,8 +333,8 @@ webhooksRouter.all("/bluebubbles/register", requireAdmin, async (req, res) => {
   }
 });
 
-/** Read-only: did BlueBubbles reach us, and what did the payload look like? */
-webhooksRouter.get("/bluebubbles/diag", (_req, res) => {
+/** Admin-only, redacted diagnostics: no message bodies, phone numbers, or raw payloads. */
+webhooksRouter.get("/bluebubbles/diag", requireAdmin, (_req, res) => {
   res.json({
     hits: recentBbHits.length,
     note: recentBbHits.length

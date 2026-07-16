@@ -22,6 +22,30 @@ Open `/v2` after deploy. The same backend is also mounted under `/v2/api`, `/v2/
 `/v2/webrtc`, and related prefixed paths so Cloudflare can route only `/v2*` to this
 service without leaking v2 calls to the root CRM repo.
 
+## Installable `/v2` app and Web Push
+
+Phase 1 makes the V2 CRM installable from iPhone Safari and adds authenticated,
+per-user Web Push for inbound messages, email, fax, WhatsApp, incoming calls, and
+missed calls. The service worker is isolated to `/v2/` and intentionally does not
+cache authenticated CRM or borrower data.
+
+Generate a VAPID pair once, then store both values in Render:
+
+```bash
+npx web-push generate-vapid-keys --json
+```
+
+Set `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, and
+`WEB_PUSH_CONTACT`. On iOS/iPadOS 16.4 or later, open `/v2` in Safari, use
+**Share > Add to Home Screen**, launch the icon, then use the explicit **Enable
+Notifications** button in CRM Settings. A Web Push call alert can open the CRM;
+it is not CallKit and cannot answer a Telnyx call from the lock screen.
+
+See [Phase 1 PWA and Web Push](docs/pwa-web-push.md) for deployment variables,
+API endpoints, provider-signature rollout, iPhone testing, security, and rollback.
+See [Mobile App Roadmap](docs/mobile-app-roadmap.md) for native iOS/APNs/CallKit
+and privacy-gated offline phases.
+
 A small Node/TypeScript service that lets you text from inside **GoHighLevel** and
 routes each message to the right channel:
 

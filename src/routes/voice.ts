@@ -37,6 +37,7 @@ import {
   resetWebrtcCredentialCache,
 } from "../services/telnyxWebrtc";
 import { isVoicemailCall, handleVoicemailEvent } from "../services/voicemail";
+import { createNotificationEvent } from "../services/notifications";
 import {
   placeCall,
   placeCallWithAmd,
@@ -1119,17 +1120,37 @@ voiceRouter.post("/webhooks/telnyx-voice", async (req, res) => {
     return;
   }
   const summary = acceptTelnyxCallSummaryEvent(req.body);
-  res.status(200).json({ received: true }); // ack fast
+  const ev = (req.body ?? {}).data;
+  const type: string | undefined = ev?.event_type;
+  const p = ev?.payload ?? {};
+  if (type === "call.initiated" && p.direction === "incoming") {
+    try {
+      const lead = p.from ? findLead({ phone: p.from }) : null;
+      createNotificationEvent({
+        kind: "incoming_call",
+        provider: "telnyx",
+        providerEventId: ev?.id || p.call_session_id || p.call_control_id,
+        sourceType: "call_invitation",
+        sourceRecordId: p.call_control_id || p.call_session_id,
+        leadId: lead?.id,
+        deepLink: `/v2?page=dialer&call=${encodeURIComponent(p.call_control_id || p.call_session_id || "incoming")}`,
+        notificationTag: `call:${p.call_control_id || p.call_session_id}`,
+        contactFirstName: lead?.first_name,
+      });
+    } catch (err) {
+      log.error("incoming-call notification could not be persisted", { error: err instanceof Error ? err.message : String(err) });
+      res.status(500).json({ error: "incoming call state could not be persisted" });
+      return;
+    }
+  }
+  res.status(200).json({ received: true }); // ack after minimum durable call/notification state
   if (summary.accepted && summary.rowId) {
     void processCallSummary(summary.rowId, { inlineTranscript: summary.inlineTranscript }).catch((err) => {
       log.error("call summary async processing error", { rowId: summary.rowId, err: String(err) });
     });
   }
-  const ev = (req.body ?? {}).data;
-  const type: string | undefined = ev?.event_type;
-  const p = ev?.payload ?? {};
   recordVoiceEvent({ at: new Date().toISOString(), type, direction: p.direction, from: p.from, to: p.to, ccid: p.call_control_id });
-  log.info("telnyx voice event", { type, ccid: p.call_control_id, raw: p });
+  log.info("telnyx voice event", { type, ccid: p.call_control_id, direction: p.direction });
   try {
     // Voicemail-drop legs (AMD) own their own event flow — route them first.
     if (isVoicemailCall(p.call_control_id)) {
@@ -1449,7 +1470,7 @@ async function handleHangup(ccid: string, p: any): Promise<void> {
     if (ctx.direction === "inbound") {
       const crmLead = ctx.contactPhone ? findLead({ phone: ctx.contactPhone }) : null;
       const nm = crmLead ? [crmLead.first_name, crmLead.last_name].filter(Boolean).join(" ") || null : null;
-      insertCallLog({
+      const callLog = insertCallLog({
         direction: "inbound",
         phone: ctx.contactPhone ?? null,
         name: nm,
@@ -1458,6 +1479,19 @@ async function handleHangup(ccid: string, p: any): Promise<void> {
         outcome: ctx.connectedAt ? "answered" : "missed",
         durationSec,
       });
+      if (!ctx.connectedAt) {
+        createNotificationEvent({
+          kind: "missed_call",
+          provider: "telnyx",
+          providerEventId: p?.event_id || p?.id || `hangup:${ccid}:${callLog.id}`,
+          sourceType: "call",
+          sourceRecordId: callLog.id,
+          leadId: crmLead?.id,
+          deepLink: `/v2?page=dialer&call=${encodeURIComponent(callLog.id)}`,
+          notificationTag: `call:${ccid}`,
+          contactFirstName: crmLead?.first_name,
+        });
+      }
     }
     if (ctx.direction === "outbound" && ctx.leadId) {
       const crmLead = getLead(ctx.leadId);

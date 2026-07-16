@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import { resolveMx } from "dns/promises";
 import path from "path";
 import { Router, Request, Response, raw } from "express";
@@ -150,6 +150,12 @@ import {
 } from "../services/whatsapp";
 
 export const crmRouter = Router();
+
+function constantValueEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 crmRouter.use((req, res, next) => {
   const method = req.method.toUpperCase();
@@ -1098,7 +1104,7 @@ crmRouter.get("/api/webhooks/whatsapp", (req, res) => {
   const mode = cleanText(req.query["hub.mode"]);
   const token = cleanText(req.query["hub.verify_token"]);
   const challenge = cleanText(req.query["hub.challenge"]);
-  if (mode === "subscribe" && token && token === config.whatsapp.verifyToken) {
+  if (mode === "subscribe" && token && config.whatsapp.verifyToken && constantValueEqual(token, config.whatsapp.verifyToken)) {
     res.status(200).send(challenge);
     return;
   }
