@@ -62,9 +62,19 @@ appRouter.get("/console", (_req, res) => {
   res.sendFile(path.resolve(process.cwd(), "public", "console.html"));
 });
 
-// Isolated v2 CRM shell. This intentionally does not replace /, /console, or /app;
-// crm.smartr8.com/v2 can be tested and shared without changing the live root console.
-appRouter.get(["/v2", "/v2/"], (_req, res) => {
+// Canonicalize only the exact no-slash V2 application path into the service
+// worker's /v2/ scope. The destination path is fixed; the raw query is copied
+// byte-for-byte so repeated parameters and encoded values survive the redirect.
+appRouter.get(/^\/v2$/, (req, res) => {
+  const queryStart = req.originalUrl.indexOf("?");
+  const query = queryStart === -1 ? "" : req.originalUrl.slice(queryStart);
+  res.set("Cache-Control", "no-store");
+  res.set("Location", `/v2/${query}`);
+  res.status(308).end();
+});
+
+// Isolated v2 CRM shell. This intentionally does not replace /, /console, or /app.
+appRouter.get("/v2/", (_req, res) => {
   res.set("Cache-Control", "no-store, must-revalidate");
   res.sendFile(path.resolve(process.cwd(), "public", "v2.html"));
 });

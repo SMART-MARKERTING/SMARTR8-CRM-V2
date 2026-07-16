@@ -60,7 +60,7 @@ function eventFor(userId: string, suffix: string, kind: "test" | "incoming_email
     providerEventId: `${run}:provider:${suffix}`,
     sourceType: "test",
     sourceRecordId: `${run}:${suffix}`,
-    deepLink: kind === "incoming_email" ? `/v2?page=email&event=${suffix}` : "/v2?page=settings",
+    deepLink: kind === "incoming_email" ? `/v2/?page=email&event=${suffix}` : "/v2/?page=settings",
     explicitUserId: userId,
     contactFirstName: "Alice",
   });
@@ -137,7 +137,7 @@ test("Phase 1 notification subsystem", async (t) => {
       providerEventId: `${run}:provider:dedupe`,
       sourceType: "activity",
       sourceRecordId: `${run}:different-source`,
-      deepLink: "/v2?page=email&token=secret&lead=lead_1",
+      deepLink: "/v2/?page=email&token=secret&lead=lead_1",
       explicitUserId: owner.id,
       contactFirstName: "Alice SSN 123-45-6789",
     });
@@ -145,8 +145,12 @@ test("Phase 1 notification subsystem", async (t) => {
     const payload = buildPushPayload(first.event, owner.id);
     assert.match(payload, /New borrower email/);
     assert.doesNotMatch(payload, /SSN|123-45-6789|loan amount|income|token/i);
-    assert.equal(safeDeepLink("/v2?page=email&lead=abc&token=secret"), "/v2?page=email&lead=abc");
-    assert.equal(safeDeepLink("https://evil.example/v2?page=email"), "/v2?page=notifications");
+    assert.equal(safeDeepLink("/v2?page=email&lead=abc&token=secret"), "/v2/?page=email&lead=abc");
+    assert.equal(safeDeepLink("/v2"), "/v2/");
+    assert.equal(safeDeepLink("/v2/?page=email&lead=abc"), "/v2/?page=email&lead=abc");
+    assert.equal(safeDeepLink("https://evil.example/v2?page=email"), "/v2/?page=notifications");
+    assert.equal(safeDeepLink("/console?page=email"), "/v2/?page=notifications");
+    assert.equal(safeDeepLink("/v2/api/notifications"), "/v2/?page=notifications");
   });
 
   await t.test("invalid webhook authentication cannot create notification events", async () => {
@@ -286,11 +290,11 @@ test("Phase 1 notification subsystem", async (t) => {
 
     const incoming = createNotificationEvent({
       kind: "incoming_call", provider: run, providerEventId: `${run}:incoming-call`, sourceType: "call_invitation",
-      sourceRecordId: `${run}:call-control`, deepLink: "/v2?page=dialer&call=call-control", notificationTag: "call:call-control", explicitUserId: owner.id,
+      sourceRecordId: `${run}:call-control`, deepLink: "/v2/?page=dialer&call=call-control", notificationTag: "call:call-control", explicitUserId: owner.id,
     });
     const missed = createNotificationEvent({
       kind: "missed_call", provider: run, providerEventId: `${run}:missed-call`, sourceType: "call",
-      sourceRecordId: `${run}:call-log`, deepLink: "/v2?page=dialer&call=call-log", notificationTag: "call:call-control", explicitUserId: owner.id,
+      sourceRecordId: `${run}:call-log`, deepLink: "/v2/?page=dialer&call=call-log", notificationTag: "call:call-control", explicitUserId: owner.id,
     });
     assert.equal(incoming?.event.notification_tag, "call:call-control");
     assert.equal(missed?.event.notification_tag, "call:call-control");

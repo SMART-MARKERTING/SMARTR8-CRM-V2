@@ -100,7 +100,7 @@ app.get(["/health", "/v2/health"], async (_req, res) => {
 });
 
 app.get("/", (_req, res) => {
-  res.redirect(302, "/v2");
+  res.redirect(302, "/v2/");
 });
 
 app.get(["/logo.svg", "/v2/logo.svg"], (_req, res) => {

@@ -18,7 +18,7 @@ Standalone v2 CRM service for `crm.smartr8.com/v2`. This repo is split from
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/SMART-MARKERTING/LOANGENIUS)
 
-Open `/v2` after deploy. The same backend is also mounted under `/v2/api`, `/v2/calls`,
+Open `/v2/` after deploy. The same backend is also mounted under `/v2/api`, `/v2/calls`,
 `/v2/webrtc`, and related prefixed paths so Cloudflare can route only `/v2*` to this
 service without leaking v2 calls to the root CRM repo.
 
@@ -36,7 +36,7 @@ npx web-push generate-vapid-keys --json
 ```
 
 Set `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, and
-`WEB_PUSH_CONTACT`. On iOS/iPadOS 16.4 or later, open `/v2` in Safari, use
+`WEB_PUSH_CONTACT`. On iOS/iPadOS 16.4 or later, open `/v2/` in Safari, use
 **Share > Add to Home Screen**, launch the icon, then use the explicit **Enable
 Notifications** button in CRM Settings. A Web Push call alert can open the CRM;
 it is not CallKit and cannot answer a Telnyx call from the lock screen.

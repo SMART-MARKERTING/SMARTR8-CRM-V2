@@ -3,7 +3,7 @@
   "name": "SmartR8 CRM",
   "short_name": "SmartR8",
   "description": "Secure mobile access to SmartR8 mortgage CRM communications and workflows.",
-  "start_url": "/v2",
+  "start_url": "/v2/",
   "scope": "/v2/",
   "display": "standalone",
   "background_color": "#f8fafc",
@@ -16,8 +16,8 @@
     { "src": "/v2/public/icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Conversations", "short_name": "Messages", "url": "/v2?page=messages", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] },
-    { "name": "Dialer", "short_name": "Dialer", "url": "/v2?page=dialer", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] },
-    { "name": "Notifications", "short_name": "Alerts", "url": "/v2?page=notifications", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] }
+    { "name": "Conversations", "short_name": "Messages", "url": "/v2/?page=messages", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] },
+    { "name": "Dialer", "short_name": "Dialer", "url": "/v2/?page=dialer", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] },
+    { "name": "Notifications", "short_name": "Alerts", "url": "/v2/?page=notifications", "icons": [{ "src": "/v2/public/icons/app-192.png", "sizes": "192x192" }] }
   ]
 }

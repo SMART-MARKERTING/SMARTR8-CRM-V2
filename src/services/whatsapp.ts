@@ -525,7 +525,7 @@ function logInboundWhatsApp(lead: Lead, provider: WhatsAppProvider, providerMess
     sourceType: "activity",
     sourceRecordId: activity.id,
     leadId: lead.id,
-    deepLink: `/v2?page=messages&lead=${encodeURIComponent(lead.id)}`,
+    deepLink: `/v2/?page=messages&lead=${encodeURIComponent(lead.id)}`,
     contactFirstName: lead.first_name,
   });
   return true;
