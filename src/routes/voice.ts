@@ -1133,7 +1133,7 @@ voiceRouter.post("/webhooks/telnyx-voice", async (req, res) => {
         sourceType: "call_invitation",
         sourceRecordId: p.call_control_id || p.call_session_id,
         leadId: lead?.id,
-        deepLink: `/v2?page=dialer&call=${encodeURIComponent(p.call_control_id || p.call_session_id || "incoming")}`,
+        deepLink: `/v2/?page=dialer&call=${encodeURIComponent(p.call_control_id || p.call_session_id || "incoming")}`,
         notificationTag: `call:${p.call_control_id || p.call_session_id}`,
         contactFirstName: lead?.first_name,
       });
@@ -1487,7 +1487,7 @@ async function handleHangup(ccid: string, p: any): Promise<void> {
           sourceType: "call",
           sourceRecordId: callLog.id,
           leadId: crmLead?.id,
-          deepLink: `/v2?page=dialer&call=${encodeURIComponent(callLog.id)}`,
+          deepLink: `/v2/?page=dialer&call=${encodeURIComponent(callLog.id)}`,
           notificationTag: `call:${ccid}`,
           contactFirstName: crmLead?.first_name,
         });

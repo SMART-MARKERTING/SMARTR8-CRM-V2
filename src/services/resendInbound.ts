@@ -289,7 +289,7 @@ export async function storeReceivedEmail(
     sourceType: "activity",
     sourceRecordId: activity.id,
     leadId: lead.id,
-    deepLink: `/v2?page=email&lead=${encodeURIComponent(lead.id)}&event=${encodeURIComponent(activity.id)}`,
+    deepLink: `/v2/?page=email&lead=${encodeURIComponent(lead.id)}&event=${encodeURIComponent(activity.id)}`,
     contactFirstName: lead.first_name,
   });
 

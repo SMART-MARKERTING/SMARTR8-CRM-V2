@@ -1582,7 +1582,7 @@
       }
       function writePageUrl(page, replace) {
         var url = new URL(location.href);
-        url.pathname = "/v2";
+        url.pathname = "/v2/";
         url.search = "";
         url.searchParams.set("page", page);
         history[replace ? "replaceState" : "pushState"]({ page: page }, "", url.pathname + url.search);

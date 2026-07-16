@@ -102,7 +102,7 @@ webhooksRouter.post("/telnyx", async (req, res) => {
       sourceType: "activity",
       sourceRecordId: activity.id,
       leadId: crmLead.id,
-      deepLink: `/v2?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
+      deepLink: `/v2/?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
       contactFirstName: crmLead.first_name,
     });
     log.info("logged inbound SMS", { from, leadId: crmLead.id, keyword: handled });
@@ -271,7 +271,7 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
         sourceType: "activity",
         sourceRecordId: activity.id,
         leadId: crmLead.id,
-        deepLink: `/v2?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
+        deepLink: `/v2/?page=messages&lead=${encodeURIComponent(crmLead.id)}`,
         contactFirstName: crmLead.first_name,
       });
     }

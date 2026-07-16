@@ -391,7 +391,7 @@ export async function handleFaxWebhook(body: unknown): Promise<{ duplicate: bool
       sourceType: "fax",
       sourceRecordId: record.id,
       leadId: record.lead_id,
-      deepLink: `/v2?page=fax&fax=${encodeURIComponent(record.id)}`,
+      deepLink: `/v2/?page=fax&fax=${encodeURIComponent(record.id)}`,
       contactFirstName: lead?.first_name,
     });
   }

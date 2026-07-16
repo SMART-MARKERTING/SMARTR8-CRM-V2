@@ -158,7 +158,7 @@ pushRouter.post("/api/push/test", requirePass, pushTestLimit, async (req, res) =
     providerEventId: `test:${sourceId}`,
     sourceType: "test",
     sourceRecordId: sourceId,
-    deepLink: "/v2?page=settings",
+    deepLink: "/v2/?page=settings",
     explicitUserId: userId(req),
   });
   if (!created) {

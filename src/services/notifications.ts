@@ -278,18 +278,20 @@ export function safeFirstName(value: string | null | undefined): string | null {
 }
 
 export function safeDeepLink(value: string | null | undefined): string {
+  const fallback = "/v2/?page=notifications";
   try {
-    const parsed = new URL(String(value || "/v2?page=notifications"), "https://crm.smartr8.com");
-    if (parsed.origin !== "https://crm.smartr8.com" || (parsed.pathname !== "/v2" && parsed.pathname !== "/v2/")) return "/v2?page=notifications";
-    const output = new URL("https://crm.smartr8.com/v2");
+    const parsed = new URL(String(value || fallback), "https://crm.smartr8.com");
+    if (parsed.origin !== "https://crm.smartr8.com" || (parsed.pathname !== "/v2" && parsed.pathname !== "/v2/")) return fallback;
+    const output = new URL("https://crm.smartr8.com/v2/");
     for (const key of ["page", "lead", "event", "fax", "call"]) {
       const item = safeIdentifier(parsed.searchParams.get(key), 128);
       if (item) output.searchParams.set(key, item);
     }
+    if (!output.searchParams.size && !parsed.search) return output.pathname;
     if (!output.searchParams.get("page")) output.searchParams.set("page", "notifications");
     return `${output.pathname}${output.search}`;
   } catch {
-    return "/v2?page=notifications";
+    return fallback;
   }
 }
 
