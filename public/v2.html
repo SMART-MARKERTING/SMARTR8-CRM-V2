@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="robots" content="noindex,nofollow" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SmartR8" />
   <title>SmartR8 CRM</title>
   <link rel="icon" href="/logo.svg" />
+  <link rel="manifest" href="/v2/manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/v2/public/icons/app-180.png" />
   <script defer src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
   <style>
     :root {
@@ -59,6 +65,7 @@
       --shadow: 0 10px 24px rgba(18, 25, 38, .08);
     }
     * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
     body { margin: 0; background: var(--bg); color: var(--text); }
     button, input, textarea, select { font: inherit; }
     button { cursor: pointer; }
@@ -66,6 +73,7 @@
     .hidden { display: none !important; }
     .gate {
       min-height: 100vh;
+      min-height: 100svh;
       display: grid;
       place-items: center;
       padding: 24px;
@@ -120,7 +128,7 @@
     .btn.ghost { border-color: transparent; background: transparent; }
     .btn.small { padding: 6px 9px; min-height: 30px; font-size: 12px; }
     .btn.call { border-color: var(--green); background: var(--green); color: #fff; }
-    .app { min-height: 100vh; display: grid; grid-template-columns: 240px minmax(0, 1fr); background: var(--bg); }
+    .app { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-columns: 240px minmax(0, 1fr); background: var(--bg); }
     .side {
       background: var(--nav);
       border-right: 1px solid rgba(148,163,184,.18);
@@ -128,6 +136,7 @@
       position: sticky;
       top: 0;
       height: 100vh;
+      height: 100dvh;
       overflow: auto;
     }
     .side .brandRow { margin-bottom: 22px; }
@@ -456,6 +465,7 @@
     [data-pipeline-card] { cursor: grab; transition: transform .14s ease, box-shadow .14s ease; }
     [data-pipeline-card]:active { cursor: grabbing; }
     [data-pipeline-card].dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 16px 34px rgba(15,23,42,.18); }
+    .mobileStageSelect { display: none; }
     .stageCol h3 { margin: 0 0 10px; font-size: 14px; display: flex; justify-content: space-between; }
     .stageCol .list { overflow-y: auto; padding-right: 2px; }
     .pipelineScroller {
@@ -544,6 +554,7 @@
     .modal {
       width: min(720px, 100%);
       max-height: 88vh;
+      max-height: 88dvh;
       overflow: auto;
       background: var(--panel);
       border-radius: var(--radius);
@@ -556,6 +567,7 @@
       width: calc(100vw - 28px);
       max-width: none;
       height: calc(100vh - 28px);
+      height: calc(100dvh - 28px);
       max-height: none;
       display: flex;
       flex-direction: column;
@@ -871,10 +883,10 @@
     }
 
     @media (max-width: 820px) {
-      body { background: #fff; }
+      body { background: #fff; padding-top: env(safe-area-inset-top); }
       .app { display: block; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
       .side { width: min(86vw, 330px); z-index: 80; }
-      .topbar { height: 82px; padding: 12px 18px; align-items: center; }
+      .topbar { min-height: 82px; height: auto; padding: 12px max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left)); align-items: center; }
       .mobileMenu { display: grid; width: 42px; height: 42px; padding: 0; place-items: center; font-size: 0; border: 0; background: transparent; }
       .mobileMenu::before { content: "LG"; font-size: 13px; font-weight: 950; width: 38px; height: 38px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,var(--blue),#05a892); border-radius: 12px; }
       .topTitleWrap { min-width: 0; flex: 1; }
@@ -915,7 +927,7 @@
       .conversationThreadPane { display: none; }
       .conversationShell.threadOpen .conversationListPane { display: none; }
       .conversationShell.threadOpen .conversationThreadPane { display: block; padding: 0; }
-      .thread { height: calc(100vh - 390px); min-height: 360px; }
+      .thread { height: calc(100dvh - 390px); min-height: 360px; }
       .calendarGrid { gap: 2px; }
       .calendarDay { min-height: 72px; border: 0; border-radius: 10px; padding: 4px; }
       .calendarEvent { width: 7px; height: 7px; border-radius: 999px; padding: 0; margin: 1px auto; background: var(--blue); border: 0; font-size: 0; }
@@ -944,6 +956,13 @@
       .mobileNavBtn.active { color: var(--blue); background: var(--blueSoft); }
       .mobileFab { display: grid; position: fixed; right: 18px; bottom: calc(88px + env(safe-area-inset-bottom)); width: 58px; height: 58px; place-items: center; border: 0; border-radius: 17px; background: var(--blue); color: #fff; font-size: 32px; line-height: 1; box-shadow: 0 12px 28px rgba(23,105,255,.32); z-index: 48; }
       .toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
+      .btn, .iconBtn, .navBtn, .mobileNavBtn, select, input { min-height: 44px; }
+      .mobileStageSelect { display: block; width: 100%; margin-top: 10px; }
+      .modalShade { place-items: end center; padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+      .modal { width: 100%; max-width: 100%; max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px); overflow-x: hidden; }
+      .modal.fullscreen { width: 100%; height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px); }
+      .modalBody, .leadProfileHero, .fieldGrid, .grid { min-width: 0; max-width: 100%; }
+      .modalBody img, .modalBody iframe, .modalBody embed, .modalBody object { max-width: 100%; }
     }
     @media (max-width: 430px) {
       .controlGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1110,6 +1129,9 @@
         notifications: [],
         notificationCount: 0,
         notificationTimer: null,
+        pwaRegistration: null,
+        pwaInstallPrompt: null,
+        pwaError: "",
         globalSearchTimer: null,
         globalSearchRows: [],
         emailFromOptions: [],
@@ -1200,10 +1222,10 @@
         if (el) el.classList.remove("hidden");
       }
       function notificationIcon(kind) {
-        if (kind === "missed_call") return "MC";
-        if (kind === "email") return "EM";
-        if (kind === "text") return "TX";
-        if (kind === "fax") return "FX";
+        if (kind === "missed_call" || kind === "incoming_call") return kind === "missed_call" ? "MC" : "PH";
+        if (kind === "email" || kind === "incoming_email") return "EM";
+        if (kind === "text" || kind === "incoming_message") return "TX";
+        if (kind === "fax" || kind === "incoming_fax") return "FX";
         return "!";
       }
       function todoTitle(todo) {
@@ -1265,6 +1287,89 @@
           throw err;
         }
         return data;
+      }
+      function isHomeScreenApp() {
+        return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+      }
+      function notificationCapability() {
+        return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+      }
+      async function registerV2ServiceWorker() {
+        if (!("serviceWorker" in navigator) || appBasePath() !== "/v2") return null;
+        try {
+          state.pwaRegistration = await navigator.serviceWorker.register("/v2/sw.js", { scope: "/v2/" });
+          await state.pwaRegistration.update().catch(function () {});
+          return state.pwaRegistration;
+        } catch (error) {
+          state.pwaError = error.message || String(error);
+          return null;
+        }
+      }
+      function urlBase64ToBytes(value) {
+        var padding = "=".repeat((4 - value.length % 4) % 4);
+        var base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+        var raw = atob(base64);
+        return Uint8Array.from(raw, function (char) { return char.charCodeAt(0); });
+      }
+      async function localPushState() {
+        var supported = notificationCapability();
+        var registration = state.pwaRegistration || (supported ? await navigator.serviceWorker.getRegistration("/v2/") : null);
+        var subscription = registration && registration.pushManager ? await registration.pushManager.getSubscription().catch(function () { return null; }) : null;
+        return {
+          supported: supported,
+          installed: isHomeScreenApp(),
+          permission: "Notification" in window ? Notification.permission : "unsupported",
+          subscription: subscription,
+          registration: registration,
+          error: state.pwaError
+        };
+      }
+      async function enablePushNotifications() {
+        if (!notificationCapability()) throw new Error("This browser does not support Home Screen Web Push.");
+        var registration = state.pwaRegistration || await registerV2ServiceWorker();
+        if (!registration) throw new Error(state.pwaError || "The SmartR8 service worker could not be registered.");
+        var permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error(permission === "denied" ? "Notifications are blocked. Enable them for SmartR8 in iPhone Settings, then return here." : "Notification permission was not granted.");
+        var key = await json("/api/push/public-key");
+        var subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToBytes(key.publicKey) });
+        }
+        await json("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: subscription.toJSON(), platform: navigator.platform || "web", appVersion: "v2-pwa" })
+        });
+        showToast("Notifications enabled on this device.");
+        await loadSettings();
+      }
+      async function disablePushNotifications() {
+        var local = await localPushState();
+        if (!local.subscription) throw new Error("This device is not subscribed.");
+        var endpoint = local.subscription.endpoint;
+        try {
+          await json("/api/push/subscribe", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: endpoint }) });
+        } catch (error) {
+          if (error.status !== 404) throw error;
+        }
+        await local.subscription.unsubscribe();
+        showToast("Notifications disabled on this device.");
+        await loadSettings();
+      }
+      async function sendTestPush() {
+        var data = await json("/api/push/test", { method: "POST" });
+        var delivered = data.delivery && Number(data.delivery.delivered || 0);
+        showToast(delivered ? "Test notification sent." : "Test notification queued.");
+      }
+      async function installPwa() {
+        if (!state.pwaInstallPrompt) {
+          showToast("On iPhone, use Share, then Add to Home Screen.", true);
+          return;
+        }
+        state.pwaInstallPrompt.prompt();
+        await state.pwaInstallPrompt.userChoice;
+        state.pwaInstallPrompt = null;
+        if (state.page === "settings") await loadSettings();
       }
       function showToast(message, bad) {
         var t = $("toast");
@@ -1471,6 +1576,32 @@
         if ($("topPageTitle")) $("topPageTitle").textContent = pageLabels[page] || page;
       }
 
+      function requestedPage() {
+        var page = new URLSearchParams(location.search).get("page") || "dashboard";
+        return canPage(page) ? page : firstAccessiblePage();
+      }
+      function writePageUrl(page, replace) {
+        var url = new URL(location.href);
+        url.pathname = "/v2";
+        url.search = "";
+        url.searchParams.set("page", page);
+        history[replace ? "replaceState" : "pushState"]({ page: page }, "", url.pathname + url.search);
+      }
+      async function applyDeepLink() {
+        var params = new URLSearchParams(location.search);
+        var leadId = params.get("lead");
+        var eventId = params.get("event");
+        var faxId = params.get("fax");
+        try {
+          if (state.page === "messages" && leadId) await openThread(leadId, "", "");
+          else if (state.page === "email" && eventId) await openEmailMessage(eventId);
+          else if (state.page === "fax" && faxId) openFaxFileModal(faxId);
+          else if (leadId && ["leads", "pipeline", "tasks", "calendar"].indexOf(state.page) >= 0) await openLead(leadId);
+        } catch (error) {
+          showToast("That item is unavailable or you no longer have permission to open it.", true);
+        }
+      }
+
       async function submitLogin() {
         var username = $("loginUser").value.trim();
         var password = $("loginPass").value;
@@ -1520,12 +1651,13 @@
         if (!state.notificationTimer) {
           state.notificationTimer = setInterval(refreshNotificationCount, 30000);
         }
-        var popout = new URLSearchParams(location.search).get("popout");
+        var params = new URLSearchParams(location.search);
+        var popout = params.get("popout");
         if (popout === "dialer") {
           document.body.classList.add("popoutMode");
-          route(canPage("dialer") ? "dialer" : firstAccessiblePage());
+          route(canPage("dialer") ? "dialer" : firstAccessiblePage(), { fromHistory: true }).then(applyDeepLink);
         } else {
-          route(canPage("dashboard") ? "dashboard" : firstAccessiblePage());
+          route(requestedPage(), { fromHistory: true }).then(applyDeepLink);
         }
       }
 
@@ -1539,7 +1671,7 @@
         try {
           var data = await json("/api/notifications?limit=75");
           state.notifications = data.notifications || [];
-          state.notificationCount = Number(data.count || state.notifications.length || 0);
+          state.notificationCount = Number(data.count == null ? (state.notifications.length || 0) : data.count);
           var badge = $("notificationCount");
           if (badge) {
             badge.textContent = state.notificationCount > 99 ? "99+" : String(state.notificationCount);
@@ -1548,10 +1680,14 @@
         } catch (e) {}
       }
       async function openNotifications() {
+        await json("/api/notifications/read-all", { method: "POST" }).catch(function () {});
         var data = await json("/api/notifications?limit=100").catch(function (e) { return { notifications: [], error: e.message }; });
         state.notifications = data.notifications || [];
-        state.notificationCount = Number(data.count || state.notifications.length || 0);
-        if ($("notificationCount")) $("notificationCount").classList.toggle("hidden", state.notificationCount <= 0);
+        state.notificationCount = Number(data.count == null ? (state.notifications.length || 0) : data.count);
+        if ($("notificationCount")) {
+          $("notificationCount").textContent = String(state.notificationCount);
+          $("notificationCount").classList.toggle("hidden", state.notificationCount <= 0);
+        }
         var html = data.error
           ? '<div class="empty badText">' + esc(data.error) + '</div>'
           : renderNotificationCenter(state.notifications);
@@ -1663,12 +1799,14 @@
         showToast("Messaging mode set to " + mode + ".");
       }
 
-      async function route(page) {
+      async function route(page, options) {
+        options = options || {};
         if (page === "portal") page = "leads";
         if (page !== "control" && !canPage(page)) {
           showToast("That section is not enabled for this user.", true);
           page = firstAccessiblePage();
         }
+        if (!options.fromHistory) writePageUrl(page, false);
         if (page === "dialer" && $("desktopPhoneDrawer")) {
           $("desktopPhoneDrawer").classList.add("hidden");
           if ($("desktopPhoneButton")) $("desktopPhoneButton").classList.remove("active");
@@ -3062,7 +3200,9 @@
           return '<section class="stageCol" data-stage-drop="' + esc(stage) + '"><h3><span>' + esc(stage) + '</span><span class="badge">' + rows.length + '</span></h3><div class="list">' +
             (rows.length ? rows.slice(0, 40).map(function (l) {
               var snippet = l.last_message || (l.custom && (l.custom.notes || l.custom.message)) || "";
-              return '<div class="item clickable pipelineCard" draggable="true" data-pipeline-card="1" data-action="open-lead-from-pipeline" data-id="' + esc(l.id) + '" data-stage="' + esc(l.pipeline_stage || "Lead-In") + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div>' + (snippet ? '<div class="sub">' + esc(String(snippet).slice(0, 92)) + '</div>' : '') + '<div class="sub">' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</div></div>';
+              var currentStage = l.pipeline_stage || "Lead-In";
+              var mobileStage = '<select class="mobileStageSelect" aria-label="Change pipeline stage" data-action="lead-stage-quick" data-id="' + esc(l.id) + '">' + state.stages.map(function (option) { return '<option value="' + esc(option) + '"' + (option === currentStage ? ' selected' : '') + '>' + esc(option) + '</option>'; }).join('') + '</select>';
+              return '<div class="item clickable pipelineCard" draggable="true" data-pipeline-card="1" data-action="open-lead-from-pipeline" data-id="' + esc(l.id) + '" data-stage="' + esc(currentStage) + '"><b>' + esc(nameOf(l)) + '</b><div class="sub">' + esc(l.phone || l.email || "") + '</div>' + (snippet ? '<div class="sub">' + esc(String(snippet).slice(0, 92)) + '</div>' : '') + '<div class="sub">' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</div>' + mobileStage + '</div>';
             }).join("") : '<div class="empty">No leads in this stage.</div>') +
             '</div></section>';
         }).join("");
@@ -3293,6 +3433,7 @@
         var lead = await moveLeadStage(el.dataset.id, el.value, { quiet: true });
         if (lead && state.selectedLead && state.selectedLead.id === lead.id) await openLead(lead.id);
         if ($("leadListWrap")) await loadLeads();
+        if (state.page === "pipeline") await loadPipeline();
       }
       document.addEventListener("dragstart", function (e) {
         var card = e.target.closest("[data-pipeline-card]");
@@ -6086,19 +6227,74 @@
         status("reportEmailMsg", data.ok ? "Report emailed." : "Some emails failed.", data.ok ? "okText" : "warnText");
       }
 
+      function notificationToggle(id, label, checked) {
+        return '<label style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:10px"><input id="' + id + '" type="checkbox" style="width:auto"' + (checked ? ' checked' : '') + '> ' + esc(label) + '</label>';
+      }
+      function notificationSettingsPanel(server, preferences, local) {
+        server = server || {};
+        preferences = preferences || {};
+        local = local || {};
+        var denied = local.permission === "denied";
+        var subscribed = Boolean(local.subscription);
+        var setupError = local.error || (!server.configured ? "Render is missing the VAPID environment variables." : "");
+        var guidance = denied ? '<div class="statusLine warnText">Notifications are denied. On iPhone open Settings, Apps, SmartR8 (or Safari), Notifications, then allow notifications and return here.</div>' : '';
+        return '<section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">Notifications</h2><p class="muted">Background alerts use standards-based Web Push. Generic previews are safest and remain the default.</p></div><span class="badge ' + (subscribed ? 'green' : 'amber') + '">' + (subscribed ? 'This device subscribed' : 'Not subscribed') + '</span></div>' +
+          '<div class="grid cols3" style="margin:12px 0">' +
+            settingsCheck("Home Screen app", Boolean(local.installed)) + settingsCheck("Browser permission: " + (local.permission || "unknown"), local.permission === "granted") + settingsCheck("Server VAPID", Boolean(server.configured)) +
+          '</div>' +
+          '<div class="toolbar"><button class="btn primary" data-action="push-enable"' + (!local.supported || denied || !server.configured ? ' disabled' : '') + '>Enable Notifications</button><button class="btn" data-action="push-disable"' + (!subscribed ? ' disabled' : '') + '>Disable Notifications</button><button class="btn" data-action="push-test"' + (!subscribed || local.permission !== "granted" ? ' disabled' : '') + '>Send Test Notification</button><button class="btn" data-action="install-pwa">' + (local.installed ? 'Installed on Home Screen' : 'Install app') + '</button></div>' +
+          '<div class="statusLine">Last successful subscription: ' + esc(server.lastSuccessfulSubscriptionTime ? formatDateTime(server.lastSuccessfulSubscriptionTime) : "Never") + '</div>' + guidance +
+          (setupError ? '<div class="statusLine badText">' + esc(setupError) + '</div>' : '') +
+          '<hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><h3>Per-user preferences</h3><div class="grid cols2">' +
+            notificationToggle("prefMessages", "Incoming texts, iMessages, and WhatsApp", preferences.incomingMessages !== false) +
+            notificationToggle("prefEmail", "Incoming email", preferences.incomingEmail !== false) +
+            notificationToggle("prefFax", "Incoming fax", preferences.incomingFax !== false) +
+            notificationToggle("prefCalls", "Incoming call alerts", preferences.incomingCalls !== false) +
+            notificationToggle("prefMissed", "Missed calls", preferences.missedCalls !== false) +
+            notificationToggle("prefBadges", "App icon badges", preferences.appBadges !== false) +
+          '</div><div class="fieldGrid" style="margin-top:12px"><label>Lock-screen previews<select id="prefPreview"><option value="generic">Generic (recommended)</option><option value="enhanced">Enhanced: first name only</option></select></label><label>Quiet hours<select id="prefQuiet"><option value="0">Off</option><option value="1">On</option></select></label><label>Quiet hours start<input id="prefQuietStart" type="time" value="' + esc(preferences.quietHoursStart || "21:00") + '"></label><label>Quiet hours end<input id="prefQuietEnd" type="time" value="' + esc(preferences.quietHoursEnd || "07:00") + '"></label><label>Time zone<input id="prefQuietTz" value="' + esc(preferences.quietHoursTz || Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Los_Angeles") + '"></label></div><button class="btn primary" data-action="push-save-preferences" style="margin-top:12px">Save notification preferences</button><div id="pushSettingsMsg" class="statusLine"></div></section>';
+      }
+      async function savePushPreferences() {
+        status("pushSettingsMsg", "Saving...");
+        var data = await json("/api/notification-preferences", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            incomingMessages: $("prefMessages").checked,
+            incomingEmail: $("prefEmail").checked,
+            incomingFax: $("prefFax").checked,
+            incomingCalls: $("prefCalls").checked,
+            missedCalls: $("prefMissed").checked,
+            appBadges: $("prefBadges").checked,
+            previewLevel: $("prefPreview").value,
+            quietHoursEnabled: $("prefQuiet").value === "1",
+            quietHoursStart: $("prefQuietStart").value,
+            quietHoursEnd: $("prefQuietEnd").value,
+            quietHoursTz: $("prefQuietTz").value
+          })
+        });
+        status("pushSettingsMsg", data.ok ? "Notification preferences saved." : "Preferences could not be saved.", data.ok ? "okText" : "badText");
+      }
+
       async function loadSettings() {
-        pageShell("Settings", "Messaging channel, vendor credentials, ElevenLabs voice, voicemail audio, and service readiness.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="settingsBody" class="grid cols2"></div>');
+        pageShell("Settings", "Messaging channel, mobile notifications, vendor credentials, voicemail audio, and service readiness.", '<button class="btn" data-action="refresh">Refresh</button>', '<div id="settingsBody" class="grid cols2"></div>');
         var mode = await json("/api/messaging-mode").catch(function () { return { mode: "auto" }; });
         var vendors = await json("/api/settings/loan-services").catch(function (e) { return { error: e.message }; });
         var eleven = await json("/api/settings/elevenlabs").catch(function (e) { return { error: e.message }; });
         var audio = await json("/api/settings/voicemail-audio").catch(function (e) { return { error: e.message }; });
+        var pushStatus = await json("/api/push/status").catch(function (e) { return { configured: false, error: e.message }; });
+        var preferenceData = await json("/api/notification-preferences").catch(function () { return { preferences: {} }; });
+        var local = await localPushState();
         $("settingsBody").innerHTML =
+          notificationSettingsPanel(pushStatus, preferenceData.preferences, local) +
           '<section class="card pad"><h2 style="margin-top:0">Outbound texting</h2><p class="muted">Auto tries BlueBubbles iMessage first, then Telnyx SMS on timeout, failure, or unreachable Mac.</p><div class="toolbar"><button class="btn ' + (mode.mode === "auto" ? "primary" : "") + '" data-action="mode" data-mode="auto">Auto</button><button class="btn ' + (mode.mode === "imessage" ? "primary" : "") + '" data-action="mode" data-mode="imessage">iMessage only</button></div><div id="modeMsg" class="statusLine"></div></section>' +
           vendorPanel("title", vendors.title || {}) + vendorPanel("flood", vendors.flood || {}) +
           '<section class="card pad"><h2 style="margin-top:0">ElevenLabs voicemail</h2><div class="fieldGrid"><label>Enabled<select id="elEnabled"><option value="1">Enabled</option><option value="0">Disabled</option></select></label><label>Voice ID<input id="elVoice" value="' + esc(eleven.voiceId || "") + '"></label><label>API key<input id="elKey" type="password" placeholder="' + esc(eleven.apiKeySet ? "Saved: " + (eleven.apiKeyPreview || "set") : "ElevenLabs API key") + '"></label><label>Model<input id="elModel" value="' + esc(eleven.modelId || "eleven_multilingual_v2") + '"></label></div><label style="margin-top:10px">Default voicemail script<textarea id="elText">' + esc(eleven.defaultVoicemailText || "") + '</textarea></label><button class="btn primary" data-action="save-eleven" style="margin-top:10px">Save ElevenLabs</button><div id="elMsg" class="statusLine">' + esc(eleven.configured ? "Configured" : "Not configured") + '</div></section>' +
           voicemailAudioPanel(audio) +
           auditPanel();
         $("elEnabled").value = eleven.enabled ? "1" : "0";
+        if ($("prefPreview")) $("prefPreview").value = preferenceData.preferences.previewLevel === "enhanced" ? "enhanced" : "generic";
+        if ($("prefQuiet")) $("prefQuiet").value = preferenceData.preferences.quietHoursEnabled ? "1" : "0";
         await refreshAuditLog();
       }
       function auditPanel() {
@@ -6594,6 +6790,11 @@
           else if (a === "edit-doc") openDocEdit(btn);
           else if (a === "save-doc-meta") await saveDocMeta(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
           else if (a === "delete-doc") await deleteDocument(btn.dataset.id, btn.dataset.lead, btn.dataset.target);
+          else if (a === "push-enable") await enablePushNotifications();
+          else if (a === "push-disable") await disablePushNotifications();
+          else if (a === "push-test") await sendTestPush();
+          else if (a === "push-save-preferences") await savePushPreferences();
+          else if (a === "install-pwa") await installPwa();
           else if (a === "mode") { await setMessagingMode(btn.dataset.mode); await loadSettings(); }
           else if (a === "refresh-audit") await refreshAuditLog();
           else if (a === "save-vendor") await saveVendor(btn.dataset.kind);
@@ -6601,7 +6802,7 @@
           else if (a === "upload-vm-audio") await uploadVmAudio();
         } catch (err) {
           showToast(err.message || String(err), true);
-          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","leadCampaignMsg","bulkCampaignMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","dialMsg","quickDialMsg","quickLineStatus","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
+          ["leadActionMsg","leadSaveMsg","leadPortalMsg","leadImportMsg","leadCampaignMsg","bulkCampaignMsg","blastMsg","poolStatus","poolActionMsg","poolBlastMsg","msgStatus","convEmailStatus","whatsappStatus","leadWhatsappMsg","leadCalendarMsg","docStatus","portalMsg","portalActionMsg","sensMsg","modeMsg","pushSettingsMsg","dialMsg","quickDialMsg","quickLineStatus","dialLeadMsg","crmLineStatus","mergeMsg","powerMsg","forwardingMsg","elMsg","vmAudioMsg","autoEditMsg","emailPageMsg","adminMsg","calEventMsg","calInviteMsg","reportMsg","reportEmailMsg"].forEach(function (id) { if ($(id)) status(id, err.message || String(err), "badText"); });
         }
       });
 
@@ -6631,6 +6832,18 @@
           });
         }
       });
+      window.addEventListener("beforeinstallprompt", function (event) {
+        event.preventDefault();
+        state.pwaInstallPrompt = event;
+      });
+      window.addEventListener("appinstalled", function () {
+        state.pwaInstallPrompt = null;
+        if (state.page === "settings") loadSettings();
+      });
+      window.addEventListener("popstate", function () {
+        if (state.user) route(requestedPage(), { fromHistory: true }).then(applyDeepLink);
+      });
+      registerV2ServiceWorker();
       restoreSession();
     }());
   </script>
