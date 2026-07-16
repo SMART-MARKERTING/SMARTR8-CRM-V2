@@ -408,6 +408,102 @@ db.exec(`
     created_at  INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_fax_events_fax ON fax_events(fax_id, created_at DESC);
+
+  -- Phase 1 mobile notifications. Push credentials are stored only server-side;
+  -- notification content is deliberately limited to generic lock-screen text.
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint        TEXT NOT NULL,
+    p256dh_key      TEXT NOT NULL,
+    auth_key        TEXT NOT NULL,
+    user_agent      TEXT,
+    platform        TEXT,
+    app_version     TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    last_seen_at    INTEGER NOT NULL,
+    revoked_at      INTEGER,
+    UNIQUE(endpoint)
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id, revoked_at, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS notification_events (
+    id                  TEXT PRIMARY KEY,
+    kind                TEXT NOT NULL,
+    provider            TEXT NOT NULL,
+    provider_event_id   TEXT,
+    source_type         TEXT NOT NULL,
+    source_record_id    TEXT NOT NULL,
+    lead_id             TEXT REFERENCES leads(id) ON DELETE SET NULL,
+    generic_title       TEXT NOT NULL,
+    generic_body        TEXT NOT NULL,
+    enhanced_body       TEXT,
+    deep_link           TEXT NOT NULL,
+    notification_tag    TEXT NOT NULL,
+    created_at          INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_events_provider
+    ON notification_events(provider, provider_event_id)
+    WHERE provider_event_id IS NOT NULL;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_events_source
+    ON notification_events(kind, source_type, source_record_id);
+  CREATE INDEX IF NOT EXISTS idx_notification_events_created ON notification_events(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_notification_events_lead ON notification_events(lead_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS notification_deliveries (
+    id                 TEXT PRIMARY KEY,
+    event_id           TEXT NOT NULL REFERENCES notification_events(id) ON DELETE CASCADE,
+    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subscription_id    TEXT NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    attempt_count      INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at    INTEGER NOT NULL,
+    last_attempt_at    INTEGER,
+    claimed_at         INTEGER,
+    claim_token        TEXT,
+    delivered_at      INTEGER,
+    response_status    INTEGER,
+    response_body      TEXT,
+    last_error         TEXT,
+    created_at         INTEGER NOT NULL,
+    updated_at         INTEGER NOT NULL,
+    UNIQUE(event_id, subscription_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_notification_deliveries_due
+    ON notification_deliveries(status, next_attempt_at, claimed_at);
+  CREATE INDEX IF NOT EXISTS idx_notification_deliveries_user
+    ON notification_deliveries(user_id, created_at DESC);
+
+  -- A receipt row is also the durable event-recipient mapping. This keeps the
+  -- in-app Notification Center complete even when a user has not installed PWA push.
+  CREATE TABLE IF NOT EXISTS notification_receipts (
+    event_id       TEXT NOT NULL REFERENCES notification_events(id) ON DELETE CASCADE,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    read_at        INTEGER,
+    opened_at      INTEGER,
+    dismissed_at   INTEGER,
+    PRIMARY KEY(event_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_notification_receipts_user
+    ON notification_receipts(user_id, dismissed_at, read_at);
+
+  CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id             TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    incoming_messages   INTEGER NOT NULL DEFAULT 1,
+    incoming_email      INTEGER NOT NULL DEFAULT 1,
+    incoming_fax        INTEGER NOT NULL DEFAULT 1,
+    incoming_calls      INTEGER NOT NULL DEFAULT 1,
+    missed_calls        INTEGER NOT NULL DEFAULT 1,
+    app_badges          INTEGER NOT NULL DEFAULT 1,
+    preview_level       TEXT NOT NULL DEFAULT 'generic',
+    quiet_hours_enabled INTEGER NOT NULL DEFAULT 0,
+    quiet_hours_start   TEXT,
+    quiet_hours_end     TEXT,
+    quiet_hours_tz      TEXT,
+    created_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL
+  );
 `);
 
 // Idempotent column migrations (the leads table may predate these fields). SQLite has
@@ -648,14 +744,17 @@ export function insertCallLog(e: {
   leadId?: string | null;
   outcome?: string | null;
   durationSec?: number;
-}): void {
+}): CallLogRow {
+  const id = randomUUID();
+  const createdAt = Date.now();
   db.prepare(
     `INSERT INTO call_log (id, created_at, direction, phone, name, contact_id, lead_id, outcome, duration_sec)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    randomUUID(), Date.now(), e.direction, e.phone ?? null, e.name ?? null,
+    id, createdAt, e.direction, e.phone ?? null, e.name ?? null,
     e.contactId ?? null, e.leadId ?? null, e.outcome ?? null, e.durationSec ?? 0,
   );
+  return db.prepare(`SELECT * FROM call_log WHERE id = ?`).get(id) as CallLogRow;
 }
 
 /** Recent call-log entries, newest first. */
