@@ -6,7 +6,9 @@ current Render/SQLite architecture and does not add a native iOS application.
 
 ## Scope and boundaries
 
-- The installable app is `https://crm.smartr8.com/v2` with scope `/v2/`.
+- The installable app is `https://crm.smartr8.com/v2/` with scope `/v2/`.
+  The exact `/v2` path redirects to this canonical URL and retains only allowed
+  navigation parameters.
 - The existing root CRM and `/console` service worker are unchanged.
 - The service worker does not cache CRM pages, API responses, borrower data, or
   authenticated responses. Phase 1 is online-only.
@@ -117,7 +119,8 @@ the original path and query to Render, so no Worker change is required. Keep the
 route attached to this repository's Render origin and verify these public paths
 after deploy:
 
-- `/v2`
+- `/v2` (308 redirect to `/v2/`)
+- `/v2/`
 - `/v2/manifest.webmanifest`
 - `/v2/sw.js`
 - `/v2/health`
@@ -151,7 +154,7 @@ registers the URL and redacts it from application logs and diagnostics.
 
 Web Push for Home Screen web apps requires iOS/iPadOS 16.4 or later.
 
-1. In Safari, open `https://crm.smartr8.com/v2` and sign in.
+1. In Safari, open `https://crm.smartr8.com/v2/` and sign in.
 2. Tap **Share**, then **Add to Home Screen**, and confirm **Add**.
 3. Launch SMARTR8 CRM from the new Home Screen icon. Do not use the original
    Safari tab for the permission test.
@@ -159,7 +162,7 @@ Web Push for Home Screen web apps requires iOS/iPadOS 16.4 or later.
    iOS permission is requested only from this explicit tap.
 5. Choose **Allow**, then tap **Send Test Notification**.
 6. Background the app and confirm the notification appears. Tap it and confirm
-   the installed CRM focuses or opens the expected `/v2` screen.
+   the installed CRM focuses or opens the expected `/v2/` screen.
 7. If permission was denied, use iPhone **Settings > Notifications > SMARTR8 CRM**
    to enable it; reinstalling is normally unnecessary.
 
@@ -169,7 +172,7 @@ Web Push for Home Screen web apps requires iOS/iPadOS 16.4 or later.
       name, portrait layout, theme color, and no Safari browser chrome.
 - [ ] Close and relaunch the Home Screen app; confirm the expected login/session
       persistence and that an expired session returns to login safely.
-- [ ] Reload `/v2?page=notifications`, sign in after session expiry, and confirm
+- [ ] Reload `/v2/?page=notifications`, sign in after session expiry, and confirm
       the same screen resumes without leaking a token into the URL.
 - [ ] Enable notifications only through the visible button; confirm reload does
       not show a surprise permission prompt.

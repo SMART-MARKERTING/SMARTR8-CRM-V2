@@ -38,6 +38,21 @@ function canAccessLead(req: Request, lead: { owner_user_id: string | null } | nu
   return Boolean(lead && (!owner || lead.owner_user_id === owner));
 }
 
+const V2_REDIRECT_QUERY_KEYS = ["page", "lead", "event", "fax", "call"] as const;
+
+function canonicalV2Target(req: Request): string {
+  const params = new URLSearchParams();
+  for (const key of V2_REDIRECT_QUERY_KEYS) {
+    const value = req.query[key];
+    if (typeof value !== "string") continue;
+    const safe = value.trim().replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 128);
+    if (safe) params.set(key, safe);
+  }
+  if (req.query.popout === "dialer") params.set("popout", "dialer");
+  const query = params.toString();
+  return `/v2/${query ? `?${query}` : ""}`;
+}
+
 // /app now serves the SAME console as /console. The console is a superset of the old
 // softphone (it has a Dialer tab), and serving it here also rescues phones that cached
 // the original PWA manifest whose start_url was "/app" — they still land on the console
@@ -62,9 +77,16 @@ appRouter.get("/console", (_req, res) => {
   res.sendFile(path.resolve(process.cwd(), "public", "console.html"));
 });
 
-// Isolated v2 CRM shell. This intentionally does not replace /, /console, or /app;
-// crm.smartr8.com/v2 can be tested and shared without changing the live root console.
-appRouter.get(["/v2", "/v2/"], (_req, res) => {
+// Canonicalize the exact no-slash entry point into the service worker's /v2/ scope.
+// Only known navigation parameters survive, so tokens or arbitrary query data cannot
+// be reflected into the redirect URL.
+appRouter.get(/^\/v2$/, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.redirect(308, canonicalV2Target(req));
+});
+
+// Isolated v2 CRM shell. This intentionally does not replace /, /console, or /app.
+appRouter.get("/v2/", (_req, res) => {
   res.set("Cache-Control", "no-store, must-revalidate");
   res.sendFile(path.resolve(process.cwd(), "public", "v2.html"));
 });

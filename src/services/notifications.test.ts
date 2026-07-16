@@ -145,8 +145,9 @@ test("Phase 1 notification subsystem", async (t) => {
     const payload = buildPushPayload(first.event, owner.id);
     assert.match(payload, /New borrower email/);
     assert.doesNotMatch(payload, /SSN|123-45-6789|loan amount|income|token/i);
-    assert.equal(safeDeepLink("/v2?page=email&lead=abc&token=secret"), "/v2?page=email&lead=abc");
-    assert.equal(safeDeepLink("https://evil.example/v2?page=email"), "/v2?page=notifications");
+    assert.equal(safeDeepLink("/v2?page=email&lead=abc&token=secret"), "/v2/?page=email&lead=abc");
+    assert.equal(safeDeepLink("/v2/?page=email&lead=abc"), "/v2/?page=email&lead=abc");
+    assert.equal(safeDeepLink("https://evil.example/v2?page=email"), "/v2/?page=notifications");
   });
 
   await t.test("invalid webhook authentication cannot create notification events", async () => {

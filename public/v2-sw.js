@@ -1,6 +1,6 @@
 /* SmartR8 V2 service worker: push only. It intentionally does not cache CRM HTML,
    authenticated APIs, borrower data, messages, email, faxes, or documents. */
-const FALLBACK_URL = "/v2?page=notifications";
+const FALLBACK_URL = "/v2/?page=notifications";
 
 function safePayload(event) {
   try {
@@ -15,7 +15,7 @@ function safeDeepLink(value) {
   try {
     const url = new URL(typeof value === "string" ? value : FALLBACK_URL, self.location.origin);
     if (url.origin !== self.location.origin || (url.pathname !== "/v2" && url.pathname !== "/v2/")) return FALLBACK_URL;
-    return url.pathname + url.search;
+    return "/v2/" + url.search;
   } catch (_error) {
     return FALLBACK_URL;
   }
