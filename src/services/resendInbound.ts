@@ -5,6 +5,7 @@ import { log } from "../logger";
 import { db } from "../store/db";
 import { createLead, findLead, logActivity } from "./leads";
 import { retrieveReceivedEmail, type ResendReceivedEmail } from "./email";
+import { createNotificationEvent } from "./notifications";
 
 interface ResendWebhookEvent {
   type?: string;
@@ -74,6 +75,9 @@ function verifySvixSignatureHeaders(
 ): { ok: boolean; reason: string; hasSvixHeaders: boolean } {
   const secret = config.email.resendWebhookSecret;
   if (!secret) {
+    if (config.webhooks.enforceResend) {
+      return { ok: false, reason: "webhook-secret-required", hasSvixHeaders: Boolean(headers.id || headers.timestamp || headers.signature) };
+    }
     log.warn("RESEND_WEBHOOK_SECRET is not set; accepting Resend inbound webhook without signature verification");
     return { ok: true, reason: "secret-not-set", hasSvixHeaders: Boolean(headers.id || headers.timestamp || headers.signature) };
   }
@@ -277,6 +281,16 @@ export async function storeReceivedEmail(
       verified: opts.verified ?? Boolean(config.email.resendWebhookSecret),
       sync_source: opts.eventCreatedAt ? "webhook" : "manual_sync",
     },
+  });
+  createNotificationEvent({
+    kind: "incoming_email",
+    provider: "resend",
+    providerEventId: emailId || messageId || activity.id,
+    sourceType: "activity",
+    sourceRecordId: activity.id,
+    leadId: lead.id,
+    deepLink: `/v2?page=email&lead=${encodeURIComponent(lead.id)}&event=${encodeURIComponent(activity.id)}`,
+    contactFirstName: lead.first_name,
   });
 
   return { ok: true, stored: true, leadId: lead.id, activityId: activity.id, emailId: emailId || null };

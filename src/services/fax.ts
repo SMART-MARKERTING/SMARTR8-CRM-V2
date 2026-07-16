@@ -7,6 +7,7 @@ import { db } from "../store/db";
 import { toE164 } from "../util/phone";
 import { getLead, findLead, logActivity, type Lead } from "./leads";
 import { getLeadDocument, getLeadDocumentPath, saveLeadDocument } from "./documents";
+import { createNotificationEvent } from "./notifications";
 
 const FAX_DIR = path.resolve(process.cwd(), config.tokenDir, "fax-files");
 const MAX_FAX_BYTES = 25 * 1024 * 1024;
@@ -381,6 +382,19 @@ export async function handleFaxWebhook(body: unknown): Promise<{ duplicate: bool
 
   db.prepare(`INSERT OR IGNORE INTO fax_events (event_id, fax_id, event_type, created_at) VALUES (?, ?, ?, ?)`)
     .run(eventId, record.id, eventType, now);
+  if (eventType === "fax.received" && direction === "inbound") {
+    const lead = record.lead_id ? getLead(record.lead_id) : null;
+    createNotificationEvent({
+      kind: "incoming_fax",
+      provider: "telnyx",
+      providerEventId: eventId,
+      sourceType: "fax",
+      sourceRecordId: record.id,
+      leadId: record.lead_id,
+      deepLink: `/v2?page=fax&fax=${encodeURIComponent(record.id)}`,
+      contactFirstName: lead?.first_name,
+    });
+  }
   log.info("Telnyx fax event processed", { eventType, faxId: record.id, providerFaxId, status });
   return { duplicate: false, record, eventType };
 }

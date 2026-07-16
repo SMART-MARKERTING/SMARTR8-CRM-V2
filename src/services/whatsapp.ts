@@ -5,6 +5,7 @@ import { log } from "../logger";
 import { db } from "../store/db";
 import { toE164 } from "../util/phone";
 import { createLead, findLead, getLead, Lead, leadName, logActivity, updateLead } from "./leads";
+import { createNotificationEvent } from "./notifications";
 
 export type WhatsAppProvider = "twilio" | "meta";
 export type WhatsAppDirection = "inbound" | "outbound";
@@ -465,7 +466,7 @@ export function updateWhatsAppMessageStatus(providerMessageId: string, status: s
 }
 
 function verifyMetaSignature(req: Request): boolean {
-  if (!config.whatsapp.appSecret) return true;
+  if (!config.whatsapp.appSecret) return !config.webhooks.enforceMeta;
   const header = req.get("x-hub-signature-256") || "";
   if (!header.startsWith("sha256=")) return false;
   const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
@@ -476,12 +477,32 @@ function verifyMetaSignature(req: Request): boolean {
   return given.length === wanted.length && timingSafeEqual(given, wanted);
 }
 
+function verifyTwilioSignature(req: Request): boolean {
+  const token = config.whatsapp.twilioAuthToken;
+  if (!token) return !config.webhooks.enforceTwilio;
+  const provided = req.get("x-twilio-signature") || "";
+  if (!provided) return false;
+  const forwardedHost = (req.get("x-forwarded-host") || req.get("host") || "").split(",")[0].trim();
+  const forwardedProto = (req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim();
+  const url = `${forwardedProto}://${forwardedHost}${req.originalUrl}`;
+  const body = bodyAsRecord(req);
+  const signed = Object.keys(body).sort().reduce((value, key) => `${value}${key}${String(body[key] ?? "")}`, url);
+  const expected = createHmac("sha1", token).update(signed).digest("base64");
+  const given = Buffer.from(provided);
+  const wanted = Buffer.from(expected);
+  return given.length === wanted.length && timingSafeEqual(given, wanted);
+}
+
 function bodyAsRecord(req: Request): Record<string, unknown> {
   return (req.body ?? {}) as Record<string, unknown>;
 }
 
-function logInboundWhatsApp(lead: Lead, provider: WhatsAppProvider, providerMessageId: string | undefined, body: string): void {
-  recordWhatsAppMessage({
+function logInboundWhatsApp(lead: Lead, provider: WhatsAppProvider, providerMessageId: string | undefined, body: string): boolean {
+  if (providerMessageId) {
+    const existing = db.prepare(`SELECT id FROM whatsapp_messages WHERE provider_message_id = ? LIMIT 1`).get(providerMessageId);
+    if (existing) return false;
+  }
+  const message = recordWhatsAppMessage({
     contactId: lead.id,
     direction: "inbound",
     provider,
@@ -489,7 +510,7 @@ function logInboundWhatsApp(lead: Lead, provider: WhatsAppProvider, providerMess
     body,
     status: "received",
   });
-  logActivity(lead.id, {
+  const activity = logActivity(lead.id, {
     type: "whatsapp",
     direction: "inbound",
     channel: "whatsapp",
@@ -497,9 +518,21 @@ function logInboundWhatsApp(lead: Lead, provider: WhatsAppProvider, providerMess
     status: "received",
     meta: { provider, providerMessageId: providerMessageId ?? null },
   });
+  createNotificationEvent({
+    kind: "incoming_message",
+    provider,
+    providerEventId: providerMessageId || message.id,
+    sourceType: "activity",
+    sourceRecordId: activity.id,
+    leadId: lead.id,
+    deepLink: `/v2?page=messages&lead=${encodeURIComponent(lead.id)}`,
+    contactFirstName: lead.first_name,
+  });
+  return true;
 }
 
 function handleTwilioWebhook(req: Request): { inbound: number; statuses: number } {
+  if (!verifyTwilioSignature(req)) throw new Error("invalid Twilio webhook signature");
   const b = bodyAsRecord(req);
   const fromRaw = String(b.From || "");
   const from = fromRaw.replace(/^whatsapp:/, "");
@@ -516,8 +549,8 @@ function handleTwilioWebhook(req: Request): { inbound: number; statuses: number 
   }
   if (!from || !body) return { inbound: 0, statuses: 0 };
   const lead = resolveInboundLead(from, "twilio_whatsapp_inbound");
-  logInboundWhatsApp(lead, "twilio", sid, body);
-  return { inbound: 1, statuses: 0 };
+  const stored = logInboundWhatsApp(lead, "twilio", sid, body);
+  return { inbound: stored ? 1 : 0, statuses: 0 };
 }
 
 function handleMetaWebhook(req: Request): { inbound: number; statuses: number } {
@@ -546,8 +579,7 @@ function handleMetaWebhook(req: Request): { inbound: number; statuses: number } 
         const id = typeof message.id === "string" ? message.id : undefined;
         if (!from || !body) continue;
         const lead = resolveInboundLead(from, "meta_whatsapp_inbound");
-        logInboundWhatsApp(lead, "meta", id, body);
-        inbound++;
+        if (logInboundWhatsApp(lead, "meta", id, body)) inbound++;
       }
     }
   }
