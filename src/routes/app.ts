@@ -69,12 +69,21 @@ appRouter.get(["/v2", "/v2/"], (_req, res) => {
   res.sendFile(path.resolve(process.cwd(), "public", "v2.html"));
 });
 
-// PWA service worker, served at root so its scope covers /console (installability).
-appRouter.get("/sw.js", (_req, res) => {
-  res.set("Content-Type", "application/javascript");
-  res.set("Service-Worker-Allowed", "/");
+appRouter.get("/manifest.webmanifest", (req, res) => {
+  const v2 = req.baseUrl === "/v2";
+  res.set("Content-Type", "application/manifest+json");
   res.set("Cache-Control", "no-store");
-  res.sendFile(path.resolve(process.cwd(), "public", "sw.js"));
+  res.sendFile(path.resolve(process.cwd(), "public", v2 ? "v2-manifest.webmanifest" : "manifest.webmanifest"));
+});
+
+// Root keeps the established console worker; the /v2 mount receives the isolated
+// push-capable worker whose scope cannot intercept /console.
+appRouter.get("/sw.js", (req, res) => {
+  const v2 = req.baseUrl === "/v2";
+  res.set("Content-Type", "application/javascript");
+  res.set("Service-Worker-Allowed", v2 ? "/v2/" : "/");
+  res.set("Cache-Control", "no-store");
+  res.sendFile(path.resolve(process.cwd(), "public", v2 ? "v2-sw.js" : "sw.js"));
 });
 
 // Public attachment media. Served WITHOUT the passcode (Telnyx must fetch MMS media);
