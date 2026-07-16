@@ -20,8 +20,20 @@ OUTBOUND:      Form / [future] GHL native app
                  │     FALSE ─▶ Telnyx send (SMS)
                  └─ Log message (GHL, direction outbound)
 
-INBOUND iMessage [not built]: BlueBubbles "New Message" webhook ─▶ n8n ─▶ upsert + log
+INBOUND iMessage: BlueBubbles "New Message" webhook ─▶ Express ─▶ persist + notify
 ```
+
+## V2 PWA notification outbox
+
+The current V2 service now persists inbound provider activity locally and, after
+that source write succeeds, creates a deduplicated `notification_events` row plus
+per-user receipts and subscription deliveries. An in-process worker claims the
+SQLite outbox and sends standards-based VAPID Web Push. This is separate from the
+legacy n8n flow shown above and does not alter Telnyx app-then-cell forwarding.
+
+The installable shell, API surface, provider verification rollout, and operational
+model are documented in [Phase 1 PWA and Web Push](pwa-web-push.md). The V2 service
+worker is scoped to `/v2/` and caches no authenticated CRM or borrower data.
 
 ## GoHighLevel (services.leadconnectorhq.com)
 

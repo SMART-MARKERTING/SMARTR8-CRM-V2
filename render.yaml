@@ -58,6 +58,44 @@ services:
         sync: false
       - key: BLUEBUBBLES_PASSWORD
         sync: false
+      - key: BLUEBUBBLES_WEBHOOK_SECRET
+        sync: false
+      # Phase 1 PWA / Web Push. Generate the VAPID pair once; never rotate only one key.
+      - key: WEB_PUSH_VAPID_PUBLIC_KEY
+        sync: false
+      - key: WEB_PUSH_VAPID_PRIVATE_KEY
+        sync: false
+      - key: WEB_PUSH_CONTACT
+        sync: false
+      - key: NOTIFICATION_WORKER_POLL_MS
+        value: "5000"
+      - key: DEFAULT_NOTIFICATION_USER_ID
+        sync: false
+      # Keep enforcement off until each provider is sending valid signatures/secrets.
+      - key: WEBHOOK_ENFORCE_TELNYX_SMS
+        value: "false"
+      - key: WEBHOOK_ENFORCE_BLUEBUBBLES
+        value: "false"
+      - key: WEBHOOK_ENFORCE_RESEND
+        value: "false"
+      - key: WEBHOOK_ENFORCE_META_WHATSAPP
+        value: "false"
+      - key: WEBHOOK_ENFORCE_TWILIO_WHATSAPP
+        value: "false"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
       # Console / softphone access
       - key: APP_PASSCODE
         sync: false
