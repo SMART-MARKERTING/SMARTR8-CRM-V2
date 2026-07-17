@@ -1,0 +1,34 @@
+{
+  "appId": "com.smartr8.crm",
+  "appName": "SmartR8 CRM",
+  "webDir": "mobile/www",
+  "bundledWebRuntime": false,
+  "server": {
+    "hostname": "localhost"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "banner", "list", "sound"]
+    },
+    "Badge": {
+      "persist": true,
+      "autoClear": false
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#0f172a",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "dark",
+      "backgroundColor": "#0f172a"
+    }
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}
