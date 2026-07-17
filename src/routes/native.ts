@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { Router, type Request } from "express";
+import { nativeApnsConfigured } from "../services/apns";
 import { recordAudit } from "../services/audit";
 import { createNotificationEvent } from "../services/notifications";
 import {
@@ -140,8 +141,10 @@ nativeRouter.post("/api/native/push/test", requirePass, nativeTestLimit, (req, r
     ok: true,
     eventId: created.event.id,
     queued: true,
-    deliveryConfigured: false,
-    message: "Native APNs delivery is queued only; APNs provider credentials are not configured in this repository slice.",
+    deliveryConfigured: nativeApnsConfigured(),
+    message: nativeApnsConfigured()
+      ? "Native APNs delivery was queued."
+      : "Native APNs delivery was queued but APNs provider credentials are not configured.",
   });
 });
 

@@ -6,6 +6,17 @@ function env(key: string, fallback = ""): string {
   return process.env[key] ?? fallback;
 }
 
+function multilineEnv(key: string): string {
+  return env(key).replace(/\\n/g, "\n").trim();
+}
+
+function apnsEnvironment(value: string): "production" | "sandbox" | "auto" {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "sandbox" || normalized === "development") return "sandbox";
+  if (normalized === "auto") return "auto";
+  return "production";
+}
+
 const DEFAULT_EMAIL_FROM = "MDESHAZO@mykoal.com";
 const DEFAULT_EMAIL_ALIASES = "MDESHAZO@mykoal.com,info@mykoal.com,hello@mykoal.com";
 
@@ -134,6 +145,16 @@ export const config = {
     workerPollMs: Math.max(1_000, parseInt(env("NOTIFICATION_WORKER_POLL_MS", "5000"), 10) || 5_000),
     defaultNotificationUserId: env("DEFAULT_NOTIFICATION_USER_ID"),
     appVersion: env("RENDER_GIT_COMMIT", env("SOURCE_VERSION", "dev")).slice(0, 64),
+  },
+
+  apns: {
+    keyId: env("APNS_KEY_ID").trim(),
+    teamId: env("APNS_TEAM_ID").trim(),
+    topic: env("APNS_TOPIC").trim(),
+    privateKey: multilineEnv("APNS_PRIVATE_KEY"),
+    environment: apnsEnvironment(env("APNS_ENVIRONMENT", "production")),
+    workerPollMs: Math.max(1_000, parseInt(env("NATIVE_NOTIFICATION_WORKER_POLL_MS", env("NOTIFICATION_WORKER_POLL_MS", "5000")), 10) || 5_000),
+    expirationSeconds: Math.max(60, Math.min(86_400, parseInt(env("APNS_EXPIRATION_SECONDS", "600"), 10) || 600)),
   },
 
   // Net-new Cloudflare texting + MCP Worker (Cowork connector). To keep Cowork's
