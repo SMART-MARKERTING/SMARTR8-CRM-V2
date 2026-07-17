@@ -23,6 +23,7 @@ import { handleResendInboundWebhook } from "./services/resendInbound";
 import { db } from "./store/db";
 import { startClassicCrmReconcileWorker } from "./services/classicCrmReconcile";
 import { startNotificationWorker, stopNotificationWorker } from "./services/notificationWorker";
+import { startNativeNotificationWorker, stopNativeNotificationWorker } from "./services/nativeNotificationWorker";
 
 const app = express();
 const publicDir = path.resolve(process.cwd(), "public");
@@ -169,6 +170,7 @@ const server = app.listen(config.port, () => {
   startAutomationWorker(); // run due CRM automation steps (email/text/voicemail)
   startClassicCrmReconcileWorker(); // continuously repair missed Classic <-> V2 lead changes
   startNotificationWorker(); // deliver durable Web Push outbox rows
+  startNativeNotificationWorker(); // deliver durable native APNs outbox rows
 });
 
 let shuttingDown = false;
@@ -177,6 +179,7 @@ function shutdown(signal: string): void {
   shuttingDown = true;
   log.info("server shutdown requested", { signal });
   stopNotificationWorker();
+  stopNativeNotificationWorker();
   server.close((err) => {
     if (err) log.error("server shutdown error", { error: err.message });
     db.close();

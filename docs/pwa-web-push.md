@@ -83,6 +83,11 @@ pairs will fail. Do not commit or log the private key.
 The application version stored with a subscription comes from
 `RENDER_GIT_COMMIT` (or `SOURCE_VERSION` outside Render).
 
+Native iOS APNs alerts use separate `APNS_*` Render variables, separate
+`native_push_devices` token storage, and the separate `native_push_deliveries`
+outbox. Do not reuse Web Push VAPID keys or browser subscription rows for native
+APNs delivery.
+
 ## API surface
 
 Every endpoint below requires the existing authenticated CRM session. Write and

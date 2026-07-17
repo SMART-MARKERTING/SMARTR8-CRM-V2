@@ -38,6 +38,18 @@ First foundation slice:
 - Keep APNs provider sending, Face ID/Touch ID re-entry, full asset extraction,
   TestFlight signing, and real-device validation as follow-up tasks.
 
+Second native alert slice:
+
+- Deliver ordinary native APNs alerts from `native_push_deliveries` through a
+  Render-configured APNs token-auth provider adapter.
+- Keep APNs delivery separate from Web Push and keep payloads generic by default,
+  with allowlisted `/v2` deep links, collapse IDs, badge counts, invalid-token
+  revocation, bounded retries, stale-claim recovery, and privacy-safe logs.
+- Keep PushKit, VoIP APNs tokens, CallKit, native Telnyx calling, and background
+  call audio out of this slice.
+- Leave Face ID/Touch ID re-entry, asset extraction, TestFlight signing, and
+  real-device validation as follow-up tasks.
+
 Planned capabilities:
 
 - Extract the large inline V2 HTML, CSS, and JavaScript into tested, versioned,

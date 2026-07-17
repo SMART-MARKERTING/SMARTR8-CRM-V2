@@ -145,7 +145,7 @@
     var response = responseFromNative(result);
     await rememberLoginToken(response, url, method);
     await forgetSessionAfterLogout(response, url);
-    if (response.status === 401 && /\/api\/auth\/me$/.test(url)) await secureRemove(sessionKey);
+    if (response.status === 401 && (/\/api\/auth\/me$/.test(url) || /\/api\/native\//.test(url))) await secureRemove(sessionKey);
     return response;
   }
 
@@ -201,7 +201,14 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
+    if (response.status === 409 || response.status === 401) await secureRemove(tokenKey);
     return response.ok;
+  }
+
+  async function recordNotificationOpened(eventId) {
+    var id = String(eventId || "").replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 128);
+    if (!id) return;
+    await nativeFetch("/api/notifications/" + encodeURIComponent(id) + "/opened", { method: "POST" }).catch(function () {});
   }
 
   async function installNativeListeners() {
@@ -218,6 +225,7 @@
       await push.addListener("registrationError", function (_error) {});
       await push.addListener("pushNotificationActionPerformed", function (event) {
         var data = event && event.notification && event.notification.data ? event.notification.data : {};
+        if (data.eventId) recordNotificationOpened(data.eventId);
         goToNativeLink(data.deepLink || data.url || "/v2/?page=notifications");
       });
       await push.addListener("pushNotificationReceived", function (event) {
@@ -335,7 +343,10 @@
     disableNotifications: disableNotifications,
     sendTestNotification: sendTestNotification,
     afterLogin: afterLogin,
-    afterSessionRestored: function () { return syncBadge(); },
+    afterSessionRestored: async function () {
+      await syncNativeRegistration();
+      return syncBadge();
+    },
     afterLogout: afterLogout,
     syncBadge: syncBadge,
     sanitizeDeepLink: approvedNativeLink

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import { db } from "../store/db";
+import { nativeApnsConfigured } from "./apns";
 
 export interface NativePushDevice {
   id: string;
@@ -222,7 +223,7 @@ export function nativePushStatus(userId: string): {
   const active = rows.filter((row) => !row.disabled_at);
   return {
     configured: true,
-    deliveryConfigured: false,
+    deliveryConfigured: nativeApnsConfigured(),
     activeDeviceCount: active.length,
     disabledDeviceCount: rows.length - active.length,
     lastRegisteredAt: rows.reduce<number | null>((max, row) => max === null || row.created_at > max ? row.created_at : max, null),
