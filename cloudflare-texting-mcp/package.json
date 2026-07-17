@@ -13,7 +13,7 @@
     "migrate:local": "wrangler d1 migrations apply smartr8-leads --local"
   },
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^0.0.5",
+    "@cloudflare/workers-oauth-provider": "^0.8.2",
     "@modelcontextprotocol/sdk": "1.26.0",
     "agents": "^0.4.0",
     "ai": "^6.0.0",
