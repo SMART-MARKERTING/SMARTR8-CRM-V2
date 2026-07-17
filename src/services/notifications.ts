@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { config } from "../config";
 import { db } from "../store/db";
 import { getUser, listUsers, type User } from "./auth";
+import { enqueueNativePushDeliveries } from "./nativePush";
 import { userHasFeature } from "./permissions";
 
 export type NotificationKind =
@@ -387,6 +388,12 @@ export function createNotificationEvent(input: {
       for (const subscription of rows) {
         delivery.run(randomUUID(), id, recipient.user.id, subscription.id, recipient.nextAttemptAt, now, now);
       }
+      enqueueNativePushDeliveries({
+        eventId: id,
+        userId: recipient.user.id,
+        nextAttemptAt: recipient.nextAttemptAt,
+        now,
+      });
     }
   });
   insert();

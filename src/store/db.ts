@@ -428,6 +428,56 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id, revoked_at, updated_at DESC);
 
+  -- Phase 2 native iOS notification foundation. APNs device tokens are not Web
+  -- Push endpoints, so they stay in a separate per-user/per-device registry.
+  CREATE TABLE IF NOT EXISTS native_push_devices (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform        TEXT NOT NULL,
+    device_id       TEXT NOT NULL,
+    token           TEXT NOT NULL,
+    token_sha256    TEXT NOT NULL,
+    environment     TEXT NOT NULL DEFAULT 'production',
+    app_version     TEXT,
+    build_number    TEXT,
+    device_label    TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    last_seen_at    INTEGER NOT NULL,
+    disabled_at     INTEGER,
+    revoked_at      INTEGER,
+    UNIQUE(user_id, device_id)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_native_push_devices_active_token
+    ON native_push_devices(token_sha256)
+    WHERE revoked_at IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_native_push_devices_user
+    ON native_push_devices(user_id, revoked_at, disabled_at, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS native_push_deliveries (
+    id                 TEXT PRIMARY KEY,
+    event_id           TEXT NOT NULL REFERENCES notification_events(id) ON DELETE CASCADE,
+    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    native_device_id   TEXT NOT NULL REFERENCES native_push_devices(id) ON DELETE CASCADE,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    attempt_count      INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at    INTEGER NOT NULL,
+    last_attempt_at    INTEGER,
+    claimed_at         INTEGER,
+    claim_token        TEXT,
+    delivered_at       INTEGER,
+    response_status    INTEGER,
+    response_body      TEXT,
+    last_error         TEXT,
+    created_at         INTEGER NOT NULL,
+    updated_at         INTEGER NOT NULL,
+    UNIQUE(event_id, native_device_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_native_push_deliveries_due
+    ON native_push_deliveries(status, next_attempt_at, claimed_at);
+  CREATE INDEX IF NOT EXISTS idx_native_push_deliveries_user
+    ON native_push_deliveries(user_id, created_at DESC);
+
   CREATE TABLE IF NOT EXISTS notification_events (
     id                  TEXT PRIMARY KEY,
     kind                TEXT NOT NULL,

@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import express from "express";
 import { config } from "../config";
+import { nativeRouter } from "../routes/native";
 import { pushRouter } from "../routes/push";
 import { webhooksRouter } from "../routes/webhooks";
 import { db } from "../store/db";
 import { createSession, createUser, setDisabled } from "./auth";
 import { createLead, updateLead } from "./leads";
+import {
+  disableNativePushDevice,
+  nativePushStatus,
+  registerNativePushDevice,
+  safeNativeDeepLink,
+} from "./nativePush";
 import { processNotificationBatch, type PushSender } from "./notificationWorker";
 import {
   buildPushPayload,
@@ -73,6 +80,7 @@ after(() => {
   const placeholders = users.map(() => "?").join(",");
   db.prepare(`DELETE FROM notification_events WHERE provider = ?`).run(run);
   if (users.length) {
+    db.prepare(`DELETE FROM native_push_devices WHERE user_id IN (${placeholders})`).run(...users);
     db.prepare(`DELETE FROM push_subscriptions WHERE user_id IN (${placeholders})`).run(...users);
     db.prepare(`DELETE FROM sessions WHERE user_id IN (${placeholders})`).run(...users);
     db.prepare(`DELETE FROM notification_preferences WHERE user_id IN (${placeholders})`).run(...users);
@@ -88,7 +96,7 @@ test("Phase 1 notification subsystem", async (t) => {
 
   await t.test("database migration creates all durable notification tables", () => {
     const names = new Set((db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{ name: string }>).map((row) => row.name));
-    for (const name of ["push_subscriptions", "notification_events", "notification_deliveries", "notification_receipts", "notification_preferences"]) {
+    for (const name of ["push_subscriptions", "native_push_devices", "native_push_deliveries", "notification_events", "notification_deliveries", "notification_receipts", "notification_preferences"]) {
       assert.equal(names.has(name), true, `${name} should exist`);
     }
   });
@@ -231,6 +239,101 @@ test("Phase 1 notification subsystem", async (t) => {
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
+  });
+
+  await t.test("native APNs token registration is per-user and separate from Web Push", async () => {
+    const nativeOnly = user("Native only");
+    const token = `${run}-native-token-${"a".repeat(64)}`;
+    const deviceId = `${run}-native-device`;
+    const registered = registerNativePushDevice(nativeOnly.id, {
+      platform: "ios",
+      deviceId,
+      token,
+      environment: "development",
+      appVersion: "0.1.0",
+      buildNumber: "1",
+      deviceLabel: "Test iPhone",
+    });
+    assert.equal(registered.created, true);
+    assert.equal(nativePushStatus(nativeOnly.id).activeDeviceCount, 1);
+    assert.throws(
+      () => registerNativePushDevice(other.id, { platform: "ios", deviceId: `${deviceId}-other`, token }),
+      /belongs to another signed-in user/,
+    );
+
+    const created = eventFor(nativeOnly.id, "native-queue");
+    assert.ok(created);
+    const nativeQueued = db.prepare(`SELECT COUNT(*) AS count FROM native_push_deliveries WHERE user_id = ? AND event_id = ?`).get(nativeOnly.id, created.event.id) as { count: number };
+    const webQueued = db.prepare(`SELECT COUNT(*) AS count FROM notification_deliveries WHERE user_id = ? AND event_id = ?`).get(nativeOnly.id, created.event.id) as { count: number };
+    assert.equal(nativeQueued.count, 1);
+    assert.equal(webQueued.count, 0);
+
+    const wrongUserDisable = disableNativePushDevice(other.id, { deviceId });
+    assert.equal(wrongUserDisable.changed, 0);
+    const disabled = disableNativePushDevice(nativeOnly.id, { deviceId });
+    assert.equal(disabled.changed, 1);
+    assert.equal(nativePushStatus(nativeOnly.id).activeDeviceCount, 0);
+  });
+
+  await t.test("native API rejects cross-user device disable and redacts token ownership", async () => {
+    const nativeOwner = user("Native API owner");
+    const token = `${run}-native-api-token-${"b".repeat(64)}`;
+    const deviceId = `${run}-native-api-device`;
+    registerNativePushDevice(nativeOwner.id, { platform: "ios", deviceId, token });
+    const ownerToken = createSession(nativeOwner.id);
+    const otherToken = createSession(other.id);
+    const app = express();
+    app.use(express.json());
+    app.use(nativeRouter);
+    const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
+      const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("test server did not bind");
+      const url = `http://127.0.0.1:${address.port}/api/native/push/disable`;
+      const denied = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-session-token": otherToken },
+        body: JSON.stringify({ deviceId }),
+      });
+      assert.equal(denied.status, 404);
+      assert.equal(nativePushStatus(nativeOwner.id).activeDeviceCount, 1);
+      const allowed = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-session-token": ownerToken },
+        body: JSON.stringify({ deviceId }),
+      });
+      assert.equal(allowed.status, 200);
+      assert.equal(nativePushStatus(nativeOwner.id).activeDeviceCount, 0);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  await t.test("native deep links allow only approved V2 destinations and parameters", () => {
+    assert.deepEqual(safeNativeDeepLink("/v2/?page=notifications"), { ok: true, path: "/v2/?page=notifications" });
+    assert.deepEqual(safeNativeDeepLink("/v2/?page=conversations&lead=lead_1"), { ok: true, path: "/v2/?page=messages&lead=lead_1" });
+    assert.deepEqual(safeNativeDeepLink("/v2/?page=dialer&call=call_1"), { ok: true, path: "/v2/?page=dialer&call=call_1" });
+    assert.equal(safeNativeDeepLink("https://evil.example/v2/?page=notifications").ok, false);
+    assert.equal(safeNativeDeepLink("/v2/api/notifications").ok, false);
+    assert.equal(safeNativeDeepLink("/console?page=notifications").ok, false);
+    assert.equal(safeNativeDeepLink("/v2/?page=notifications&token=secret").ok, false);
+    assert.equal(safeNativeDeepLink("/v2/?page=email&event=email_1").ok, false);
+  });
+
+  await t.test("account disablement revokes native devices", () => {
+    const nativeDisabled = user("Native disabled");
+    registerNativePushDevice(nativeDisabled.id, {
+      platform: "ios",
+      deviceId: `${run}-native-disabled-device`,
+      token: `${run}-native-disabled-token-${"c".repeat(64)}`,
+    });
+    assert.equal(nativePushStatus(nativeDisabled.id).activeDeviceCount, 1);
+    setDisabled(nativeDisabled.id, true);
+    assert.equal(nativePushStatus(nativeDisabled.id).activeDeviceCount, 0);
+    const revoked = db.prepare(`SELECT revoked_at FROM native_push_devices WHERE user_id = ?`).get(nativeDisabled.id) as { revoked_at: number | null };
+    assert.ok(revoked.revoked_at);
   });
 
   await t.test("Web Push success, temporary retry, and expired endpoint handling are durable", async () => {
