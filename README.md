@@ -73,7 +73,7 @@ src/
   services/bluebubbles.ts  iMessage send (+ 524 "likely-sent" handling) + ping
   services/router.ts       channel choice (imessage tag) + send
   routes/oauth.ts          /oauth/install, /oauth/callback
-  routes/provider.ts       /providers/ghl/messages  (GHL outbound Delivery URL)
+  routes/provider.ts       /providers/ghl/messages  (retired: deterministic 410)
   routes/webhooks.ts       /webhooks/telnyx, /webhooks/bluebubbles  (inbound)
 render.yaml                Render blueprint
 ```
@@ -85,7 +85,7 @@ render.yaml                Render blueprint
 | Health | `GET BASE/health` |
 | OAuth install (visit once) | `GET BASE/oauth/install` |
 | OAuth redirect | `GET BASE/oauth/callback` |
-| GHL outbound Delivery URL | `POST BASE/providers/ghl/messages` |
+| Retired GHL outbound Delivery URL | `POST BASE/providers/ghl/messages` (always 410; do not configure) |
 | Telnyx inbound webhook | `POST BASE/webhooks/telnyx` |
 | BlueBubbles inbound webhook | `POST BASE/webhooks/bluebubbles` |
 
@@ -117,9 +117,9 @@ so OAuth tokens persist across restarts.
 2. **Auth** → add scopes: `contacts.readonly/write`, `conversations.readonly/write`,
    `conversations/message.readonly/write`. Redirect URL = `BASE/oauth/callback`.
    Copy **Client ID** + **Client Secret** into your env.
-3. **Conversation Provider** → create one, **type SMS**, Delivery URL =
-   `BASE/providers/ghl/messages`. Do **not** check "Is this a Custom Conversation
-   Provider." Copy the **conversationProviderId** into `GHL_CONVERSATION_PROVIDER_ID`.
+3. The historical GHL Conversation Provider delivery bridge is retired. Remove
+   `BASE/providers/ghl/messages` from GHL; do not configure a replacement until
+   a verified provider contract is designed and reviewed.
 4. Install: open `BASE/oauth/install` in a browser, pick your sub-account, Allow.
    Tokens are saved and auto-refresh from then on.
 5. Point **Telnyx** messaging-profile inbound webhook → `BASE/webhooks/telnyx`.
@@ -130,14 +130,9 @@ so OAuth tokens persist across restarts.
 ## ⚠️ Before production — read these
 
 - **Rotate the two exposed secrets** (GHL PIT, BlueBubbles password). Never commit them.
-- **Verify the marked `TODO(verify)` spots on first real run** — they're isolated on purpose:
-  - GHL outbound delivery payload field names (`src/routes/provider.ts`)
-  - GHL message **status callback** endpoint/body (`src/services/ghl.ts`)
-  - BlueBubbles inbound payload shape + `isFromMe` (`src/routes/webhooks.ts`)
-
-  Each handler logs the raw payload, so the first live message tells you the exact
-  shape to lock in — the same "confirm before trusting the endpoint" discipline that
-  got the n8n build working.
+- Validate provider payloads with redacted dashboard metadata and mocked fixtures.
+  Never enable raw provider-payload logging or use a live message to discover a
+  callback shape. See `docs/emergency-provider-lockdown.md`.
 - **iMessage sending is best-effort** without the BlueBubbles Private API (= SIP off).
   Fine for 1:1; route bulk through Telnyx SMS (the router already does this by tag).
 - **Token persistence:** the file store needs a persistent disk (the Render blueprint

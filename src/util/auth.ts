@@ -83,6 +83,57 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   next();
 }
 
+/**
+ * High-risk cross-user and provider-configuration mutations require a real
+ * server session, an administrator role, and a recent portal step-up. The
+ * legacy APP_PASSCODE remains a break-glass login elsewhere but cannot satisfy
+ * this stronger gate.
+ */
+export function requireVerifiedAdmin(req: Request, res: Response, next: NextFunction): void {
+  const token = tokenFrom(req);
+  const user = token ? getSessionUser(token) : null;
+  if (!user) {
+    res.status(401).json({ error: "verified administrator session required" });
+    return;
+  }
+  req.authUser = user;
+  if (user.role !== "admin") {
+    res.status(403).json({ error: "admin only" });
+    return;
+  }
+  if (!isSessionPortalVerified(token)) {
+    res.status(403).json({ error: "portal verification required" });
+    return;
+  }
+  next();
+}
+
+const CLIENT_IDENTITY_FIELDS = new Set([
+  "actor",
+  "provider",
+  "recipient",
+  "recipientid",
+  "role",
+  "userid",
+  "ownerid",
+]);
+
+/** Prevent callers from supplying identities that must come from the session. */
+export function rejectClientSuppliedIdentity(req: Request, res: Response, next: NextFunction): void {
+  const inputs = [req.body, req.query];
+  for (const input of inputs) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) continue;
+    for (const key of Object.keys(input)) {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (CLIENT_IDENTITY_FIELDS.has(normalized)) {
+        res.status(400).json({ error: "actor, ownership, provider, and recipient identities are derived by the server" });
+        return;
+      }
+    }
+  }
+  next();
+}
+
 /** Gate APIs by the signed-in user's feature checklist. Public/webhook routes return null. */
 export function requireFeatureForCurrentPath(req: Request, res: Response, next: NextFunction): void {
   const feature = featureForRequest(req);

@@ -8,11 +8,12 @@ import { handleLeadReply } from "../services/automations";
 import { findLead, createLead, logActivity, logActivityOnce } from "../services/leads";
 import { forwardInbound } from "../services/textingMcpForward";
 import { log } from "../logger";
-import { requireAdmin } from "../util/auth";
+import { requireAdmin, requireVerifiedAdmin, rejectClientSuppliedIdentity } from "../util/auth";
 import { createHash, timingSafeEqual } from "crypto";
 import { verifyTelnyxWebhookSignature } from "../services/callSummary";
 import { createNotificationEvent } from "../services/notifications";
 import { db } from "../store/db";
+import { recordAudit } from "../services/audit";
 
 export const webhooksRouter = Router();
 
@@ -291,7 +292,7 @@ webhooksRouter.post("/bluebubbles", async (req, res) => {
  * Either GET (clickable in a browser) or POST registers it; idempotent (skips if
  * already present). Returns a friendly HTML page for GET, JSON for POST.
  */
-webhooksRouter.all("/bluebubbles/register", requireAdmin, async (req, res) => {
+webhooksRouter.all("/bluebubbles/register", requireVerifiedAdmin, rejectClientSuppliedIdentity, async (req, res) => {
   const wantsHtml = req.method === "GET";
   const page = (title: string, body: string) =>
     `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">` +
@@ -313,6 +314,7 @@ webhooksRouter.all("/bluebubbles/register", requireAdmin, async (req, res) => {
     if (!already) {
       await registerWebhook(registeredHookUrl);
       log.info("registered BlueBubbles webhook", { hookUrl });
+      recordAudit({ req, action: "provider.bluebubbles_webhook.register", statusCode: 200 });
     }
     if (wantsHtml) {
       return res.send(

@@ -77,16 +77,17 @@ The `whatsapp_messages` table logs every inbound, outbound, blocked, and failed 
 - Conversations includes a WhatsApp compose tab and WhatsApp thread bubbles.
 - Admin debug page: `/debug/whatsapp`.
 
-## Testing Checklist
+## Phase 1 diagnostics
 
-1. Open `/debug/whatsapp` while signed in as admin.
-2. Confirm provider status shows Twilio or Meta configured.
-3. Simulate inbound from a test phone.
-4. Open that lead and confirm WhatsApp opt-in and last inbound are recorded.
-5. Send a free-form WhatsApp message inside the 24-hour window.
-6. Send a template message outside the 24-hour window.
-7. Confirm `/api/whatsapp/debug` recent logs include inbound, outbound, provider ID, and status.
-8. Confirm Conversations shows WhatsApp bubbles.
+`/debug/whatsapp` is administrator-only and read-only. It reports redacted
+configuration/status metadata without phone numbers, contact IDs, provider
+message IDs, or message bodies. The former mutating inbound simulator and live
+test-send controls are permanently unavailable.
+
+Use parser/signature fixtures and mocked provider adapters in automated tests.
+Do not send a real WhatsApp message until the separately reviewed Phase 2
+provider-selection, signature, consent, template, idempotency, and allowlist
+work has been merged, deployed, and approved for operator-owned-number QA.
 
 ## Common Issues
 

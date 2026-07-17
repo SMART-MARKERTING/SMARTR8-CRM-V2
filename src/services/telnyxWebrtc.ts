@@ -55,10 +55,10 @@ async function getOrCreateCredentialId(): Promise<string> {
   if (!res.ok) {
     const invalidConnection = res.status === 422 && /invalid connection/i.test(raw);
     const setupHint = invalidConnection ? ` ${SIP_CONNECTION_HELP}` : "";
-    throw new Error(`Telnyx create credential failed ${res.status}.${setupHint} Provider response: ${raw}`);
+    throw new Error(`Telnyx create credential failed (${res.status}).${setupHint}`);
   }
   const id = (JSON.parse(raw) as { data?: { id?: string } }).data?.id;
-  if (!id) throw new Error(`Telnyx create credential: no id in response: ${raw}`);
+  if (!id) throw new Error("Telnyx create credential response did not contain an id");
   await writeCredId(id);
   log.info("created Telnyx telephony credential for softphone", { id });
   return id;
@@ -70,10 +70,15 @@ async function getOrCreateCredentialId(): Promise<string> {
  */
 async function buildWebrtcSipUri(): Promise<string | null> {
   const credId = await getOrCreateCredentialId();
+  return lookupWebrtcSipUri(credId);
+}
+
+/** Read a known credential without creating or changing provider state. */
+async function lookupWebrtcSipUri(credId: string): Promise<string | null> {
   const res = await fetch(`${TELNYX_V2}/telephony_credentials/${credId}`, { headers: jsonHeaders() });
   const raw = await res.text().catch(() => "");
   if (!res.ok) {
-    throw new Error(`Telnyx get credential failed ${res.status}: ${raw}`);
+    throw new Error(`Telnyx get credential failed (${res.status})`);
   }
   const data = (raw ? JSON.parse(raw) : {}) as { data?: { sip_username?: string } };
   const user = data.data?.sip_username;
@@ -89,18 +94,25 @@ export async function getWebrtcSipUri(): Promise<string | null> {
   }
 }
 
-export async function getWebrtcDiagnostic(): Promise<Record<string, unknown>> {
+export async function getWebrtcDiagnostic(
+  options: { createCredential?: boolean } = {},
+): Promise<Record<string, unknown>> {
   const cachedCredentialId = await readCredId();
   if (!config.telnyx.apiKey) return { ok: false, error: "TELNYX_API_KEY is not set" };
   if (!config.webrtc.sipConnectionId) return { ok: false, error: `TELNYX_SIP_CONNECTION_ID not set. ${SIP_CONNECTION_HELP}` };
   try {
-    const sipUri = await buildWebrtcSipUri();
+    const sipUri = options.createCredential
+      ? await buildWebrtcSipUri()
+      : cachedCredentialId
+        ? await lookupWebrtcSipUri(cachedCredentialId)
+        : null;
     return {
       ok: Boolean(sipUri),
       sipUri,
       sipUriCalling: await getSipUriCallingPref(),
       credentialCached: Boolean(cachedCredentialId),
       sipConnectionIdConfigured: true,
+      ...(sipUri || options.createCredential ? {} : { error: "WebRTC credential is not cached; use the verified setup action to create it" }),
     };
   } catch (err) {
     return {
@@ -129,7 +141,7 @@ export async function ensureSipUriCalling(): Promise<{ ok: boolean; preference?:
     const raw = await res.text().catch(() => "");
     if (!res.ok) {
       const setupHint = res.status === 422 && /invalid connection/i.test(raw) ? ` ${SIP_CONNECTION_HELP}` : "";
-      return { ok: false, detail: `PATCH ${res.status}.${setupHint} ${raw.slice(0, 200)}` };
+      return { ok: false, detail: `Telnyx SIP preference update failed (${res.status}).${setupHint}` };
     }
     const data = JSON.parse(raw) as { data?: { sip_uri_calling_preference?: string } };
     return { ok: true, preference: data.data?.sip_uri_calling_preference };
@@ -163,7 +175,7 @@ export async function mintWebrtcToken(): Promise<string> {
   if (!res.ok) {
     // Stored credential was deleted on Telnyx → forget it so the next call recreates one.
     if (res.status === 404 || res.status === 422) await fs.rm(CRED_FILE, { force: true }).catch(() => {});
-    throw new Error(`Telnyx mint token failed ${res.status}: ${raw}`);
+    throw new Error(`Telnyx mint token failed (${res.status})`);
   }
   const t = raw.trim();
   // Telnyx returns the JWT as plain text; tolerate a JSON-wrapped body just in case.

@@ -5,12 +5,12 @@ import { randomUUID, createHash } from "crypto";
 import { hideMessage, hiddenMessageSigs, hideConversation, unhideConversation, hiddenConversationIds, hideContacts } from "../store/db";
 import { config } from "../config";
 import { log } from "../logger";
-import { checkPass, requirePass, requireFeatureForCurrentPath } from "../util/auth";
+import { checkPass, requirePass, requireVerifiedAdmin, rejectClientSuppliedIdentity, requireFeatureForCurrentPath } from "../util/auth";
 import { mintWebrtcToken } from "../services/telnyxWebrtc";
 import { sendOutbound, getMessagingMode, setMessagingMode, MessagingMode } from "../services/router";
 import { lookupNumber } from "../services/telnyxLookup";
 import { listNumbers, defaultFrom, pickFromNumber, toOwnedNumber } from "../services/numbers";
-import { listOwnedNumbers, sendSms, getMessageStatus } from "../services/telnyx";
+import { listOwnedNumbers, getMessageStatus } from "../services/telnyx";
 import { isForwardingEnabled, setForwarding, withinForwardWindow } from "../services/inboundRouter";
 import { mimeForExt, mediaPathFor, publicMediaUrl, supportedMediaExt, writeMediaFile } from "../services/media";
 import {
@@ -26,6 +26,7 @@ import {
   getLeadMessages,
 } from "../services/leads";
 import { toE164 } from "../util/phone";
+import { recordAudit } from "../services/audit";
 
 export const appRouter = Router();
 
@@ -435,35 +436,17 @@ appRouter.post("/api/call-forwarding", requirePass, (req, res) => {
 appRouter.get("/api/messaging-mode", requirePass, (_req, res) => {
   res.json({ mode: getMessagingMode() });
 });
-appRouter.post("/api/messaging-mode", requirePass, (req, res) => {
+appRouter.post("/api/messaging-mode", requireVerifiedAdmin, rejectClientSuppliedIdentity, (req, res) => {
   const mode = (req.body as { mode?: string } | undefined)?.mode;
   if (mode !== "auto" && mode !== "sms" && mode !== "imessage") {
     res.status(400).json({ error: "pass { mode: 'auto' | 'sms' | 'imessage' }" });
     return;
   }
   setMessagingMode(mode as MessagingMode);
+  recordAudit({ req, action: "provider.messaging_mode.update", statusCode: 200, meta: { mode } });
   res.json({ ok: true, mode: getMessagingMode() });
 });
 
-/** One-shot outbound SMS test that returns Telnyx's RAW response/error, bypassing the
- *  iMessage router — so we can see exactly why outbound fails (10DLC, profile, etc.).
- *  GET so it's clickable: /api/telnyx/test-send?to=+1...&pass=PASSCODE[&from=+1...] */
-appRouter.get("/api/telnyx/test-send", requirePass, async (req, res) => {
-  const to = typeof req.query.to === "string" ? req.query.to : "";
-  if (!to) {
-    res.status(400).json({ error: "pass ?to=+1XXXXXXXXXX" });
-    return;
-  }
-  const e164 = toE164(to);
-  const from = typeof req.query.from === "string" && req.query.from ? toE164(req.query.from) : pickFromNumber(e164).from;
-  try {
-    const sms = await sendSms(e164, "Smartr8 test — outbound SMS check.", from);
-    res.json({ ok: true, to: e164, from, telnyxId: sms.id, status: sms.status });
-  } catch (err) {
-    // The raw Telnyx error (status + body) is the actual reason outbound is failing.
-    res.status(502).json({ ok: false, to: e164, from, error: String(err) });
-  }
-});
 appRouter.get("/api/route-from/:phone", requirePass, (req, res) => {
   res.json(pickFromNumber(req.params.phone));
 });
