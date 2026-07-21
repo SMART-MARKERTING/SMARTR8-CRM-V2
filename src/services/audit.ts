@@ -33,7 +33,17 @@ export function recordAudit(opts: {
   meta?: Record<string, unknown>;
 }): void {
   const req = opts.req;
-  const user = opts.user || req?.authUser || null;
+  const actingAs = req?.impersonatorUser ? req.authUser || null : null;
+  const user = opts.user || req?.impersonatorUser || req?.authUser || null;
+  const meta = {
+    ...(opts.meta || {}),
+    ...(actingAs ? {
+      impersonation: {
+        acting_as_user_id: actingAs.id,
+        acting_as_username: actingAs.username,
+      },
+    } : {}),
+  };
   db.prepare(
     `INSERT INTO audit_events
       (id, created_at, user_id, username, role, ip, method, path, action, status_code, detail, meta)
@@ -51,7 +61,7 @@ export function recordAudit(opts: {
     action: opts.action,
     status_code: opts.statusCode ?? null,
     detail: opts.detail ?? null,
-    meta: JSON.stringify(opts.meta || {}),
+    meta: JSON.stringify(meta),
   });
 }
 

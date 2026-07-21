@@ -105,14 +105,14 @@ test("Phase 1 notification subsystem", async (t) => {
     assert.equal(filtered.some((row) => row.user.id === restricted.id), false);
   });
 
-  await t.test("unassigned records route to and become accessible to the configured fallback", () => {
+  await t.test("unassigned records remain private until the super admin assigns them", () => {
     const fallback = user("Inbox", "user", ["messages"]);
     config.push.defaultNotificationUserId = fallback.id;
     const unassigned = lead("Unassigned");
     const recipients = resolveNotificationRecipients({ kind: "incoming_message", leadId: unassigned.id });
-    assert.deepEqual(recipients.map((row) => row.user.id), [fallback.id]);
+    assert.deepEqual(recipients.map((row) => row.user.id), []);
     const stored = db.prepare(`SELECT owner_user_id FROM leads WHERE id = ?`).get(unassigned.id) as { owner_user_id: string | null };
-    assert.equal(stored.owner_user_id, fallback.id);
+    assert.equal(stored.owner_user_id, null);
     config.push.defaultNotificationUserId = previousDefaultUser;
   });
 

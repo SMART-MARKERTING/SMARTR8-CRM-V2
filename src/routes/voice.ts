@@ -39,6 +39,7 @@ import {
 import { isVoicemailCall, handleVoicemailEvent } from "../services/voicemail";
 import { createNotificationEvent } from "../services/notifications";
 import { recordAudit } from "../services/audit";
+import { isSuperAdmin } from "../services/auth";
 import {
   placeCall,
   placeCallWithAmd,
@@ -344,7 +345,7 @@ function powerListWindow(name: string | null | undefined): PowerListWindow {
 }
 
 function ownerScope(req: any): string | undefined {
-  return req.authUser?.role === "admin" ? undefined : req.authUser?.id;
+  return isSuperAdmin(req.authUser) && !req.impersonatorUser ? undefined : req.authUser?.id;
 }
 
 function canAccessLead(req: any, lead: Lead | null | undefined): boolean {
@@ -624,7 +625,7 @@ function powerDialerListRows(req: any): Array<{ id: string; created_at: number; 
   return db
     .prepare(
       `SELECT * FROM power_dialer_lists
-       WHERE @owner IS NULL OR owner_user_id = @owner OR owner_user_id IS NULL
+       WHERE @owner IS NULL OR owner_user_id = @owner
        ORDER BY updated_at DESC`,
     )
     .all({ owner: owner || null }) as Array<{ id: string; created_at: number; updated_at: number; created_by: string | null; owner_user_id: string | null; name: string; source: string | null; lead_ids: string; filters: string }>;

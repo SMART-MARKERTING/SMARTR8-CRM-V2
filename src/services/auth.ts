@@ -202,6 +202,9 @@ export function setIdentity(userId: string, input: {
   const generated = generatedUserIdentity(firstName, lastName);
   const username = String(input.username || generated.username).trim().toLowerCase();
   const email = String(input.email || generated.email).trim().toLowerCase();
+  if (current.username.toLowerCase() === "admin" && username !== "admin") {
+    throw new UserError("the super admin username cannot be changed");
+  }
   if (!validUsername(username)) throw new UserError("username can use letters, numbers, dots, dashes, and underscores");
   if (!validEmail(email)) throw new UserError("enter a valid email address");
   ensureIdentityAvailable(username, email, userId);
@@ -258,18 +261,69 @@ export function createSession(userId: string): string {
   return token;
 }
 
-export function getSessionUser(token: string): User | null {
+export function isSuperAdmin(user: User | null | undefined): boolean {
+  return Boolean(user && user.role === "admin" && user.username.trim().toLowerCase() === "admin");
+}
+
+export interface SessionContext {
+  user: User;
+  impersonator: User | null;
+}
+
+export function getSessionContext(token: string): SessionContext | null {
   if (!token) return null;
-  const s = db.prepare(`SELECT user_id, expires_at FROM sessions WHERE token = ?`).get(token) as
-    | { user_id: string; expires_at: number }
+  const s = db.prepare(`SELECT user_id, impersonator_user_id, expires_at FROM sessions WHERE token = ?`).get(token) as
+    | { user_id: string; impersonator_user_id: string | null; expires_at: number }
     | undefined;
   if (!s) return null;
   if (s.expires_at < Date.now()) {
     db.prepare(`DELETE FROM sessions WHERE token = ?`).run(token);
     return null;
   }
-  const u = getUser(s.user_id);
-  return u && !u.disabled ? u : null;
+  const user = getUser(s.user_id);
+  if (!user || user.disabled) return null;
+  const impersonator = s.impersonator_user_id ? getUser(s.impersonator_user_id) : null;
+  if (s.impersonator_user_id && (!impersonator || impersonator.disabled || !isSuperAdmin(impersonator))) return null;
+  return { user, impersonator };
+}
+
+export function getSessionUser(token: string): User | null {
+  return getSessionContext(token)?.user || null;
+}
+
+export function startSessionImpersonation(token: string, adminUserId: string, targetUserId: string): SessionContext {
+  if (!token) throw new UserError("administrator session required");
+  const context = getSessionContext(token);
+  if (!context || context.impersonator || context.user.id !== adminUserId || !isSuperAdmin(context.user)) {
+    throw new UserError("active administrator session required");
+  }
+  const target = getUser(targetUserId);
+  if (!target || target.disabled) throw new UserError("user is unavailable");
+  if (target.id === adminUserId) throw new UserError("you are already viewing your own account");
+  if (target.role === "admin") throw new UserError("choose a general user account");
+  const result = db.prepare(
+    `UPDATE sessions
+     SET user_id = ?, impersonator_user_id = ?, portal_verified_until = NULL
+     WHERE token = ? AND user_id = ? AND impersonator_user_id IS NULL`,
+  ).run(target.id, adminUserId, token, adminUserId);
+  if (result.changes !== 1) throw new UserError("could not start user view");
+  return { user: target, impersonator: context.user };
+}
+
+export function stopSessionImpersonation(token: string): SessionContext {
+  if (!token) throw new UserError("impersonated session required");
+  const row = db.prepare(`SELECT impersonator_user_id FROM sessions WHERE token = ?`).get(token) as
+    | { impersonator_user_id: string | null }
+    | undefined;
+  const admin = row?.impersonator_user_id ? getUser(row.impersonator_user_id) : null;
+  if (!admin || admin.disabled || !isSuperAdmin(admin)) throw new UserError("impersonated session is unavailable");
+  const result = db.prepare(
+    `UPDATE sessions
+     SET user_id = ?, impersonator_user_id = NULL, portal_verified_until = NULL
+     WHERE token = ? AND impersonator_user_id = ?`,
+  ).run(admin.id, token, admin.id);
+  if (result.changes !== 1) throw new UserError("could not restore administrator account");
+  return { user: admin, impersonator: null };
 }
 
 export function deleteSession(token: string): void {
@@ -292,8 +346,8 @@ export function isSessionPortalVerified(token: string | undefined): boolean {
 
 /**
  * Bootstrap: if there are no users yet, seed the first admin from APP_PASSCODE (username
- * "admin", password = the passcode) so the owner isn't locked out on first deploy — then
- * assign every existing lead to that admin. After this the console uses per-user logins;
+ * "admin", password = the passcode) so the owner isn't locked out on first deploy. Existing
+ * records remain unassigned until the super admin explicitly assigns them.
  * the passcode also still works as a break-glass admin login (resolves to this admin).
  */
 export function seedAdminIfEmpty(): void {
@@ -304,8 +358,7 @@ export function seedAdminIfEmpty(): void {
     return;
   }
   const admin = createUser({ username: "admin", password: pass, name: "Admin", role: "admin" });
-  const r = db.prepare(`UPDATE leads SET owner_user_id = ? WHERE owner_user_id IS NULL`).run(admin.id);
-  log.info("auth: seeded first admin from APP_PASSCODE and assigned existing leads", { adminId: admin.id, leads: r.changes });
+  log.info("auth: seeded first admin from APP_PASSCODE", { adminId: admin.id });
 }
 
 /** Resolve the legacy APP_PASSCODE to the primary admin user (break-glass login). */

@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { config } from "../config";
-import { requirePass, requireAdmin, tokenFrom } from "../util/auth";
+import { requirePass, requireSuperAdmin, tokenFrom } from "../util/auth";
 import { rateLimit } from "../util/rateLimit";
 import { log } from "../logger";
 import {
   verifyLogin,
   createSession,
+  getSessionContext,
   deleteSession,
   listUsers,
   getUser,
@@ -15,6 +16,8 @@ import {
   setRole,
   setPermissions,
   setIdentity,
+  startSessionImpersonation,
+  stopSessionImpersonation,
   markSessionPortalVerified,
   seedAdminIfEmpty,
   primaryAdmin,
@@ -22,6 +25,7 @@ import {
   Role,
 } from "../services/auth";
 import { FEATURE_PERMISSION_CATALOG } from "../services/permissions";
+import { recordAudit } from "../services/audit";
 
 export const usersRouter = Router();
 
@@ -61,7 +65,64 @@ usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
 
 /** Who am I (validates the current session). */
 usersRouter.get("/api/auth/me", sessionLimiter, requirePass, (req, res) => {
-  res.json({ user: req.authUser });
+  res.json({
+    user: req.authUser,
+    impersonation: req.impersonatorUser ? {
+      active: true,
+      administrator: {
+        id: req.impersonatorUser.id,
+        username: req.impersonatorUser.username,
+        name: req.impersonatorUser.name,
+      },
+    } : null,
+  });
+});
+
+usersRouter.post("/api/users/:id/impersonate", accountLimiter, requireSuperAdmin, (req, res) => {
+  const token = tokenFrom(req);
+  if (!token) {
+    res.status(400).json({ error: "administrator session required" });
+    return;
+  }
+  try {
+    const admin = req.authUser!;
+    const context = startSessionImpersonation(token, admin.id, req.params.id);
+    recordAudit({
+      req,
+      user: admin,
+      action: "admin.impersonation.start",
+      statusCode: 200,
+      meta: { acting_as_user_id: context.user.id, acting_as_username: context.user.username },
+    });
+    res.json({
+      ok: true,
+      user: context.user,
+      impersonation: {
+        active: true,
+        administrator: { id: admin.id, username: admin.username, name: admin.name },
+      },
+    });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
+  }
+});
+
+usersRouter.post("/api/auth/stop-impersonating", accountLimiter, (req, res) => {
+  const token = tokenFrom(req);
+  try {
+    const before = token ? getSessionContext(token) : null;
+    const context = stopSessionImpersonation(token || "");
+    recordAudit({
+      req,
+      user: context.user,
+      action: "admin.impersonation.stop",
+      statusCode: 200,
+      meta: { was_acting_as_user_id: before?.user.id || null, was_acting_as_username: before?.user.username || null },
+    });
+    res.json({ ok: true, user: context.user, impersonation: null });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
+  }
 });
 
 /** Step-up verification for Portal / Apps. Re-checks the signed-in user's password before
@@ -112,11 +173,11 @@ usersRouter.post("/api/auth/change-password", accountLimiter, requirePass, (req,
 
 // ── Admin-only user management ───────────────────────────────────────────────
 
-usersRouter.get("/api/users", adminUserLimiter, requireAdmin, (_req, res) => {
+usersRouter.get("/api/users", adminUserLimiter, requireSuperAdmin, (_req, res) => {
   res.json({ users: listUsers(), permissionCatalog: FEATURE_PERMISSION_CATALOG });
 });
 
-usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
+usersRouter.post("/api/users", adminUserLimiter, requireSuperAdmin, (req, res) => {
   const username = (req.body?.username ?? "").toString();
   const password = (req.body?.password ?? "").toString();
   const name = (req.body?.name ?? "").toString();
@@ -133,7 +194,7 @@ usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
 });
 
 /** Admin: reset another user's password (no current-password needed). */
-usersRouter.post("/api/users/:id/password", adminUserLimiter, requireAdmin, (req, res) => {
+usersRouter.post("/api/users/:id/password", adminUserLimiter, requireSuperAdmin, (req, res) => {
   const target = getUser(req.params.id);
   if (!target) {
     res.status(404).json({ error: "user not found" });
@@ -148,7 +209,7 @@ usersRouter.post("/api/users/:id/password", adminUserLimiter, requireAdmin, (req
 });
 
 /** Admin: enable/disable a user, or change their role. */
-usersRouter.patch("/api/users/:id", adminUserLimiter, requireAdmin, (req, res) => {
+usersRouter.patch("/api/users/:id", adminUserLimiter, requireSuperAdmin, (req, res) => {
   const me = req.authUser!;
   const target = getUser(req.params.id);
   if (!target) {

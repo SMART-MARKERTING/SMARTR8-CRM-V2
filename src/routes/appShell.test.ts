@@ -78,6 +78,25 @@ test("V2 exposes self-service passwords and admin-managed structured identities"
   assert.match(html, /@smartr8\.com/);
 });
 
+test("V2 persists a real light and dark palette", async () => {
+  const html = await v2Shell();
+  assert.match(html, /body\.theme-dark\s*\{/);
+  assert.match(html, /classList\.toggle\("theme-dark", state\.theme === "dark"\)/);
+  assert.match(html, /document\.documentElement\.style\.colorScheme = state\.theme/);
+  assert.match(html, /Switch to " \+ \(state\.theme === "light" \? "dark" : "light"\) \+ " mode"/);
+});
+
+test("V2 exposes super-admin assignment and reversible user view controls", async () => {
+  const html = await v2Shell();
+  assert.match(html, /id="impersonationBanner"/);
+  assert.match(html, /data-action="stop-impersonating"/);
+  assert.match(html, /data-action="admin-impersonate"/);
+  assert.match(html, /\/api\/users\/" \+ encodeURIComponent\(id\) \+ "\/impersonate/);
+  assert.match(html, /id="ldAssignedUser"/);
+  assert.match(html, /data-action="assign-lead-owner"/);
+  assert.match(html, /Only the super admin can assign CRM records/);
+});
+
 test("V2 is an isolated installable PWA with explicit notification permission", async () => {
   const html = await v2Shell();
   const manifest = JSON.parse(await readFile(path.resolve(process.cwd(), "public", "v2-manifest.webmanifest"), "utf8")) as {

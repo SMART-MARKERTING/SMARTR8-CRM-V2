@@ -343,6 +343,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL,
+    impersonator_user_id TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     portal_verified_until INTEGER
@@ -514,8 +515,14 @@ db.exec(`
 function ensureColumn(table: string, column: string, ddl: string): void {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
-    log.info("CRM migration: added column", { table, column });
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+      log.info("CRM migration: added column", { table, column });
+    } catch (error) {
+      // Multiple Render instances or parallel tests can observe the missing
+      // column at the same time. The second successful migration is harmless.
+      if (!String(error).toLowerCase().includes("duplicate column name")) throw error;
+    }
   }
 }
 
@@ -529,9 +536,8 @@ ensureColumn("leads", "consent_at", "consent_at INTEGER");
 ensureColumn("leads", "deleted_at", "deleted_at INTEGER");
 // Past-client segment: 1 = a closed/repeat client (Past Clients view + remarketing trigger).
 ensureColumn("leads", "past_client", "past_client INTEGER NOT NULL DEFAULT 0");
-// Lead ownership: which user the lead is assigned to. NULL = unassigned (admins still see it;
-// a non-admin sees only leads whose owner_user_id is their own id). Backfilled to the first
-// admin on rollout (see seedAdminIfEmpty()).
+// Lead ownership: which user the lead is assigned to. NULL = visible only to the super admin;
+// every other account sees only leads whose owner_user_id is its own id.
 ensureColumn("leads", "owner_user_id", "owner_user_id TEXT");
 db.exec(`CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id)`);
 // Contact-only: 1 = a person kept in the Contacts tab but NOT in the active Leads pipeline.
@@ -550,6 +556,7 @@ ensureColumn("users", "permissions", "permissions TEXT");
 ensureColumn("users", "first_name", "first_name TEXT");
 ensureColumn("users", "last_name", "last_name TEXT");
 ensureColumn("users", "email", "email TEXT");
+ensureColumn("sessions", "impersonator_user_id", "impersonator_user_id TEXT");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL AND email <> ''`);
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal
 // activity feed but keeps them available in the Deleted workspace.

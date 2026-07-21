@@ -17,7 +17,6 @@ import {
   findLead,
   createLead,
   getLead,
-  updateLead,
   logActivity,
   logActivityOnce,
   listLeads,
@@ -27,11 +26,12 @@ import {
 } from "../services/leads";
 import { toE164 } from "../util/phone";
 import { recordAudit } from "../services/audit";
+import { isSuperAdmin } from "../services/auth";
 
 export const appRouter = Router();
 
 function ownerScope(req: Request): string | undefined {
-  return req.authUser?.role === "admin" ? undefined : req.authUser?.id;
+  return isSuperAdmin(req.authUser) && !req.impersonatorUser ? undefined : req.authUser?.id;
 }
 
 function canAccessLead(req: Request, lead: { owner_user_id: string | null } | null | undefined): boolean {
@@ -193,12 +193,12 @@ appRouter.post("/api/messages/send", requirePass, async (req, res) => {
         res.status(404).json({ error: "contact not found" });
         return;
       }
-      lead = existing ?? createLead({ phone: e164, source: "console" });
       const owner = ownerScope(req);
       if (!existing && owner) {
-        updateLead(lead.id, { owner_user_id: owner });
-        lead = getLead(lead.id)!;
+        res.status(403).json({ error: "contact must be created and assigned by the super admin before messaging" });
+        return;
       }
+      lead = existing ?? createLead({ phone: e164, source: "console" });
     }
     contactId = lead.id;
 

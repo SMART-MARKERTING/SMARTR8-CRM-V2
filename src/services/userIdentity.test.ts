@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { config } from "../config";
 import { db } from "../store/db";
-import { createUser, generatedUserIdentity, type User } from "./auth";
+import { createUser, generatedUserIdentity, isSuperAdmin, type User } from "./auth";
 import { getLead } from "./leads";
 import { storeReceivedEmail } from "./resendInbound";
 import { personalizeSenderTemplate, senderIdentityForUser, userEmailIsSendable } from "./senderIdentity";
@@ -12,6 +12,24 @@ test("SmartR8 identities use first initial plus last name", () => {
   assert.equal(identity.username, "jdesoto");
   assert.equal(identity.email, `jdesoto@${config.email.userDomain}`);
   assert.equal(identity.name, "Jane De Soto");
+});
+
+test("only the exact admin username has workspace-wide authority", () => {
+  const base: User = {
+    id: "admin-test",
+    username: "admin",
+    name: "Admin",
+    first_name: "Admin",
+    last_name: "",
+    email: "admin@example.com",
+    role: "admin",
+    permissions: [],
+    disabled: false,
+    created_at: Date.now(),
+  };
+  assert.equal(isSuperAdmin(base), true);
+  assert.equal(isSuperAdmin({ ...base, username: "manager" }), false);
+  assert.equal(isSuperAdmin({ ...base, role: "user" }), false);
 });
 
 test("assigned user identity personalizes automation copy and sender mailbox", () => {
@@ -35,7 +53,7 @@ test("assigned user identity personalizes automation copy and sender mailbox", (
   assert.equal(userEmailIsSendable(user.email), true);
 });
 
-test("Resend inbound routes a personal mailbox to its CRM user", async (t) => {
+test("Resend inbound records the personal mailbox without auto-assigning the contact", async (t) => {
   const suffix = `${Date.now()}${Math.random().toString(16).slice(2)}`;
   const user = createUser({
     username: `mailbox-${suffix}`,
@@ -52,7 +70,7 @@ test("Resend inbound routes a personal mailbox to its CRM user", async (t) => {
   }, { fetchFull: false, verified: true });
   assert.equal(result.ok, true);
   assert.ok(result.leadId);
-  assert.equal(getLead(result.leadId!)?.owner_user_id, user.id);
+  assert.equal(getLead(result.leadId!)?.owner_user_id, null);
 
   t.after(() => {
     if (result.activityId) db.prepare(`DELETE FROM notification_events WHERE source_record_id = ?`).run(result.activityId);
