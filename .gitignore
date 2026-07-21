@@ -23,6 +23,11 @@ tokens.json
 node_modules/
 dist/
 build/
+mobile/www/
+ios/App/App/public/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
 *.log
 npm-debug.log*
 

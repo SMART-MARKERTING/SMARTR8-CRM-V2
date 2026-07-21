@@ -3,6 +3,7 @@ import { config } from "../config";
 import { requirePass, requireAdmin, tokenFrom } from "../util/auth";
 import { rateLimit } from "../util/rateLimit";
 import { log } from "../logger";
+import { revokeNativePushDevicesForUser } from "../services/nativePush";
 import {
   verifyLogin,
   createSession,
@@ -36,6 +37,11 @@ function sessionCookie(token: string, secure: boolean): string {
   return `lg_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
 }
 
+function nativeDeviceId(req: { get(name: string): string | undefined }): string | null {
+  const value = req.get("x-smart-r8-native-device-id");
+  return value ? value.trim().slice(0, 128) : null;
+}
+
 /** Sign in with username + password → creates a secure server session. */
 usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
   const username = (req.body?.username ?? "").toString();
@@ -55,7 +61,11 @@ usersRouter.post("/api/auth/login", loginLimiter, (req, res) => {
   const token = createSession(user.id);
   log.info("login", { userId: user.id, username: user.username });
   res.setHeader("Set-Cookie", sessionCookie(token, req.secure || process.env.NODE_ENV === "production"));
-  res.json({ ok: true, user });
+  res.json({
+    ok: true,
+    user,
+    ...(req.get("x-smart-r8-native") === "ios" ? { nativeSessionToken: token } : {}),
+  });
 });
 
 /** Who am I (validates the current session). */
@@ -87,6 +97,8 @@ usersRouter.post("/api/auth/portal-verify", accountLimiter, requirePass, (req, r
 /** Sign out (invalidate the current session token). */
 usersRouter.post("/api/auth/logout", sessionLimiter, requirePass, (req, res) => {
   const token = tokenFrom(req);
+  const deviceId = nativeDeviceId(req);
+  if (req.authUser && deviceId) revokeNativePushDevicesForUser(req.authUser.id, deviceId);
   if (token) deleteSession(token);
   res.setHeader("Set-Cookie", "lg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
   res.json({ ok: true });

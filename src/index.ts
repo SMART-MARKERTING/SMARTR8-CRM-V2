@@ -14,6 +14,7 @@ import { crmRouter } from "./routes/crm";
 import { faxRouter } from "./routes/fax";
 import { usersRouter } from "./routes/users";
 import { pushRouter } from "./routes/push";
+import { nativeRouter } from "./routes/native";
 import { productionSafetyRouter } from "./routes/productionSafety";
 import { startCallNowPoller } from "./services/callNowPoller";
 import { seedCampaigns, startAutomationWorker } from "./services/automations";
@@ -140,6 +141,7 @@ app.use(ghlWorkflowRouter); // /ghl/workflow/* — GHL custom workflow actions
 app.use(adminRouter); // /admin/deploy, /admin/redeploy
 app.use(usersRouter); // /api/auth/* (login, me, logout, change-password) + /api/users (admin)
 app.use(pushRouter); // authenticated Web Push subscriptions, preferences, receipts, Notification Center
+app.use(nativeRouter); // authenticated native iOS runtime, APNs token, deep-link, and badge foundation
 app.use(faxRouter); // /api/fax + /api/webhooks/telnyx/fax
 app.use(crmRouter); // /webhooks/lead (intake) + /api/leads, /api/automations
 
@@ -152,6 +154,7 @@ app.use("/v2", ghlWorkflowRouter);
 app.use("/v2", adminRouter);
 app.use("/v2", usersRouter);
 app.use("/v2", pushRouter);
+app.use("/v2", nativeRouter);
 app.use("/v2", faxRouter);
 app.use("/v2", crmRouter);
 

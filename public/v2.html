@@ -12,6 +12,7 @@
   <link rel="icon" href="/logo.svg" />
   <link rel="manifest" href="/v2/manifest.webmanifest" />
   <link rel="apple-touch-icon" sizes="180x180" href="/v2/public/icons/app-180.png" />
+  <script src="/v2/public/mobile/native-runtime.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.27.1/lib/bundle.js"></script>
   <style>
     :root {
@@ -1294,10 +1295,15 @@
       function isHomeScreenApp() {
         return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
       }
+      function nativeRuntime() {
+        return window.SmartR8Native && window.SmartR8Native.isNative ? window.SmartR8Native : null;
+      }
       function notificationCapability() {
+        if (nativeRuntime()) return true;
         return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
       }
       async function registerV2ServiceWorker() {
+        if (nativeRuntime()) return null;
         if (!("serviceWorker" in navigator) || appBasePath() !== "/v2") return null;
         try {
           state.pwaRegistration = await navigator.serviceWorker.register("/v2/sw.js", { scope: "/v2/" });
@@ -1315,6 +1321,7 @@
         return Uint8Array.from(raw, function (char) { return char.charCodeAt(0); });
       }
       async function localPushState() {
+        if (nativeRuntime()) return nativeRuntime().localPushState();
         var supported = notificationCapability();
         var registration = state.pwaRegistration || (supported ? await navigator.serviceWorker.getRegistration("/v2/") : null);
         var subscription = registration && registration.pushManager ? await registration.pushManager.getSubscription().catch(function () { return null; }) : null;
@@ -1328,6 +1335,12 @@
         };
       }
       async function enablePushNotifications() {
+        if (nativeRuntime()) {
+          await nativeRuntime().enableNotifications();
+          showToast("Notifications enabled on this iPhone.");
+          await loadSettings();
+          return;
+        }
         if (!notificationCapability()) throw new Error("This browser does not support Home Screen Web Push.");
         var registration = state.pwaRegistration || await registerV2ServiceWorker();
         if (!registration) throw new Error(state.pwaError || "The SmartR8 service worker could not be registered.");
@@ -1347,6 +1360,12 @@
         await loadSettings();
       }
       async function disablePushNotifications() {
+        if (nativeRuntime()) {
+          await nativeRuntime().disableNotifications();
+          showToast("Notifications disabled on this iPhone.");
+          await loadSettings();
+          return;
+        }
         var local = await localPushState();
         if (!local.subscription) throw new Error("This device is not subscribed.");
         var endpoint = local.subscription.endpoint;
@@ -1360,6 +1379,11 @@
         await loadSettings();
       }
       async function sendTestPush() {
+        if (nativeRuntime()) {
+          var nativeData = await nativeRuntime().sendTestNotification();
+          showToast(nativeData.deliveryConfigured ? "Test notification sent." : "Native test notification queued.");
+          return;
+        }
         var data = await json("/api/push/test", { method: "POST" });
         var delivered = data.delivery && Number(data.delivery.delivered || 0);
         showToast(delivered ? "Test notification sent." : "Test notification queued.");
@@ -1618,6 +1642,7 @@
           });
           state.token = ""; // V2 authenticates with the server's HttpOnly session cookie.
           state.user = data.user;
+          if (nativeRuntime()) await nativeRuntime().afterLogin(data);
           $("loginPass").value = "";
           enterApp();
         } catch (e) {
@@ -1628,6 +1653,7 @@
         try {
           var data = await json("/api/auth/me");
           state.user = data.user;
+          if (nativeRuntime() && nativeRuntime().afterSessionRestored) await nativeRuntime().afterSessionRestored();
           enterApp();
         } catch (e) {
           if (e.status === 401 || e.status === 403) {
@@ -6378,16 +6404,23 @@
         server = server || {};
         preferences = preferences || {};
         local = local || {};
+        var native = Boolean(local.native);
         var denied = local.permission === "denied";
         var subscribed = Boolean(local.subscription);
-        var setupError = local.error || (!server.configured ? "Render is missing the VAPID environment variables." : "");
-        var guidance = denied ? '<div class="statusLine warnText">Notifications are denied. On iPhone open Settings, Apps, SmartR8 (or Safari), Notifications, then allow notifications and return here.</div>' : '';
-        return '<section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">Notifications</h2><p class="muted">Background alerts use standards-based Web Push. Generic previews are safest and remain the default.</p></div><span class="badge ' + (subscribed ? 'green' : 'amber') + '">' + (subscribed ? 'This device subscribed' : 'Not subscribed') + '</span></div>' +
+        var setupError = local.error || (!native && !server.configured ? "Render is missing the VAPID environment variables." : "");
+        var guidance = denied ? '<div class="statusLine warnText">Notifications are denied. On iPhone open Settings, Apps, SmartR8, Notifications, then allow notifications and return here.</div>' : '';
+        var title = native ? "Native iOS notifications" : "Notifications";
+        var copy = native ? "The iOS app registers this device with APNs through the native runtime. Generic previews are safest and remain the default." : "Background alerts use standards-based Web Push. Generic previews are safest and remain the default.";
+        var readyLabel = native ? "Native runtime" : "Home Screen app";
+        var permissionOk = native ? local.permission === "granted" : local.permission === "granted";
+        var serverOk = native ? Boolean(server.configured) : Boolean(server.configured);
+        return '<section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><h2 style="margin:0">' + title + '</h2><p class="muted">' + copy + '</p></div><span class="badge ' + (subscribed ? 'green' : 'amber') + '">' + (subscribed ? 'This device subscribed' : 'Not subscribed') + '</span></div>' +
           '<div class="grid cols3" style="margin:12px 0">' +
-            settingsCheck("Home Screen app", Boolean(local.installed)) + settingsCheck("Browser permission: " + (local.permission || "unknown"), local.permission === "granted") + settingsCheck("Server VAPID", Boolean(server.configured)) +
+            settingsCheck(readyLabel, Boolean(local.installed)) + settingsCheck((native ? "iOS permission: " : "Browser permission: ") + (local.permission || "unknown"), permissionOk) + settingsCheck(native ? "Native device API" : "Server VAPID", serverOk) +
           '</div>' +
-          '<div class="toolbar"><button class="btn primary" data-action="push-enable"' + (!local.supported || denied || !server.configured ? ' disabled' : '') + '>Enable Notifications</button><button class="btn" data-action="push-disable"' + (!subscribed ? ' disabled' : '') + '>Disable Notifications</button><button class="btn" data-action="push-test"' + (!subscribed || local.permission !== "granted" ? ' disabled' : '') + '>Send Test Notification</button><button class="btn" data-action="install-pwa">' + (local.installed ? 'Installed on Home Screen' : 'Install app') + '</button></div>' +
-          '<div class="statusLine">Last successful subscription: ' + esc(server.lastSuccessfulSubscriptionTime ? formatDateTime(server.lastSuccessfulSubscriptionTime) : "Never") + '</div>' + guidance +
+          '<div class="toolbar"><button class="btn primary" data-action="push-enable"' + (!local.supported || denied || !server.configured ? ' disabled' : '') + '>Enable Notifications</button><button class="btn" data-action="push-disable"' + (!subscribed ? ' disabled' : '') + '>Disable Notifications</button><button class="btn" data-action="push-test"' + (!subscribed || local.permission !== "granted" ? ' disabled' : '') + '>Send Test Notification</button>' + (native ? '' : '<button class="btn" data-action="install-pwa">' + (local.installed ? 'Installed on Home Screen' : 'Install app') + '</button>') + '</div>' +
+          '<div class="statusLine">Last successful subscription: ' + esc((server.lastSuccessfulSubscriptionTime || server.lastRegisteredAt) ? formatDateTime(server.lastSuccessfulSubscriptionTime || server.lastRegisteredAt) : "Never") + '</div>' + guidance +
+          (native && server.deliveryConfigured === false ? '<div class="statusLine warnText">APNs provider sending is not configured in this foundation build; registration and badge sync are available for validation.</div>' : '') +
           (setupError ? '<div class="statusLine badText">' + esc(setupError) + '</div>' : '') +
           '<hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><h3>Per-user preferences</h3><div class="grid cols2">' +
             notificationToggle("prefMessages", "Incoming texts, iMessages, and WhatsApp", preferences.incomingMessages !== false) +
@@ -6426,7 +6459,7 @@
         var vendors = await json("/api/settings/loan-services").catch(function (e) { return { error: e.message }; });
         var eleven = await json("/api/settings/elevenlabs").catch(function (e) { return { error: e.message }; });
         var audio = await json("/api/settings/voicemail-audio").catch(function (e) { return { error: e.message }; });
-        var pushStatus = await json("/api/push/status").catch(function (e) { return { configured: false, error: e.message }; });
+        var pushStatus = await json(nativeRuntime() ? "/api/native/push/status" : "/api/push/status").catch(function (e) { return { configured: false, error: e.message }; });
         var preferenceData = await json("/api/notification-preferences").catch(function () { return { preferences: {} }; });
         var local = await localPushState();
         $("settingsBody").innerHTML =
@@ -6685,7 +6718,7 @@
           else if (a === "close-lead-panel") closeLeadPanel();
           else if (a === "toggle-lead-chrome") toggleLeadChrome();
           else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
-          else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
+          else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); if (nativeRuntime() && nativeRuntime().afterLogout) await nativeRuntime().afterLogout(); location.reload(); }
           else if (a === "refresh") route(state.page);
           else if (a === "close-modal") closeModal();
           else if (a === "auto-new") openAutomationEditor(null);

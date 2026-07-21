@@ -28,6 +28,16 @@ confirms the mobile workflows. The package must ship versioned local web assets;
 it must not point a production `server.url` at the hosted CRM, because that would
 be a thin remote website wrapper and would weaken release integrity.
 
+First foundation slice:
+
+- Add Capacitor/iOS project structure that builds local `/v2` assets through a
+  reproducible `mobile:prepare` step and keeps the browser PWA unchanged.
+- Establish native runtime detection, Keychain-backed session storage, APNs token
+  registration APIs, separate native token/outbox tables, safe native deep-link
+  handling, and badge synchronization hooks.
+- Keep APNs provider sending, Face ID/Touch ID re-entry, full asset extraction,
+  TestFlight signing, and real-device validation as follow-up tasks.
+
 Planned capabilities:
 
 - Extract the large inline V2 HTML, CSS, and JavaScript into tested, versioned,

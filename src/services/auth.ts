@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { db } from "../store/db";
 import { config } from "../config";
 import { log } from "../logger";
+import { revokeNativePushDevicesForUser } from "./nativePush";
 import { parseStoredPermissions, serializePermissions } from "./permissions";
 
 /**
@@ -118,7 +119,10 @@ export function setPassword(userId: string, password: string): void {
 
 export function setDisabled(userId: string, disabled: boolean): void {
   db.prepare(`UPDATE users SET disabled = ? WHERE id = ?`).run(disabled ? 1 : 0, userId);
-  if (disabled) db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId); // kill active logins
+  if (disabled) {
+    db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId); // kill active logins
+    revokeNativePushDevicesForUser(userId);
+  }
 }
 
 export function setRole(userId: string, role: Role): void {
