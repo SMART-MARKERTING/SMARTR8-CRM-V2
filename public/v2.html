@@ -6387,8 +6387,12 @@
         var missingMx = mxRows.find(function (row) { return row && !row.resendInbound; });
         var received = Number(data.recent_received_count || 0);
         var sent = Number(data.recent_sent_count || 0);
+        var resendDomains = data.resend_domains || [];
+        var configuredUserDomain = String(data.email_user_domain || "smartr8.com").toLowerCase();
+        var resendUserDomain = resendDomains.find(function (domain) { return String(domain.name || "").toLowerCase() === configuredUserDomain; });
         var diagnosis = "Resend inbound looks connected.";
         if (!data.resend_api_key_set) diagnosis = "RESEND_API_KEY is missing on the server.";
+        else if (data.resend_domains_ok && (!resendUserDomain || String(resendUserDomain.status || "").toLowerCase() !== "verified")) diagnosis = "The deployed RESEND_API_KEY cannot see " + configuredUserDomain + " as verified. Replace it with an API key created in the Resend workspace that owns that domain.";
         else if (!data.received_ok) diagnosis = "Resend Receiving API failed. Check the API key permissions/account.";
         else if (failedHit && /signature|svix/i.test(failedHit.reason || "")) diagnosis = "Resend is hitting this app, but webhook signature verification is failing. Copy the signing_secret from this exact Resend webhook into RESEND_WEBHOOK_SECRET and redeploy.";
         else if (missingMx && !received) diagnosis = "This email domain is not routing inbound mail to Resend: " + missingMx.domain + ". Add/verify the Resend inbound MX record for that domain.";
@@ -6417,10 +6421,12 @@
           "Signing secret match: " + (match && match.signing_secret_matches_env ? "yes" : "no"),
           "Recent received emails in Resend: " + received,
           "Recent sent emails in Resend: " + sent,
+          "Sending domains visible to this API key: " + (data.resend_domains_ok ? (resendDomains.map(function (domain) { return domain.name + " (" + (domain.status || "unknown") + ")"; }).join(", ") || "none") : "unavailable"),
           "Inbound MX: " + mxLine,
           "Last webhook hit: " + lastHitLine
         ];
         if (!hooks.length && data.webhooks_error) lines.push("Webhook API error: " + data.webhooks_error);
+        if (!data.resend_domains_ok && data.resend_domains_error) lines.push("Domain API error: " + data.resend_domains_error);
         if (data.received_error) lines.push("Received email API error: " + data.received_error);
         if (data.sent_error) lines.push("Sent email API error: " + data.sent_error);
         $("resendDiag").innerHTML = '<div class="' + (match && match.has_email_received && match.signing_secret_matches_env ? "okText" : "warnText") + '">' + esc(lines.join(" | ")) + '</div>';

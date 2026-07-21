@@ -59,6 +59,7 @@ import {
   sendEmail,
   emailConfigured,
   listReceivedEmails,
+  listResendDomains,
   listResendWebhooks,
   retrieveResendWebhook,
   retrieveReceivedEmail,
@@ -4251,6 +4252,7 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
   const mountedWebhook = `${mountedBase}/api/webhooks/resend`;
   const rootWebhook = `${req.protocol}://${req.get("host")}/api/webhooks/resend`;
   const domains = configuredEmailDomains();
+  const resendDomains = await listResendDomains();
   const list = await listResendWebhooks();
   const enriched = await Promise.all(
     list.webhooks.slice(0, 25).map(async (hook) => {
@@ -4281,7 +4283,17 @@ crmRouter.get("/api/email/resend-diagnostics", requireAdmin, async (req, res) =>
     resend_webhook_secret_self_test: selfTestResendWebhookSignature(),
     email_from: config.email.fromEmail || "",
     email_reply_to: config.email.replyTo || "",
+    email_user_domain: config.email.userDomain || "",
     configured_email_domains: domains,
+    resend_domains_ok: resendDomains.ok,
+    resend_domains_error: resendDomains.detail || null,
+    resend_domains: resendDomains.domains.map((domain) => ({
+      name: domain.name,
+      status: domain.status || "",
+      region: domain.region || "",
+      sending: domain.capabilities?.sending || "",
+      receiving: domain.capabilities?.receiving || "",
+    })),
     inbound_mx: mx,
     expected_webhook_url: expectedWebhook,
     alternate_webhook_urls: [mountedWebhook, rootWebhook].filter((url, index, list) => url && list.indexOf(url) === index && url !== expectedWebhook),

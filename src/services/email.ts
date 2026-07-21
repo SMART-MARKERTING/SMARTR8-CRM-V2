@@ -5,6 +5,8 @@ export interface EmailResult {
   ok: boolean;
   id?: string;
   detail?: string;
+  from?: string;
+  usedDefaultSender?: boolean;
 }
 
 export interface ResendUpdateEmailResult {
@@ -120,6 +122,14 @@ export interface ResendWebhook {
   [key: string]: unknown;
 }
 
+export interface ResendDomain {
+  id: string;
+  name: string;
+  status?: string;
+  region?: string;
+  capabilities?: { sending?: string; receiving?: string };
+}
+
 export function emailConfigured(): boolean {
   return Boolean(config.email.resendApiKey && config.email.fromEmail);
 }
@@ -199,6 +209,12 @@ export async function listResendWebhooks(): Promise<{ ok: boolean; webhooks: Res
   const result = await resendGet<{ object?: string; data?: ResendWebhook[] }>("/webhooks");
   if (!result.ok) return { ok: false, webhooks: [], detail: result.detail };
   return { ok: true, webhooks: Array.isArray(result.data?.data) ? result.data.data : [] };
+}
+
+export async function listResendDomains(): Promise<{ ok: boolean; domains: ResendDomain[]; detail?: string }> {
+  const result = await resendGet<{ object?: string; data?: ResendDomain[] }>("/domains");
+  if (!result.ok) return { ok: false, domains: [], detail: result.detail };
+  return { ok: true, domains: Array.isArray(result.data?.data) ? result.data.data : [] };
 }
 
 export async function retrieveResendWebhook(webhookId: string): Promise<ResendWebhook | null> {
@@ -376,19 +392,38 @@ export async function sendEmail(opts: {
 
   try {
     const headers = resendHeaders(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {});
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-    const raw = await res.text().catch(() => "");
-    if (!res.ok) {
-      log.error("Resend send failed", { status: res.status });
-      return { ok: false, detail: `${res.status}: ${raw}` };
+    const submit = async () => {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      return { response, raw: await response.text().catch(() => "") };
+    };
+    let attempt = await submit();
+    let usedDefaultSender = false;
+    const requestedFrom = String(body.from || "").trim();
+    const defaultFrom = String(config.email.fromEmail || "").trim();
+    const senderDomain = (value: string) => value.match(/@([^>\s]+)>?$/)?.[1]?.toLowerCase() || "";
+    const requestedDomain = senderDomain(requestedFrom);
+    const defaultDomain = senderDomain(defaultFrom);
+    const unverifiedDomain = attempt.response.status === 403 && /domain is not verified|add and verify your domain/i.test(attempt.raw);
+    if (!attempt.response.ok && unverifiedDomain && defaultFrom && requestedDomain && defaultDomain && requestedDomain !== defaultDomain) {
+      log.warn("Resend rejected user sender domain; retrying configured default sender", {
+        requestedDomain,
+        defaultDomain,
+      });
+      body.from = defaultFrom;
+      attempt = await submit();
+      usedDefaultSender = true;
     }
-    const data = raw ? (JSON.parse(raw) as { id?: string }) : {};
-    log.info("email sent", { to, id: data.id });
-    return { ok: true, id: data.id };
+    if (!attempt.response.ok) {
+      log.error("Resend send failed", { status: attempt.response.status, usedDefaultSender });
+      return { ok: false, detail: `${attempt.response.status}: ${attempt.raw}` };
+    }
+    const data = attempt.raw ? (JSON.parse(attempt.raw) as { id?: string }) : {};
+    log.info("email sent", { to, id: data.id, usedDefaultSender });
+    return { ok: true, id: data.id, from: String(body.from || ""), usedDefaultSender };
   } catch (err) {
     log.error("Resend send threw", { err: String(err) });
     return { ok: false, detail: String(err) };
