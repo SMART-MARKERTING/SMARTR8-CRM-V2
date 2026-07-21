@@ -110,6 +110,8 @@ services:
         sync: false
       - key: EMAIL_FROM_ALIASES
         sync: false
+      - key: EMAIL_USER_DOMAIN
+        value: smartr8.com
       - key: EMAIL_REPLY_TO
         sync: false
       - key: RESEND_WEBHOOK_SECRET

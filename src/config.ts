@@ -7,7 +7,7 @@ function env(key: string, fallback = ""): string {
 }
 
 const DEFAULT_EMAIL_FROM = "MDESHAZO@mykoal.com";
-const DEFAULT_EMAIL_ALIASES = "MDESHAZO@mykoal.com,info@mykoal.com,hello@mykoal.com";
+const DEFAULT_EMAIL_ALIASES = "MDESHAZO@mykoal.com,info@mykoal.com,hello@mykoal.com,info@smartr8.com,hello@smartr8.com";
 
 function replaceRetiredSender(value: string, fallback = DEFAULT_EMAIL_FROM): string {
   return /mike@adaxahomeloans\.com|noreply@mykoal\.com/i.test(value) ? fallback : value;
@@ -259,6 +259,7 @@ export const config = {
     fromEmail: replaceRetiredSender(env("EMAIL_FROM", DEFAULT_EMAIL_FROM)),
     fromAliases: env("EMAIL_FROM_ALIASES", DEFAULT_EMAIL_ALIASES),
     replyTo: replaceRetiredSender(env("EMAIL_REPLY_TO", DEFAULT_EMAIL_FROM)),
+    userDomain: env("EMAIL_USER_DOMAIN", "smartr8.com").trim().toLowerCase(),
     resendWebhookSecret: env("RESEND_WEBHOOK_SECRET"),
   },
 

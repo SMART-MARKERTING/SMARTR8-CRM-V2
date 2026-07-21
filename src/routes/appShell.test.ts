@@ -68,6 +68,16 @@ test("dialers handle secure repair and terminal Telnyx states without exposing S
   assert.doesNotMatch(html, /setCrmLineStatus\("Call: " \+ st/);
 });
 
+test("V2 exposes self-service passwords and admin-managed structured identities", async () => {
+  const html = await v2Shell();
+  assert.match(html, /data-action="change-own-password"/);
+  assert.match(html, /\/api\/auth\/change-password/);
+  assert.match(html, /id="adminUserFirst"/);
+  assert.match(html, /id="adminUserLast"/);
+  assert.match(html, /data-action="admin-save-identity"/);
+  assert.match(html, /@smartr8\.com/);
+});
+
 test("V2 is an isolated installable PWA with explicit notification permission", async () => {
   const html = await v2Shell();
   const manifest = JSON.parse(await readFile(path.resolve(process.cwd(), "public", "v2-manifest.webmanifest"), "utf8")) as {

@@ -1135,6 +1135,7 @@
         globalSearchTimer: null,
         globalSearchRows: [],
         emailFromOptions: [],
+        emailDefaultFrom: "",
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
         leadStageCountsCache: null,
@@ -5347,6 +5348,7 @@
         var sentList = results[4] || { emails: [] };
         var receivedList = results[5] || { emails: [] };
         state.emailFromOptions = settings.from || [];
+        state.emailDefaultFrom = settings.defaultFrom || state.emailFromOptions[0] || "";
         state.emailFolderOptions = settings.folders || state.emailFolderOptions || [];
         state.emailMessageState = messageState.state || {};
         if ($("emailFromOptions")) $("emailFromOptions").innerHTML = (state.emailFromOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
@@ -5936,7 +5938,7 @@
         var to = "";
         var cc = "";
         var bcc = "";
-        var from = (state.emailFromOptions && state.emailFromOptions[0]) || "";
+        var from = state.emailDefaultFrom || (state.emailFromOptions && state.emailFromOptions[0]) || "";
         var subject = "Quick follow-up";
         var body = "Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal";
         if ((mode === "reply" || mode === "reply-all") && m) {
@@ -6256,7 +6258,9 @@
       async function loadAdminPage() {
         pageShell("Admin / Sub-Accounts", "Manage admin users, sub-account users, passwords, roles, and feature access.",
           '<button class="btn" data-action="refresh-admin">Refresh</button>',
-          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>Name<input id="adminUserName" placeholder="Loan officer name"></label><label>Username<input id="adminUsername" placeholder="email or username"></label><label>Password<input id="adminPassword" type="password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><h3>Feature access</h3><div class="sub">Uncheck anything this user should not see or use.</div>' + permissionCheckboxes("new", allFeaturePages(), "user") + '<button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section><section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Classic CRM synchronization</h2><div class="sub">Live changes are mirrored both ways. Reconciliation catches missed and historical records.</div></div><div class="toolbar"><button class="btn" data-action="admin-sync-status">Check status</button><button class="btn primary" data-action="admin-sync-classic">Reconcile all now</button></div></div><div id="adminSyncStatus" class="statusLine">Checking synchronization...</div></section></div>');
+          '<div class="grid cols2"><section class="card pad"><h2 style="margin-top:0">Create user / sub-account</h2><div class="fieldGrid"><label>First name<input id="adminUserFirst" autocomplete="given-name" placeholder="First name"></label><label>Last name<input id="adminUserLast" autocomplete="family-name" placeholder="Last name"></label><label>Username<input id="adminUsername" placeholder="first initial + last name"></label><label>Email<input id="adminUserEmail" type="email" placeholder="user@smartr8.com"></label><label>Password<input id="adminPassword" type="password" autocomplete="new-password" placeholder="temporary password"></label><label>Role<select id="adminRole"><option value="user">Sub-account user</option><option value="admin">Admin</option></select></label></div><div class="sub" style="margin-top:8px">Username and email default to first initial + last name. Only an admin can change identity fields after creation.</div><h3>Feature access</h3><div class="sub">Uncheck anything this user should not see or use.</div>' + permissionCheckboxes("new", allFeaturePages(), "user") + '<button class="btn primary" data-action="admin-create-user" style="margin-top:10px">Create user</button><div id="adminMsg" class="statusLine"></div></section><section class="card"><div class="cardHead"><h2>Users</h2></div><div id="adminUsersWrap" class="list" style="padding:12px"><div class="spinner"></div></div></section><section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Classic CRM synchronization</h2><div class="sub">Live changes are mirrored both ways. Reconciliation catches missed and historical records.</div></div><div class="toolbar"><button class="btn" data-action="admin-sync-status">Check status</button><button class="btn primary" data-action="admin-sync-classic">Reconcile all now</button></div></div><div id="adminSyncStatus" class="statusLine">Checking synchronization...</div></section></div>');
+        $("adminUserFirst").addEventListener("input", syncNewUserIdentity);
+        $("adminUserLast").addEventListener("input", syncNewUserIdentity);
         await refreshAdminPage();
         await refreshAdminSyncStatus();
       }
@@ -6264,7 +6268,8 @@
         var data = await json("/api/users").catch(function (e) { return { users: [], error: e.message }; });
         if (!$("adminUsersWrap")) return;
         $("adminUsersWrap").innerHTML = data.error ? '<div class="empty badText">' + esc(data.error) + '</div>' : (data.users || []).length ? data.users.map(function (u) {
-          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.username) + ' | ' + esc(permissionSummary(u)) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div>' +
+          return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.email || "No mailbox") + ' | ' + esc(permissionSummary(u)) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div>' +
+            '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:900">Account identity</summary><div class="fieldGrid" style="margin-top:10px"><label>First name<input id="adminFirst-' + esc(u.id) + '" value="' + esc(u.first_name || "") + '"></label><label>Last name<input id="adminLast-' + esc(u.id) + '" value="' + esc(u.last_name || "") + '"></label><label>Username<input id="adminUsername-' + esc(u.id) + '" value="' + esc(u.username || "") + '"></label><label>Email<input id="adminEmail-' + esc(u.id) + '" type="email" value="' + esc(u.email || "") + '"></label></div><button class="btn small primary" data-action="admin-save-identity" data-id="' + esc(u.id) + '" style="margin-top:10px">Save identity</button></details>' +
             '<details style="margin-top:10px" ' + (u.role === "admin" ? "" : "open") + '><summary style="cursor:pointer;font-weight:900">Feature access</summary>' + permissionCheckboxes(u.id, u.permissions || [], u.role) + '<button class="btn small primary" data-action="admin-save-permissions" data-id="' + esc(u.id) + '" style="margin-top:10px"' + (u.role === "admin" ? " disabled" : "") + '>Save permissions</button></details>' +
             '<div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
         }).join("") : '<div class="empty">No users found.</div>';
@@ -6301,9 +6306,33 @@
       }
       async function createAdminUser() {
         status("adminMsg", "Creating user...");
-        await json("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("adminUserName").value, username: $("adminUsername").value, password: $("adminPassword").value, role: $("adminRole").value, permissions: selectedAdminPermissions("new") }) });
+        await json("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firstName: $("adminUserFirst").value, lastName: $("adminUserLast").value, username: $("adminUsername").value, email: $("adminUserEmail").value, password: $("adminPassword").value, role: $("adminRole").value, permissions: selectedAdminPermissions("new") }) });
         status("adminMsg", "User created.", "okText");
         $("adminPassword").value = "";
+        await refreshAdminPage();
+      }
+      function accountLocalPart(first, last) {
+        var f = String(first || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]/g, "");
+        var l = String(last || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]/g, "");
+        return f && l ? (f.charAt(0) + l).toLowerCase() : "";
+      }
+      function syncNewUserIdentity() {
+        var local = accountLocalPart(inputVal("adminUserFirst"), inputVal("adminUserLast"));
+        if ($("adminUsername")) $("adminUsername").value = local;
+        if ($("adminUserEmail")) $("adminUserEmail").value = local ? local + "@smartr8.com" : "";
+      }
+      async function saveAdminIdentity(id) {
+        await json("/api/users/" + encodeURIComponent(id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: inputVal("adminFirst-" + id),
+            lastName: inputVal("adminLast-" + id),
+            username: inputVal("adminUsername-" + id),
+            email: inputVal("adminEmail-" + id)
+          })
+        });
+        showToast("User identity saved.");
         await refreshAdminPage();
       }
       async function saveAdminPermissions(id) {
@@ -6430,6 +6459,7 @@
         var preferenceData = await json("/api/notification-preferences").catch(function () { return { preferences: {} }; });
         var local = await localPushState();
         $("settingsBody").innerHTML =
+          accountSecurityPanel(state.user || {}) +
           notificationSettingsPanel(pushStatus, preferenceData.preferences, local) +
           '<section class="card pad"><h2 style="margin-top:0">Outbound texting</h2><p class="muted">Auto tries BlueBubbles iMessage first, then Telnyx SMS on timeout, failure, or unreachable Mac.</p><div class="toolbar"><button class="btn ' + (mode.mode === "auto" ? "primary" : "") + '" data-action="mode" data-mode="auto">Auto</button><button class="btn ' + (mode.mode === "imessage" ? "primary" : "") + '" data-action="mode" data-mode="imessage">iMessage only</button></div><div id="modeMsg" class="statusLine"></div></section>' +
           vendorPanel("title", vendors.title || {}) + vendorPanel("flood", vendors.flood || {}) +
@@ -6440,6 +6470,28 @@
         if ($("prefPreview")) $("prefPreview").value = preferenceData.preferences.previewLevel === "enhanced" ? "enhanced" : "generic";
         if ($("prefQuiet")) $("prefQuiet").value = preferenceData.preferences.quietHoursEnabled ? "1" : "0";
         await refreshAuditLog();
+      }
+      function accountSecurityPanel(user) {
+        var fullName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.name || user.username || "CRM user";
+        return '<section class="card pad"><h2 style="margin-top:0">My account</h2><div class="fieldGrid"><label>Name<input value="' + esc(fullName) + '" readonly></label><label>Username<input value="' + esc(user.username || "") + '" readonly></label><label>Email<input value="' + esc(user.email || "Not assigned") + '" readonly></label><label>Role<input value="' + esc(user.role || "user") + '" readonly></label></div><p class="muted">Every user can change their own password. Name, username, and email are managed by an administrator.</p><div class="fieldGrid"><label>Current password<input id="accountCurrentPassword" type="password" autocomplete="current-password"></label><label>New password<input id="accountNewPassword" type="password" autocomplete="new-password"></label><label>Confirm new password<input id="accountConfirmPassword" type="password" autocomplete="new-password"></label><div style="align-self:end"><button class="btn primary" data-action="change-own-password">Change password</button></div></div><div id="accountPasswordMsg" class="statusLine"></div></section>';
+      }
+      async function changeOwnPassword() {
+        var current = inputVal("accountCurrentPassword");
+        var password = inputVal("accountNewPassword");
+        var confirmPassword = inputVal("accountConfirmPassword");
+        if (!current) { status("accountPasswordMsg", "Enter your current password.", "warnText"); return; }
+        if (password.length < 12) { status("accountPasswordMsg", "Use at least 12 characters for the new password.", "warnText"); return; }
+        if (password !== confirmPassword) { status("accountPasswordMsg", "The new passwords do not match.", "warnText"); return; }
+        status("accountPasswordMsg", "Changing password...");
+        await json("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current: current, password: password })
+        });
+        $("accountCurrentPassword").value = "";
+        $("accountNewPassword").value = "";
+        $("accountConfirmPassword").value = "";
+        status("accountPasswordMsg", "Password changed.", "okText");
       }
       function auditPanel() {
         return '<section class="card pad" style="grid-column:1/-1"><div class="toolbar" style="justify-content:space-between"><div><h2 style="margin:0">Full audit log</h2><p class="muted" style="margin:4px 0 0">Every CRM write action with time, user, IP address, route, and result.</p></div><button class="btn small" data-action="refresh-audit">Refresh audit</button></div><div class="toolbar" style="margin-top:12px"><input id="auditSearch" placeholder="Search user, action, path, IP..." style="max-width:360px"><input id="auditSince" type="date"><button class="btn" data-action="refresh-audit">Apply</button></div><div id="auditWrap" class="tableWrap" style="margin-top:12px"><div class="spinner"></div></div></section>';
@@ -6772,6 +6824,8 @@
           else if (a === "admin-toggle-user") await toggleAdminUser(btn.dataset.id, btn.dataset.disabled === "1");
           else if (a === "admin-toggle-role") await toggleAdminRole(btn.dataset.id, btn.dataset.role);
           else if (a === "admin-save-permissions") await saveAdminPermissions(btn.dataset.id);
+          else if (a === "admin-save-identity") await saveAdminIdentity(btn.dataset.id);
+          else if (a === "change-own-password") await changeOwnPassword();
           else if (a === "cal-prev") shiftCalendarMonth(-1);
           else if (a === "cal-next") shiftCalendarMonth(1);
           else if (a === "cal-today") { state.calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime(); await loadCalendar(); }

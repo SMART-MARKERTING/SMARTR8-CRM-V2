@@ -73,6 +73,7 @@ import {
 } from "../services/email";
 import { getRecentResendInboundWebhookHits, selfTestResendWebhookSignature, storeReceivedEmail } from "../services/resendInbound";
 import { brand, renderBrandedEmailHtml, emailSignatureText, emailFooterText } from "../brand";
+import { personalizeSenderTemplate, senderIdentityForUser, SenderIdentity, userEmailIsSendable } from "../services/senderIdentity";
 import { unsubscribeUrl, isEmailUnsubscribed } from "../services/unsubscribe";
 import { getMeta, setMeta, listCallLog, dismissDashboardItem, clearDashboardKind, dashboardClearedAt, dismissedDashboardIds } from "../store/db";
 import { db } from "../store/db";
@@ -1911,12 +1912,15 @@ crmRouter.post("/api/reports/email", requirePass, async (req, res) => {
   const pdf = reportPdfBuffer(report);
   const subject = String(req.body?.subject || report.title);
   const body = String(req.body?.body || `Attached is the ${report.title}.`);
+  const sender = senderIdentityForUser(req.authUser);
   const results = [];
   for (const recipient of to) {
     const result = await sendEmail({
       to: recipient,
       subject,
-      text: body,
+      from: sender.email,
+      replyTo: sender.replyTo,
+      text: `${personalizeSenderTemplate(body, sender)}\n\n${emailSignatureText(sender)}`,
       attachments: [{ filename: `loangenius-report-${new Date(report.created_at).toISOString().slice(0, 10)}.pdf`, content: pdf.toString("base64") }],
     });
     results.push({ to: recipient, ...result });
@@ -2685,6 +2689,7 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
   // share a phone number (last-10-digit key). One number → one message per request.
   const sentPhones = new Set<string>();
   const owner = ownerScope(req);
+  const sender = senderIdentityForUser(req.authUser);
   const phoneKey = (p: string | null) => { const d = String(p || "").replace(/\D/g, ""); return d.length >= 10 ? d.slice(-10) : ""; };
   for (const id of ids) {
     const lead = getLead(id);
@@ -2694,7 +2699,7 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
     const pk = phoneKey(lead.phone);
     if (pk && sentPhones.has(pk)) { skipped++; note("duplicate number"); continue; }
     if ((lead.tags || []).some((t) => /opt[_-]?out|dnc|do[_-]?not[_-]?contact|^stop$/i.test(t))) { skipped++; note("opted out / DNC"); continue; }
-    const personalized = renderLeadMergeTemplate(message, lead);
+    const personalized = renderLeadMergeTemplate(message, lead, sender);
     const smsGate = await checkAutomatedSms(lead);
     if (!smsGate.allowed) {
       skipped++;
@@ -2705,7 +2710,7 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
         channel: "sms",
         body: personalized,
         status: `skipped:${smsGate.reason}`,
-        meta: { decision: smsGate, blast: true },
+        meta: { decision: smsGate, author: sender.username, sender_name: sender.name, blast: true },
       });
       continue;
     }
@@ -2718,7 +2723,7 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
         channel,
         body: personalized,
         status: result.ok ? `blast:${result.path}` : `failed:${result.path}`,
-        meta: { detail: result.detail, blast: true },
+        meta: { detail: result.detail, author: sender.username, sender_name: sender.name, blast: true },
       });
       if (result.ok) {
         if (pk) sentPhones.add(pk);
@@ -2736,9 +2741,10 @@ crmRouter.post("/api/leads/blast", requirePass, async (req, res) => {
   res.json({ ok: true, sent, skipped, failed, reasons });
 });
 
-function renderLeadMergeTemplate(template: string, lead: Lead): string {
+function renderLeadMergeTemplate(template: string, lead: Lead, sender?: SenderIdentity): string {
   const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "there";
-  return template
+  const personalized = sender ? personalizeSenderTemplate(template, sender) : template;
+  return personalized
     .replace(/\{\{\s*first_name\s*\}\}/gi, lead.first_name || "there")
     .replace(/\{\{\s*last_name\s*\}\}/gi, lead.last_name || "")
     .replace(/\{\{\s*name\s*\}\}/gi, name)
@@ -2776,11 +2782,12 @@ type LeadTextFollowupResult =
 async function sendLeadTextFollowup(
   lead: Lead,
   template: string,
+  sender: SenderIdentity,
   author?: string,
   blast = false,
 ): Promise<LeadTextFollowupResult> {
   if (!lead.phone) return { skipped: true, reason: "no phone" };
-  const message = renderLeadMergeTemplate(template, lead).trim();
+  const message = renderLeadMergeTemplate(template, lead, sender).trim();
   if (!message) return { skipped: true, reason: "empty message" };
   const smsGate = await checkAutomatedSms(lead);
   if (!smsGate.allowed) {
@@ -2873,9 +2880,10 @@ async function resolveLeadVoicemailAudioUrl(
   scriptTemplate: string,
   explicitAudioUrl: string,
   baseUrl: string,
+  sender: SenderIdentity,
 ): Promise<string | undefined> {
   if (explicitAudioUrl) return explicitAudioUrl;
-  const script = renderLeadMergeTemplate(scriptTemplate, lead).trim();
+  const script = renderLeadMergeTemplate(scriptTemplate, lead, sender).trim();
   if (!script) return undefined;
   try {
     return (await generateVoicemailAudio(script, { baseUrl })).url;
@@ -2897,6 +2905,7 @@ crmRouter.post("/api/leads/:id/voicemail-drop", requirePass, async (req, res) =>
   const textTemplate = (req.body?.text ?? "").toString().trim();
   const voicemailText = (req.body?.voicemailText ?? "").toString().trim();
   const audioUrlInput = (req.body?.audioUrl ?? "").toString().trim();
+  const sender = senderIdentityForUser(req.authUser);
   if (sendText && !textTemplate) {
     res.status(400).json({ error: "follow-up text is empty" });
     return;
@@ -2904,7 +2913,7 @@ crmRouter.post("/api/leads/:id/voicemail-drop", requirePass, async (req, res) =>
 
   let audioUrl: string | undefined;
   try {
-    audioUrl = await resolveLeadVoicemailAudioUrl(lead, voicemailText, audioUrlInput, requestPublicBase(req));
+    audioUrl = await resolveLeadVoicemailAudioUrl(lead, voicemailText, audioUrlInput, requestPublicBase(req), sender);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     return;
@@ -2914,7 +2923,7 @@ crmRouter.post("/api/leads/:id/voicemail-drop", requirePass, async (req, res) =>
   const voicemail = await startLeadVoicemailDrop(lead, leadActionAuthor(req), false, audioUrl);
   let text: LeadTextFollowupResult | null = null;
   if ("ok" in voicemail && sendText) {
-    text = await sendLeadTextFollowup(lead, textTemplate, leadActionAuthor(req), false);
+    text = await sendLeadTextFollowup(lead, textTemplate, sender, leadActionAuthor(req), false);
   }
 
   res.json({ ok: "ok" in voicemail && (!sendText || Boolean(text && "ok" in text)), voicemail, text });
@@ -2936,6 +2945,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
   const note = (k: string) => { reasons[k] = (reasons[k] || 0) + 1; };
   const dialedPhones = new Set<string>();
   const owner = ownerScope(req);
+  const sender = senderIdentityForUser(req.authUser);
 
   for (const id of ids) {
     const lead = getLead(id);
@@ -2948,7 +2958,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
 
     let audioUrl: string | undefined;
     try {
-      audioUrl = await resolveLeadVoicemailAudioUrl(lead, voicemailText, audioUrlInput, requestPublicBase(req));
+      audioUrl = await resolveLeadVoicemailAudioUrl(lead, voicemailText, audioUrlInput, requestPublicBase(req), sender);
     } catch (err) {
       failed++;
       note(`audio generation failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 220));
@@ -2961,7 +2971,7 @@ crmRouter.post("/api/leads/voicemail-blast", requirePass, async (req, res) => {
     if ("ok" in voicemail) {
       initiated++;
       if (sendText) {
-        const text = await sendLeadTextFollowup(lead, textTemplate, leadActionAuthor(req), true);
+        const text = await sendLeadTextFollowup(lead, textTemplate, sender, leadActionAuthor(req), true);
         if ("ok" in text) textSent++;
         else if ("skipped" in text) { textSkipped++; note(`text ${text.reason}`); }
         else { textFailed++; note(`text failed: ${text.error}`.slice(0, 220)); }
@@ -3002,6 +3012,7 @@ crmRouter.post("/api/leads/email-blast", requirePass, async (req, res) => {
   const note = (k: string) => { reasons[k] = (reasons[k] || 0) + 1; };
   const emailed = new Set<string>();
   const owner = ownerScope(req);
+  const sender = senderIdentityForUser(req.authUser);
 
   for (const id of ids) {
     const lead = getLead(id);
@@ -3014,10 +3025,10 @@ crmRouter.post("/api/leads/email-blast", requirePass, async (req, res) => {
     emailed.add(emailKey);
     if (isEmailUnsubscribed(lead)) { skipped++; note("email unsubscribed"); continue; }
 
-    const subject = renderLeadMergeTemplate(subjectTemplate, lead);
-    const message = renderLeadMergeTemplate(bodyTemplate, lead);
-    const { html, text } = buildBrandedEmail(message, unsubscribeUrl(lead.id));
-    const result = await sendEmail({ to: email, subject, html, text });
+    const subject = renderLeadMergeTemplate(subjectTemplate, lead, sender);
+    const message = renderLeadMergeTemplate(bodyTemplate, lead, sender);
+    const { html, text } = buildBrandedEmail(message, unsubscribeUrl(lead.id), sender);
+    const result = await sendEmail({ to: email, subject, from: sender.email, replyTo: sender.replyTo, html, text });
     logActivity(lead.id, {
       type: "email",
       direction: "outbound",
@@ -3025,7 +3036,7 @@ crmRouter.post("/api/leads/email-blast", requirePass, async (req, res) => {
       subject,
       body: message,
       status: result.ok ? "blast-sent" : `failed:${result.detail ?? "send failed"}`,
-      meta: { id: result.id, detail: result.detail, author: req.authUser?.username, blast: true },
+      meta: { id: result.id, detail: result.detail, author: sender.username, sender_name: sender.name, from: sender.email, blast: true },
     });
     if (result.ok) sent++;
     else failed++;
@@ -3411,23 +3422,25 @@ crmRouter.post("/api/leads/:id/calendar-invite", requirePass, async (req, res) =
   const cc = parseCc(body.cc_email || todo?.cc_email || "");
   const result = { email: "skipped", text: "skipped" };
   const author = leadActionAuthor(req);
+  const sender = senderIdentityForUser(req.authUser);
 
   if (via === "email" || via === "both") {
     if (!lead.email) result.email = "skipped:no email";
     else if (isEmailUnsubscribed(lead)) result.email = "skipped:unsubscribed";
     else if (!emailConfigured()) result.email = "skipped:email not configured";
     else {
-      const { html, text } = buildBrandedEmail(inviteBody, unsubscribeUrl(lead.id));
-      const sent = await sendEmail({ to: lead.email, subject: `Appointment: ${event.title}`, html, text, cc });
+      const personalizedInvite = personalizeSenderTemplate(inviteBody, sender);
+      const { html, text } = buildBrandedEmail(personalizedInvite, unsubscribeUrl(lead.id), sender);
+      const sent = await sendEmail({ to: lead.email, subject: `Appointment: ${event.title}`, from: sender.email, replyTo: sender.replyTo, html, text, cc });
       result.email = sent.ok ? "sent" : `failed:${sent.detail || "send failed"}`;
       logActivity(lead.id, {
         type: "email",
         direction: "outbound",
         channel: "email",
         subject: `Appointment: ${event.title}`,
-        body: inviteBody,
+        body: personalizedInvite,
         status: sent.ok ? "calendar-invite-sent" : result.email,
-        meta: { id: sent.id, detail: sent.detail, author, calendarInvite: true, links, cc: cc.length ? cc : undefined },
+        meta: { id: sent.id, detail: sent.detail, author, sender_name: sender.name, from: sender.email, calendarInvite: true, links, cc: cc.length ? cc : undefined },
       });
     }
   }
@@ -3629,7 +3642,8 @@ crmRouter.post("/api/leads/:id/message", requirePass, async (req, res) => {
     return;
   }
   try {
-    const message = renderLeadMergeTemplate(messageTemplate, lead);
+    const sender = senderIdentityForUser(req.authUser);
+    const message = renderLeadMergeTemplate(messageTemplate, lead, sender);
     const r = await sendOutbound({ phone: lead.phone, message, smsFrom: req.body?.from });
     const channel = r.path.startsWith("imessage") ? "imessage" : "sms";
     logActivity(lead.id, {
@@ -3638,7 +3652,7 @@ crmRouter.post("/api/leads/:id/message", requirePass, async (req, res) => {
       channel,
       body: message,
       status: r.ok ? r.path : `failed:${r.path}`,
-      meta: { detail: r.detail, author: req.body?.author },
+      meta: { detail: r.detail, author: sender.username, sender_name: sender.name },
     });
     res.json({ ok: r.ok, path: r.path, detail: r.detail });
   } catch (err) {
@@ -3691,7 +3705,13 @@ function parseCc(raw: unknown): string[] {
 }
 
 const MANUAL_INITIATED_EMAIL_CC = "mykoal@adaxahome.com";
-const REQUIRED_EMAIL_FROM_CHOICES = ["MDESHAZO@mykoal.com", "info@mykoal.com", "hello@mykoal.com"];
+const REQUIRED_EMAIL_FROM_CHOICES = [
+  "MDESHAZO@mykoal.com",
+  "info@mykoal.com",
+  "hello@mykoal.com",
+  "info@smartr8.com",
+  "hello@smartr8.com",
+];
 
 function withManualInitiatedCc(raw: unknown): string[] {
   const out = parseEmailList(raw);
@@ -3700,8 +3720,8 @@ function withManualInitiatedCc(raw: unknown): string[] {
   return out;
 }
 
-function emailFromChoices(): string[] {
-  const raw = [config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails, ...REQUIRED_EMAIL_FROM_CHOICES].filter(Boolean).join(",");
+function emailFromChoices(sender?: SenderIdentity): string[] {
+  const raw = [sender?.email, config.email.fromEmail, config.email.fromAliases, ...brand.sendingEmails, ...REQUIRED_EMAIL_FROM_CHOICES].filter(Boolean).join(",");
   const seen = new Set<string>();
   const out: string[] = [];
   for (const part of raw.split(/[,\n;]+/)) {
@@ -3716,11 +3736,11 @@ function emailFromChoices(): string[] {
   return out;
 }
 
-function selectedEmailFrom(raw: unknown): string | undefined {
+function selectedEmailFrom(raw: unknown, sender: SenderIdentity): string {
   const requested = String(raw || "").trim();
-  if (!requested) return undefined;
-  const allowed = emailFromChoices();
-  return allowed.some((item) => item.toLowerCase() === requested.toLowerCase()) ? requested : undefined;
+  if (!requested) return sender.email;
+  const allowed = emailFromChoices(sender);
+  return allowed.some((item) => item.toLowerCase() === requested.toLowerCase()) ? requested : sender.email;
 }
 
 function emailDomainsFromText(raw: unknown): string[] {
@@ -3740,6 +3760,10 @@ function configuredEmailDomains(): string[] {
         out.push(domain);
       }
     }
+  }
+  if (config.email.userDomain && !seen.has(config.email.userDomain)) {
+    seen.add(config.email.userDomain);
+    out.push(config.email.userDomain);
   }
   return out;
 }
@@ -3888,13 +3912,13 @@ function textFromHtml(html: string): string {
 }
 
 /** Wrap a plain-text body in the branded email shell (HTML + text variants). */
-function buildBrandedEmail(bodyText: string, unsubUrl: string): { html: string; text: string } {
+function buildBrandedEmail(bodyText: string, unsubUrl: string, sender?: SenderIdentity): { html: string; text: string } {
   const paragraphsHtml = bodyText
     .split("\n\n")
     .map((p) => `<p style="margin:0 0 16px;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
-  const html = renderBrandedEmailHtml({ bodyHtml: paragraphsHtml, unsubUrl });
-  const text = `${bodyText}\n\n${emailSignatureText()}${emailFooterText(unsubUrl)}`;
+  const html = renderBrandedEmailHtml({ bodyHtml: paragraphsHtml, unsubUrl, sender });
+  const text = `${bodyText}\n\n${emailSignatureText(sender)}${emailFooterText(unsubUrl, sender)}`;
   return { html, text };
 }
 
@@ -3918,7 +3942,8 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
   const bodyTemplate = (req.body?.body ?? "").toString().trim();
   const cc = withManualInitiatedCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
-  const from = selectedEmailFrom(req.body?.from);
+  const sender = senderIdentityForUser(req.authUser);
+  const from = selectedEmailFrom(req.body?.from, sender);
   const scheduledAt = scheduledAtFromBody(req.body);
   const attachments = requestAttachments(req, res);
   if (attachments === null) return;
@@ -3930,13 +3955,14 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     res.status(400).json({ error: "pass a body" });
     return;
   }
-  const subject = renderLeadMergeTemplate(subjectTemplate, lead);
-  const bodyText = renderLeadMergeTemplate(bodyTemplate, lead);
-  const { html, text } = buildBrandedEmail(bodyText, unsubscribeUrl(lead.id));
+  const subject = renderLeadMergeTemplate(subjectTemplate, lead, sender);
+  const bodyText = renderLeadMergeTemplate(bodyTemplate, lead, sender);
+  const { html, text } = buildBrandedEmail(bodyText, unsubscribeUrl(lead.id), sender);
   const r = await sendEmail({
     to: lead.email,
     subject,
     from,
+    replyTo: sender.replyTo,
     html,
     text,
     cc,
@@ -3952,7 +3978,7 @@ crmRouter.post("/api/leads/:id/email", requirePass, async (req, res) => {
     subject,
     body: bodyText,
     status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
-    meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: req.body?.author },
+    meta: { id: r.id, detail: r.detail, from, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: sender.username, sender_name: sender.name },
   });
   res.json({ ok: r.ok, id: r.id, detail: r.detail });
 });
@@ -3970,7 +3996,8 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const bodyText = (req.body?.body ?? "").toString().trim();
   const cc = withManualInitiatedCc(req.body?.cc);
   const bcc = parseEmailList(req.body?.bcc);
-  const from = selectedEmailFrom(req.body?.from);
+  const sender = senderIdentityForUser(req.authUser);
+  const from = selectedEmailFrom(req.body?.from, sender);
   const scheduledAt = scheduledAtFromBody(req.body);
   const attachments = requestAttachments(req, res);
   if (attachments === null) return;
@@ -4000,13 +4027,14 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
   const unsubUrl = lead
     ? unsubscribeUrl(lead.id)
     : `mailto:${config.email.fromEmail || "unsubscribe"}?subject=${encodeURIComponent("Unsubscribe")}`;
-  const renderedSubject = lead ? renderLeadMergeTemplate(subject, lead) : subject;
-  const renderedBody = lead ? renderLeadMergeTemplate(bodyText, lead) : bodyText;
-  const { html, text } = buildBrandedEmail(renderedBody, unsubUrl);
+  const renderedSubject = lead ? renderLeadMergeTemplate(subject, lead, sender) : personalizeSenderTemplate(subject, sender);
+  const renderedBody = lead ? renderLeadMergeTemplate(bodyText, lead, sender) : personalizeSenderTemplate(bodyText, sender);
+  const { html, text } = buildBrandedEmail(renderedBody, unsubUrl, sender);
   const r = await sendEmail({
     to,
     subject: renderedSubject,
     from,
+    replyTo: sender.replyTo,
     ...(template ? { template } : { html, text }),
     cc,
     bcc,
@@ -4022,7 +4050,7 @@ crmRouter.post("/api/email/send", requirePass, async (req, res) => {
       subject: renderedSubject,
       body: renderedBody,
       status: r.ok ? (scheduledAt ? "scheduled" : "sent") : `failed:${r.detail ?? "send failed"}`,
-      meta: { id: r.id, detail: r.detail, from: from || config.email.fromEmail, to, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: req.body?.author },
+      meta: { id: r.id, detail: r.detail, from, to, scheduled_at: scheduledAt || undefined, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, attachments: attachments.map((item) => ({ filename: item.filename })), author: sender.username, sender_name: sender.name },
     });
   }
   res.json({ ok: r.ok, id: r.id, detail: r.detail, leadId: lead?.id ?? null });
@@ -4038,7 +4066,8 @@ crmRouter.post("/api/email/batch-send", requirePass, async (req, res) => {
     res.status(400).json({ error: "pass { emails: [...] }" });
     return;
   }
-  const defaultFrom = selectedEmailFrom(req.body?.from);
+  const sender = senderIdentityForUser(req.authUser);
+  const defaultFrom = selectedEmailFrom(req.body?.from, sender);
   const emails = rows.slice(0, 100).map((row) => {
     const bodyText = cleanText(row.body || row.text);
     const template = parseResendTemplate(
@@ -4048,15 +4077,15 @@ crmRouter.post("/api/email/batch-send", requirePass, async (req, res) => {
           : undefined),
     );
     const unsubUrl = `mailto:${config.email.fromEmail || "unsubscribe"}?subject=${encodeURIComponent("Unsubscribe")}`;
-    const branded = template ? null : buildBrandedEmail(bodyText || cleanText(row.subject, "Email"), unsubUrl);
+    const branded = template ? null : buildBrandedEmail(personalizeSenderTemplate(bodyText || cleanText(row.subject, "Email"), sender), unsubUrl, sender);
     return {
       to: parseEmailList(row.to),
-      subject: cleanText(row.subject, "Email"),
-      from: selectedEmailFrom(row.from) || defaultFrom,
+      subject: personalizeSenderTemplate(cleanText(row.subject, "Email"), sender),
+      from: selectedEmailFrom(row.from, sender) || defaultFrom,
       ...(template ? { template } : { html: branded?.html, text: branded?.text }),
       cc: parseEmailList(row.cc),
       bcc: parseEmailList(row.bcc),
-      replyTo: parseEmailList(row.reply_to || row.replyTo),
+      replyTo: parseEmailList(row.reply_to || row.replyTo).length ? parseEmailList(row.reply_to || row.replyTo) : [sender.replyTo],
       topicId: cleanText(row.topic_id || row.topicId),
       tags: parseResendTags(row.tags),
       headers: row.headers && typeof row.headers === "object" ? row.headers as Record<string, string> : undefined,
@@ -4198,12 +4227,15 @@ crmRouter.post("/api/email/sent/:emailId/cancel", requirePass, async (req, res) 
   res.json({ ok: true, id: result.id, status: "canceled" });
 });
 
-crmRouter.get("/api/email/settings", requirePass, (_req, res) => {
+crmRouter.get("/api/email/settings", requirePass, (req, res) => {
+  const sender = senderIdentityForUser(req.authUser);
   res.json({
     ok: true,
-    from: emailFromChoices(),
-    defaultFrom: config.email.fromEmail || "",
-    defaultReplyTo: config.email.replyTo || "",
+    from: emailFromChoices(sender),
+    defaultFrom: sender.email,
+    defaultReplyTo: sender.replyTo,
+    userMailbox: userEmailIsSendable(req.authUser?.email) ? req.authUser?.email : null,
+    userDomain: config.email.userDomain,
     folders: [
       "General",
       "Borrower discussion",
