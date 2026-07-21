@@ -16,6 +16,7 @@ import {
   setRole,
   setPermissions,
   setIdentity,
+  setEmailSignature,
   startSessionImpersonation,
   stopSessionImpersonation,
   markSessionPortalVerified,
@@ -223,14 +224,31 @@ usersRouter.patch("/api/users/:id", adminUserLimiter, requireSuperAdmin, (req, r
   if (
     req.body?.firstName !== undefined || req.body?.first_name !== undefined ||
     req.body?.lastName !== undefined || req.body?.last_name !== undefined ||
+    req.body?.displayName !== undefined || req.body?.name !== undefined ||
     req.body?.username !== undefined || req.body?.email !== undefined
   ) {
     try {
       setIdentity(target.id, {
         firstName: req.body?.firstName ?? req.body?.first_name,
         lastName: req.body?.lastName ?? req.body?.last_name,
+        displayName: req.body?.displayName ?? req.body?.name,
         username: req.body?.username,
         email: req.body?.email,
+      });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
+      return;
+    }
+  }
+  if (req.body?.emailSignature !== undefined || req.body?.email_signature !== undefined) {
+    try {
+      setEmailSignature(target.id, req.body?.emailSignature ?? req.body?.email_signature);
+      recordAudit({
+        req,
+        action: "admin.user.signature.update",
+        statusCode: 200,
+        detail: `Updated email signature for ${target.username}`,
+        meta: { target_user_id: target.id, target_username: target.username },
       });
     } catch (err) {
       res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });

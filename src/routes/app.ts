@@ -48,12 +48,11 @@ appRouter.get("/app", (_req, res) => {
   res.sendFile(path.resolve(process.cwd(), "public", "console.html"));
 });
 
-// Bare domain (e.g. crm.smartr8.com/) serves the console DIRECTLY — no redirect — so the
-// impact.com site-verification <meta> is present at the root itself (verifiers that don't
-// follow 302s still find it), while humans still land straight on the CRM.
+// Canonicalize the bare CRM domain to the V2 application. The legacy /console route is
+// retained for integrations that still depend on it, but it is no longer primary navigation.
 appRouter.get("/", (_req, res) => {
-  res.set("Cache-Control", "no-store, must-revalidate");
-  res.sendFile(path.resolve(process.cwd(), "public", "console.html"));
+  res.set("Cache-Control", "no-store");
+  res.redirect(308, "/v2/");
 });
 
 // Serve the full console UI (Leads · Messages · Contacts · Dialer · Flows).

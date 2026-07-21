@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { config } from "../config";
 import { db } from "../store/db";
-import { createUser, generatedUserIdentity, isSuperAdmin, type User } from "./auth";
+import { createUser, generatedUserIdentity, isSuperAdmin, setEmailSignature, type User } from "./auth";
 import { getLead } from "./leads";
 import { storeReceivedEmail } from "./resendInbound";
-import { personalizeSenderTemplate, senderIdentityForUser, userEmailIsSendable } from "./senderIdentity";
+import { personalizeSenderTemplate, senderIdentityForOwner, senderIdentityForUser, userEmailIsSendable } from "./senderIdentity";
+import { emailSignatureText } from "../brand";
 
 test("SmartR8 identities use first initial plus last name", () => {
   const identity = generatedUserIdentity("Jane", "De Soto");
@@ -22,6 +23,7 @@ test("only the exact admin username has workspace-wide authority", () => {
     first_name: "Admin",
     last_name: "",
     email: "admin@example.com",
+    email_signature: null,
     role: "admin",
     permissions: [],
     disabled: false,
@@ -40,6 +42,7 @@ test("assigned user identity personalizes automation copy and sender mailbox", (
     first_name: "Jane",
     last_name: "Doe",
     email: `jdoe@${config.email.userDomain}`,
+    email_signature: "Jane Doe\nLoan Officer\n(555) 555-0100",
     role: "user",
     permissions: [],
     disabled: false,
@@ -48,9 +51,29 @@ test("assigned user identity personalizes automation copy and sender mailbox", (
   const sender = senderIdentityForUser(user);
   assert.equal(sender.name, "Jane Doe");
   assert.equal(sender.email, user.email);
+  assert.equal(sender.signature, user.email_signature);
   assert.equal(personalizeSenderTemplate("Hi {{first_name}}, Mykoal with Adaxa Home here. Reply to {{user_email}}.", sender),
     `Hi {{first_name}}, Jane with Adaxa Home here. Reply to ${user.email}.`);
   assert.equal(userEmailIsSendable(user.email), true);
+});
+
+test("user-owned automation sender resolution includes the assigned user's saved signature", (t) => {
+  const suffix = `${Date.now()}${Math.random().toString(16).slice(2)}`;
+  const user = createUser({
+    username: `automation-${suffix}`,
+    password: "automation-owner-test-password",
+    firstName: "Jamie",
+    lastName: `Owner${suffix}`,
+  });
+  const signature = `Jamie Owner\nMortgage Advisor\n${user.email}`;
+  setEmailSignature(user.id, signature);
+  const sender = senderIdentityForOwner(user.id);
+  assert.equal(sender.userId, user.id);
+  assert.equal(sender.email, user.email);
+  assert.equal(sender.signature, signature);
+  assert.equal(emailSignatureText(sender), signature);
+
+  t.after(() => db.prepare(`DELETE FROM users WHERE id = ?`).run(user.id));
 });
 
 test("Resend inbound records the personal mailbox without auto-assigning the contact", async (t) => {

@@ -332,6 +332,7 @@ db.exec(`
     first_name    TEXT,
     last_name     TEXT,
     email         TEXT,
+    email_signature TEXT,
     role          TEXT NOT NULL DEFAULT 'user',   -- 'admin' | 'user'
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
@@ -556,6 +557,7 @@ ensureColumn("users", "permissions", "permissions TEXT");
 ensureColumn("users", "first_name", "first_name TEXT");
 ensureColumn("users", "last_name", "last_name TEXT");
 ensureColumn("users", "email", "email TEXT");
+ensureColumn("users", "email_signature", "email_signature TEXT");
 ensureColumn("sessions", "impersonator_user_id", "impersonator_user_id TEXT");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL AND email <> ''`);
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal

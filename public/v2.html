@@ -1121,7 +1121,6 @@
       </div>
       <div class="navGroup">
         <button class="navBtn" data-nav="control"><span class="navIco">CP</span>Control Panel</button>
-        <a class="navBtn" href="/console" style="text-decoration:none"><span class="navIco">V1</span>Classic console</a>
       </div>
       <div class="navGroup">
         <button class="btn danger" data-action="logout" style="width:100%">Sign out</button>
@@ -1134,9 +1133,8 @@
         <div class="topTitleWrap"><h1 id="topPageTitle" class="topPageTitle">Dashboard</h1></div>
         <div class="globalSearchWrap"><input id="topSearch" class="globalSearch" type="search" autocomplete="off" placeholder="Search every contact, conversation, phone number..." /><div id="globalSearchResults" class="globalSearchResults hidden"></div></div>
         <div class="topActions">
-          <a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer" title="Open Content Studio">Content Studio</a>
           <button id="desktopPhoneButton" class="btn iconBtn desktopPhoneButton" title="Phone" aria-label="Phone" data-action="toggle-phone-drawer">&#9742;</button>
-          <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Notifications" data-action="notifications">!<span id="notificationCount" class="notifyDot hidden">0</span></button>
+          <button class="btn iconBtn notifyBtn" title="Notifications" aria-label="Open notifications" data-action="notifications"><span aria-hidden="true">&#128276;</span><span id="notificationCount" class="notifyDot hidden">0</span></button>
           <span id="msgModeBadge" class="badge blue">auto</span>
           <button id="themeToggle" class="btn small" data-action="toggle-theme">Dark</button>
           <span class="badge green">Signed In</span>
@@ -1254,6 +1252,8 @@
         globalSearchRows: [],
         emailFromOptions: [],
         emailDefaultFrom: "",
+        emailSignature: "",
+        emailSenderName: "",
         emailFolderOptions: ["General", "Borrower discussion", "Loan application", "Credit", "Title", "Flood", "Conditions", "Closing"],
         leadStageFilter: "",
         leadStageCountsCache: null,
@@ -1592,7 +1592,7 @@
         { id: "admin", label: "Admin / Sub-Accounts", icon: "AD", group: "Administration", desc: "Users, roles, passwords, and access." },
         { id: "settings", label: "Settings", icon: "ST", group: "Administration", desc: "Provider credentials, security, audit, and integrations." }
       ];
-      var defaultFavoritePages = ["social", "messages", "documents", "campaigns", "automations", "contacts", "email"];
+      var defaultFavoritePages = ["messages", "documents", "campaigns", "automations", "contacts", "email"];
       function itemByPage(page) {
         return controlItems.find(function (item) { return item.id === page; });
       }
@@ -1619,7 +1619,7 @@
       function loadFavoritePages() {
         try {
           var saved = JSON.parse(localStorage.getItem("lg_favorite_pages") || "null");
-          if (Array.isArray(saved)) return saved.filter(function (page) { return itemByPage(page) && canPage(page); });
+          if (Array.isArray(saved)) return saved.filter(function (page) { return page !== "social" && itemByPage(page) && canPage(page); });
         } catch (e) {}
         return defaultFavoritePages.filter(canPage);
       }
@@ -1651,7 +1651,7 @@
         });
       }
       function toggleFavoritePage(page) {
-        if (!itemByPage(page) || !canPage(page)) return;
+        if (page === "social" || !itemByPage(page) || !canPage(page)) return;
         if (isFavorite(page)) state.favoritePages = state.favoritePages.filter(function (p) { return p !== page; });
         else state.favoritePages.push(page);
         saveFavoritePages();
@@ -1660,8 +1660,9 @@
       }
       function controlTile(item) {
         var fav = isFavorite(item.id);
+        var favoriteButton = item.id === "social" ? '<span class="badge blue">Control Center</span>' : '<button class="btn small starBtn" data-action="toggle-favorite" data-page="' + esc(item.id) + '" aria-pressed="' + (fav ? "true" : "false") + '">' + (fav ? '&#9733;' : '&#9734;') + ' Favorite</button>';
         return '<section class="card pad controlTile" data-action="open-app" data-page="' + esc(item.id) + '">' +
-          '<div class="tileTop"><div><span class="navIco" style="margin-bottom:8px">' + esc(item.icon) + '</span><h3 style="margin:0">' + esc(item.label) + '</h3><p class="muted" style="margin:6px 0 0">' + esc(item.desc || "") + '</p></div><button class="btn small starBtn" data-action="toggle-favorite" data-page="' + esc(item.id) + '" aria-pressed="' + (fav ? "true" : "false") + '">' + (fav ? '&#9733;' : '&#9734;') + ' Favorite</button></div>' +
+          '<div class="tileTop"><div><span class="navIco" style="margin-bottom:8px">' + esc(item.icon) + '</span><h3 style="margin:0">' + esc(item.label) + '</h3><p class="muted" style="margin:6px 0 0">' + esc(item.desc || "") + '</p></div>' + favoriteButton + '</div>' +
           '<button class="btn primary" data-nav="' + esc(item.id) + '">Open</button>' +
         '</section>';
       }
@@ -2039,7 +2040,7 @@
 
       async function loadDashboard() {
         var dashboardCreate = isSuperAdminView() ? '<button class="btn primary" data-action="new-lead">Add contact</button>' : '';
-        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your SmartR8 workspace.", '<a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Content Studio</a>' + dashboardCreate + '<button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
+        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your SmartR8 workspace.", dashboardCreate + '<button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
         var loadErrors = [];
         var results = await Promise.all([
           json("/api/dashboard").catch(function () { loadErrors.push("dashboard"); return {}; }),
@@ -5553,6 +5554,8 @@
         var receivedList = results[5] || { emails: [] };
         state.emailFromOptions = settings.from || [];
         state.emailDefaultFrom = settings.defaultFrom || state.emailFromOptions[0] || "";
+        state.emailSignature = settings.signature || "";
+        state.emailSenderName = settings.senderName || (state.user && (state.user.name || state.user.username)) || "";
         state.emailFolderOptions = settings.folders || state.emailFolderOptions || [];
         state.emailMessageState = messageState.state || {};
         if ($("emailFromOptions")) $("emailFromOptions").innerHTML = (state.emailFromOptions || []).map(function (f) { return '<option value="' + esc(f) + '"></option>'; }).join("");
@@ -6144,7 +6147,7 @@
         var bcc = "";
         var from = state.emailDefaultFrom || (state.emailFromOptions && state.emailFromOptions[0]) || "";
         var subject = "Quick follow-up";
-        var body = "Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.\n\nBest,\nMykoal";
+        var body = "Hi {{first_name}},\n\nI wanted to follow up and see if you still want updated home-equity options.";
         if ((mode === "reply" || mode === "reply-all") && m) {
           to = m.direction === "inbound" ? emailFromText(m.from || "") : (m.email || m.to || "");
           if (mode === "reply-all") {
@@ -6165,6 +6168,7 @@
           '<div class="fieldGrid"><label>CC<input id="emailCc" value="' + esc(cc) + '" placeholder="optional@email.com"></label><label>BCC<input id="emailBcc" value="' + esc(bcc) + '" placeholder="hidden@email.com"></label></div>' +
           '<label>Schedule send (optional)<input id="emailScheduledAt" type="datetime-local"></label>' +
           '<label>Email body<textarea id="emailBody" rows="12">' + esc(body) + '</textarea></label>' +
+          '<label>Signature<textarea id="emailSignaturePreview" rows="6" readonly>' + esc(state.emailSignature || "") + '</textarea></label><div class="sub">Sending as ' + esc(state.emailSenderName || from) + '. An administrator manages this saved signature.</div>' +
           '<label>Attachments<input id="emailAttachmentInput" type="file" multiple data-action="email-attachments-select" data-scope="composer"></label><div class="sub">Up to 10 files, 9 MB combined.</div><div id="emailAttachmentDrafts" class="emailAttachmentDrafts"></div>' +
           '<div class="toolbar" style="justify-content:flex-end"><button class="btn" data-action="close-modal">Cancel</button><button class="btn primary" data-action="send-email-page">Send email</button></div><div id="emailPageMsg" class="statusLine"></div>');
       }
@@ -6474,7 +6478,7 @@
         $("adminUsersWrap").innerHTML = data.error ? '<div class="empty badText">' + esc(data.error) + '</div>' : (data.users || []).length ? data.users.map(function (u) {
           var viewAsButton = isSuperAdminView() && !u.disabled && u.role !== "admin" ? '<button class="btn small teal" data-action="admin-impersonate" data-id="' + esc(u.id) + '">View as user</button>' : '';
           return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.email || "No mailbox") + ' | ' + esc(permissionSummary(u)) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div>' +
-            '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:900">Account identity</summary><div class="fieldGrid" style="margin-top:10px"><label>First name<input id="adminFirst-' + esc(u.id) + '" value="' + esc(u.first_name || "") + '"></label><label>Last name<input id="adminLast-' + esc(u.id) + '" value="' + esc(u.last_name || "") + '"></label><label>Username<input id="adminUsername-' + esc(u.id) + '" value="' + esc(u.username || "") + '"></label><label>Email<input id="adminEmail-' + esc(u.id) + '" type="email" value="' + esc(u.email || "") + '"></label></div><button class="btn small primary" data-action="admin-save-identity" data-id="' + esc(u.id) + '" style="margin-top:10px">Save identity</button></details>' +
+            '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:900">Email identity &amp; signature</summary><div class="fieldGrid" style="margin-top:10px"><label>First name<input id="adminFirst-' + esc(u.id) + '" value="' + esc(u.first_name || "") + '"></label><label>Last name<input id="adminLast-' + esc(u.id) + '" value="' + esc(u.last_name || "") + '"></label><label>Display name<input id="adminDisplayName-' + esc(u.id) + '" value="' + esc(u.name || "") + '"></label><label>Username<input id="adminUsername-' + esc(u.id) + '" value="' + esc(u.username || "") + '"></label><label>Default sender email<input id="adminEmail-' + esc(u.id) + '" type="email" value="' + esc(u.email || "") + '"></label></div><label style="margin-top:10px">Email signature<textarea id="adminSignature-' + esc(u.id) + '" rows="7" placeholder="Name, title, phone, licensing, and contact details">' + esc(u.email_signature || "") + '</textarea></label><div class="sub" style="margin-top:6px">Manual emails and user-owned automations use this signature. Leave blank to use the approved company signature.</div><button class="btn small primary" data-action="admin-save-identity" data-id="' + esc(u.id) + '" style="margin-top:10px">Save email identity</button></details>' +
             '<details style="margin-top:10px" ' + (u.role === "admin" ? "" : "open") + '><summary style="cursor:pointer;font-weight:900">Feature access</summary>' + permissionCheckboxes(u.id, u.permissions || [], u.role) + '<button class="btn small primary" data-action="admin-save-permissions" data-id="' + esc(u.id) + '" style="margin-top:10px"' + (u.role === "admin" ? " disabled" : "") + '>Save permissions</button></details>' +
             '<div class="toolbar" style="margin-top:10px">' + viewAsButton + '<button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
         }).join("") : '<div class="empty">No users found.</div>';
@@ -6533,11 +6537,13 @@
           body: JSON.stringify({
             firstName: inputVal("adminFirst-" + id),
             lastName: inputVal("adminLast-" + id),
+            displayName: inputVal("adminDisplayName-" + id),
             username: inputVal("adminUsername-" + id),
-            email: inputVal("adminEmail-" + id)
+            email: inputVal("adminEmail-" + id),
+            emailSignature: inputVal("adminSignature-" + id)
           })
         });
-        showToast("User identity saved.");
+        showToast("User email identity and signature saved.");
         await refreshAdminPage();
       }
       async function saveAdminPermissions(id) {

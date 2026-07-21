@@ -7,6 +7,7 @@ export interface SenderIdentity extends EmailSenderProfile {
   username: string;
   email: string;
   replyTo: string;
+  signature: string;
 }
 
 function configuredAddresses(): Set<string> {
@@ -36,6 +37,7 @@ export function senderIdentityForUser(user: User | null | undefined): SenderIden
     lastName,
     email,
     replyTo: email || config.email.replyTo || config.email.fromEmail,
+    signature: String(user?.email_signature || "").trim(),
   };
 }
 

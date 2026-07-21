@@ -20,6 +20,7 @@ export interface User {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  email_signature?: string | null;
   role: Role;
   permissions: string[];
   disabled: boolean;
@@ -33,6 +34,7 @@ interface UserRow {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  email_signature: string | null;
   role: string;
   password_hash: string;
   password_salt: string;
@@ -51,6 +53,7 @@ function toUser(r: UserRow): User {
     first_name: r.first_name,
     last_name: r.last_name,
     email: r.email,
+    email_signature: r.email_signature,
     role: r.role === "admin" ? "admin" : "user",
     permissions: parseStoredPermissions(r.permissions, r.role),
     disabled: !!r.disabled,
@@ -192,6 +195,7 @@ export function createUser(opts: {
 export function setIdentity(userId: string, input: {
   firstName?: string;
   lastName?: string;
+  displayName?: string;
   username?: string;
   email?: string;
 }): User {
@@ -208,15 +212,24 @@ export function setIdentity(userId: string, input: {
   if (!validUsername(username)) throw new UserError("username can use letters, numbers, dots, dashes, and underscores");
   if (!validEmail(email)) throw new UserError("enter a valid email address");
   ensureIdentityAvailable(username, email, userId);
+  const displayName = cleanPersonName(input.displayName ?? `${firstName} ${lastName}`) || `${firstName} ${lastName}`;
   db.prepare(`UPDATE users SET username = ?, name = ?, first_name = ?, last_name = ?, email = ? WHERE id = ?`).run(
     username,
-    `${firstName} ${lastName}`,
+    displayName,
     firstName,
     lastName,
     email,
     userId,
   );
   log.info("user identity updated", { id: userId, username, email });
+  return getUser(userId)!;
+}
+
+export function setEmailSignature(userId: string, value: unknown): User {
+  if (!getUser(userId)) throw new UserError("user not found");
+  const signature = String(value || "").replace(/\r\n/g, "\n").trim().slice(0, 4000);
+  db.prepare(`UPDATE users SET email_signature = ? WHERE id = ?`).run(signature || null, userId);
+  log.info("user email signature updated", { id: userId, hasSignature: Boolean(signature) });
   return getUser(userId)!;
 }
 

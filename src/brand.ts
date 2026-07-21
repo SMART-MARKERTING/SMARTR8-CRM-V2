@@ -30,6 +30,7 @@ export interface EmailSenderProfile {
   firstName?: string;
   lastName?: string;
   email?: string;
+  signature?: string;
 }
 
 function senderProfile(sender?: EmailSenderProfile): EmailSenderProfile {
@@ -50,6 +51,9 @@ function phoneHref(num: string): string {
 /** CAN-SPAM email signature block (HTML). */
 export function emailSignatureHtml(sender?: EmailSenderProfile): string {
   const profile = senderProfile(sender);
+  if (profile.signature) {
+    return `<p style="margin-top:18px">${htmlEscape(profile.signature).replace(/\n/g, "<br>")}</p>`;
+  }
   return (
     `<p style="margin-top:18px">${htmlEscape(profile.name)}<br>` +
     `${brand.loOfficerTitle}, NMLS ${brand.nmlsLO}<br>` +
@@ -65,6 +69,7 @@ export function emailSignatureHtml(sender?: EmailSenderProfile): string {
 /** Plain-text signature variant. */
 export function emailSignatureText(sender?: EmailSenderProfile): string {
   const profile = senderProfile(sender);
+  if (profile.signature) return profile.signature;
   return (
     `${profile.name}\n` +
     `${brand.loOfficerTitle}, NMLS ${brand.nmlsLO}\n` +
@@ -119,6 +124,9 @@ export function renderBrandedEmailHtml(opts: {
 }): string {
   const { preheaderHtml = "", bodyHtml, ctaHtml = "", unsubUrl } = opts;
   const profile = senderProfile(opts.sender);
+  const signatureHtml = profile.signature
+    ? `<span style="font-weight:normal;color:#16243a;font-size:15px;line-height:1.6;">${htmlEscape(profile.signature).replace(/\n/g, "<br>")}</span>`
+    : `${htmlEscape(profile.name)}<br><span style="font-weight:normal;color:#666666;font-size:14px;line-height:1.5;">${brand.loOfficerTitle}, NMLS ${brand.nmlsLO}<br>${brand.companyName} NMLS ${brand.nmlsCompany}<br>${profile.email ? `${htmlEscape(profile.email)}<br>` : ""}${brand.address}</span>`;
   const officeHref = phoneHref(brand.officeNumber);
   const cellHref = phoneHref(brand.cellNumber);
   return (
@@ -144,12 +152,7 @@ export function renderBrandedEmailHtml(opts: {
     `Office: <a href="tel:${officeHref}" style="color:#E31B23;text-decoration:none;">${brand.officeNumber}</a>` +
     `</td></tr></table></td></tr>` +
     `<tr><td style="padding:18px 32px 6px;color:#16243a;font-size:15px;line-height:1.6;">` +
-    `<p style="margin:0;color:#13485A;font-weight:bold;font-size:16px;">${htmlEscape(profile.name)}</p>` +
-    `<p style="margin:2px 0 0;color:#666666;font-size:14px;line-height:1.5;">` +
-    `${brand.loOfficerTitle}, NMLS ${brand.nmlsLO}<br>` +
-    `${brand.companyName} NMLS ${brand.nmlsCompany}<br>` +
-    (profile.email ? `${htmlEscape(profile.email)}<br>` : "") +
-    `${brand.address}</p></td></tr>` +
+    `<p style="margin:0;color:#13485A;font-weight:bold;font-size:16px;line-height:1.5;">${signatureHtml}</p></td></tr>` +
     `<tr><td style="padding:16px 32px 24px;border-top:1px solid #eeeeee;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
     `<td valign="middle" style="padding-right:10px;"><img src="${EMAIL_EHO_URL}" alt="Equal Housing Opportunity" width="26" style="display:block;width:26px;height:auto;border:0;"></td>` +

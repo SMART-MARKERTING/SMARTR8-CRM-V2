@@ -4227,6 +4227,9 @@ crmRouter.get("/api/email/settings", requirePass, (req, res) => {
     from: emailFromChoices(sender),
     defaultFrom: sender.email,
     defaultReplyTo: sender.replyTo,
+    senderName: sender.name,
+    senderUsername: sender.username,
+    signature: sender.signature || emailSignatureText(sender),
     userMailbox: userEmailIsSendable(req.authUser?.email) ? req.authUser?.email : null,
     userDomain: config.email.userDomain,
     folders: [

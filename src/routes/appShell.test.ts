@@ -14,9 +14,9 @@ interface TestResponse {
   body: Buffer;
 }
 
-function get(port: number, requestPath: string): Promise<TestResponse> {
+function get(port: number, requestPath: string, headers: Record<string, string> = {}): Promise<TestResponse> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path: requestPath, method: "GET" }, (res) => {
+    const req = request({ host: "127.0.0.1", port, path: requestPath, method: "GET", headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       res.on("end", () => resolve({ status: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks) }));
@@ -40,7 +40,17 @@ test("V2 CRM links to the standalone Content Studio without embedding it", async
   assert.match(html, /<title>SmartR8 CRM<\/title>/);
   assert.match(html, /href="https:\/\/studio\.smartr8\.com"/);
   assert.match(html, /rel="noopener noreferrer"/);
+  assert.doesNotMatch(html, /class="btn studioLaunch"[^>]*>Content Studio<\/a>/);
+  assert.doesNotMatch(html, /Classic console/);
+  assert.match(html, /item\.id === "social" \? '<span class="badge blue">Control Center<\/span>'/);
   assert.doesNotMatch(html, /<iframe[^>]+studio\.smartr8\.com/i);
+});
+
+test("V2 header renders an accessible notification bell with the existing unread badge", async () => {
+  const html = await v2Shell();
+  assert.match(html, /aria-label="Open notifications"[^>]*data-action="notifications"/);
+  assert.match(html, /<span aria-hidden="true">&#128276;<\/span><span id="notificationCount"/);
+  assert.doesNotMatch(html, /data-action="notifications">!<span/);
 });
 
 test("V2 Apps exposes the separated CRM product areas", async () => {
@@ -75,7 +85,17 @@ test("V2 exposes self-service passwords and admin-managed structured identities"
   assert.match(html, /id="adminUserFirst"/);
   assert.match(html, /id="adminUserLast"/);
   assert.match(html, /data-action="admin-save-identity"/);
+  assert.match(html, /id="adminSignature-/);
+  assert.match(html, /emailSignature: inputVal\("adminSignature-" \+ id\)/);
   assert.match(html, /@smartr8\.com/);
+});
+
+test("email compose defaults to the signed-in sender and saved signature", async () => {
+  const html = await v2Shell();
+  assert.match(html, /state\.emailDefaultFrom = settings\.defaultFrom/);
+  assert.match(html, /state\.emailSignature = settings\.signature/);
+  assert.match(html, /id="emailSignaturePreview"[^>]*readonly/);
+  assert.match(html, /An administrator manages this saved signature/);
 });
 
 test("V2 persists a real light and dark palette", async () => {
@@ -184,6 +204,10 @@ test("V2 routes canonicalize only the exact application path and preserve raw qu
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("test server did not bind");
     const port = address.port;
+
+    const root = await get(port, "/", { Host: "crm.smartr8.com" });
+    assert.equal(root.status, 308);
+    assert.equal(root.headers.location, "/v2/");
 
     const bare = await get(port, "/v2");
     assert.equal(bare.status, 308);
