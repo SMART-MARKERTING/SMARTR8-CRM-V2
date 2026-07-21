@@ -44,6 +44,9 @@ frontend code or commit their real values to Git.
 - An unmatched fax remains in the Fax inbox until an admin files it to a lead.
 - Fax delivery and receipt events are shown in Fax activity, lead activity,
   notifications, and the audit trail.
+- Refreshing the Fax app reconciles non-final outbound records directly with
+  Telnyx. This repairs stale `queued` entries if a webhook was missed, while
+  signed webhooks remain the normal real-time update path.
 - Webhook event IDs are stored so Telnyx retries do not create duplicate files.
 
 ## Verification
@@ -59,3 +62,14 @@ frontend code or commit their real values to Git.
 Telnyx's API expects `connection_id`, `from`, `to`, and a PDF `media_url` for
 outbound sends. Successful initiation returns HTTP 202; final delivery is
 reported asynchronously through `fax.delivered` or `fax.failed`.
+
+## Webhook public key
+
+A webhook is Telnyx's signed server-to-server status notification. Sending can
+work without the public key, but the CRM cannot safely accept real-time
+`fax.delivered`, `fax.failed`, or inbound fax events without it.
+
+In Telnyx Mission Control, open **Keys & Credentials**, copy the account's
+**Public Key**, and save it in Render as `TELNYX_PUBLIC_KEY`. Do not paste the
+API key into this variable. The Fax API application's primary webhook URL must
+be `https://loangenius-v2.onrender.com/api/webhooks/telnyx/fax`.

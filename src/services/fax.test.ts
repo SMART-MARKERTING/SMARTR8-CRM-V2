@@ -50,6 +50,32 @@ test("outbound fax uses the dedicated application and an expiring CRM media URL"
   }
 });
 
+test("fax refresh reconciles a missed delivered webhook from the Telnyx API", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(input), "https://api.telnyx.com/v2/faxes/provider-fax-1");
+    assert.equal(init?.method, undefined);
+    return new Response(JSON.stringify({ data: { id: "provider-fax-1", status: "delivered", page_count: 3 } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const { getFaxRecord, listFaxRecords, reconcileFaxStatuses } = await import("./fax");
+    const queued = listFaxRecords().find((record) => record.provider_fax_id === "provider-fax-1");
+    assert.ok(queued);
+    assert.equal(queued.status, "queued");
+    const records = await reconcileFaxStatuses([queued]);
+    assert.equal(records[0].status, "delivered");
+    assert.equal(records[0].page_count, 3);
+    assert.ok(records[0].completed_at);
+    assert.equal(getFaxRecord(queued.id)?.status, "delivered");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("received fax is matched, stored in the lead Fax folder, and webhook retries are idempotent", async () => {
   const originalFetch = global.fetch;
   let downloads = 0;

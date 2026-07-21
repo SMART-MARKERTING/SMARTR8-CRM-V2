@@ -122,14 +122,83 @@ export function getFaxFilePath(record: FaxRecord): string | null {
 }
 
 export function faxConfiguration() {
+  const outboundConfigured = Boolean(config.telnyx.apiKey && config.fax.applicationId && config.fax.fromNumber);
+  const webhookConfigured = Boolean(config.telnyx.publicKey);
   return {
-    configured: Boolean(config.telnyx.apiKey && config.fax.applicationId && config.fax.fromNumber && config.telnyx.publicKey),
+    configured: outboundConfigured && webhookConfigured,
+    outboundConfigured,
+    webhookConfigured,
     apiKeySet: Boolean(config.telnyx.apiKey),
     publicKeySet: Boolean(config.telnyx.publicKey),
     applicationIdSet: Boolean(config.fax.applicationId),
     fromNumber: config.fax.fromNumber || null,
     webhookPath: "/api/webhooks/telnyx/fax",
   };
+}
+
+const TERMINAL_FAX_STATUSES = new Set(["delivered", "received", "failed", "canceled", "cancelled"]);
+
+function normalizedProviderStatus(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  const statuses: Record<string, string> = {
+    "media.processed": "media_processed",
+    "media.processing": "media_processing",
+    "media.processing.started": "media_processing",
+    "sending.started": "sending",
+    originated: "sending",
+    cancelled: "canceled",
+  };
+  return statuses[raw] || raw.replace(/\./g, "_");
+}
+
+/** Recover final delivery state when a Telnyx webhook was missed or rejected. */
+async function reconcileFaxRecord(record: FaxRecord): Promise<FaxRecord> {
+  if (!config.telnyx.apiKey || !record.provider_fax_id || record.direction !== "outbound" || TERMINAL_FAX_STATUSES.has(record.status)) {
+    return record;
+  }
+  try {
+    const response = await fetch(`${config.telnyx.apiBase}/v2/faxes/${encodeURIComponent(record.provider_fax_id)}`, {
+      headers: { Authorization: `Bearer ${config.telnyx.apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      log.warn("Telnyx fax status reconciliation failed", { faxId: record.id, statusCode: response.status });
+      return record;
+    }
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    const data = body.data && typeof body.data === "object" ? body.data as Record<string, unknown> : {};
+    const status = normalizedProviderStatus(data.status);
+    if (!status) return record;
+    const pageCount = Number.isFinite(Number(data.page_count)) ? Number(data.page_count) : record.page_count;
+    const failureReason = failureText(data.failure_reason || data.error);
+    const now = Date.now();
+    const completedAt = TERMINAL_FAX_STATUSES.has(status) ? (record.completed_at || now) : record.completed_at;
+    db.prepare(
+      `UPDATE fax_records
+          SET status = ?, page_count = ?, failure_reason = COALESCE(?, failure_reason),
+              updated_at = ?, completed_at = ?
+        WHERE id = ?`,
+    ).run(status, pageCount, failureReason, now, completedAt, record.id);
+    const updated = getFaxRecord(record.id) || record;
+    if (!TERMINAL_FAX_STATUSES.has(record.status) && TERMINAL_FAX_STATUSES.has(status)) {
+      const subject = status === "delivered" ? "Fax delivered" : status === "failed" ? "Fax failed" : "Fax canceled";
+      faxActivity(updated, subject, `${subject} to ${updated.to_number}${failureReason ? `: ${failureReason}` : ""}`, status, "Telnyx status sync");
+    }
+    return { ...record, ...updated };
+  } catch (error) {
+    log.warn("Telnyx fax status reconciliation error", { faxId: record.id, err: error instanceof Error ? error.message : String(error) });
+    return record;
+  }
+}
+
+export async function reconcileFaxStatuses(records: FaxRecord[], limit = 25): Promise<FaxRecord[]> {
+  const candidates = records
+    .filter((record) => record.direction === "outbound" && Boolean(record.provider_fax_id) && !TERMINAL_FAX_STATUSES.has(record.status))
+    .slice(0, Math.max(0, Math.min(limit, 25)));
+  if (!candidates.length || !config.telnyx.apiKey) return records;
+  const refreshed = await Promise.all(candidates.map((record) => reconcileFaxRecord(record)));
+  const byId = new Map(refreshed.map((record) => [record.id, record]));
+  return records.map((record) => byId.get(record.id) || record);
 }
 
 export function listFaxRecords(opts: { limit?: number; leadId?: string; ownerUserId?: string } = {}): FaxRecord[] {

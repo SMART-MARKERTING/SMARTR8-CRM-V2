@@ -16,6 +16,7 @@ import {
   getFaxRecordByMediaToken,
   handleFaxWebhook,
   listFaxRecords,
+  reconcileFaxStatuses,
   sendFax,
   type FaxRecord,
 } from "../services/fax";
@@ -118,7 +119,7 @@ faxRouter.get("/api/fax/status", (req, res) => {
   res.json({ ...cfg, webhookUrl: `${publicBase(req)}${cfg.webhookPath}` });
 });
 
-faxRouter.get("/api/fax", (req, res) => {
+faxRouter.get("/api/fax", async (req, res) => {
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
   const leadId = typeof req.query.leadId === "string" ? req.query.leadId.trim() : undefined;
   if (leadId && !canAccessLead(req, leadId)) {
@@ -126,7 +127,7 @@ faxRouter.get("/api/fax", (req, res) => {
     return;
   }
   const ownerUserId = req.authUser?.role === "admin" ? undefined : req.authUser?.id;
-  const records = listFaxRecords({ limit, leadId, ownerUserId });
+  const records = await reconcileFaxStatuses(listFaxRecords({ limit, leadId, ownerUserId }));
   res.json({ ok: true, records: records.map(faxView), config: faxConfiguration() });
 });
 

@@ -5385,7 +5385,13 @@
           if (!state.faxConfig.applicationIdSet) missing.push("Fax app ID");
           if (!state.faxConfig.publicKeySet) missing.push("webhook public key");
           if (!state.faxConfig.fromNumber) missing.push("fax number");
-          $("faxConfigLine").textContent = state.faxConfig.configured ? "Telnyx fax is configured" : "Setup needed: " + (missing.join(", ") || state.faxConfig.error || "provider unavailable");
+          if (state.faxConfig.configured) {
+            $("faxConfigLine").textContent = "Sending and live delivery updates are configured.";
+          } else if (state.faxConfig.outboundConfigured) {
+            $("faxConfigLine").textContent = "Sending is ready. Add the webhook public key for instant updates; Refresh checks Telnyx directly.";
+          } else {
+            $("faxConfigLine").textContent = "Setup needed: " + (missing.join(", ") || state.faxConfig.error || "provider unavailable");
+          }
           $("faxConfigLine").className = "sub " + (state.faxConfig.configured ? "okText" : "warnText");
         }
         renderFaxRecords();
@@ -5440,6 +5446,8 @@
         else $("faxTo").value += key;
       }
       async function sendFaxFromPage() {
+        var sendButton = document.querySelector('button[data-action="fax-send"]');
+        if (sendButton && sendButton.disabled) return;
         var to = inputVal("faxTo");
         var documentId = inputVal("faxDocument");
         var file = $("faxAttachment") && $("faxAttachment").files ? $("faxAttachment").files[0] : null;
@@ -5447,14 +5455,19 @@
         if (!documentId && !file) { status("faxSendMsg", "Choose an existing borrower PDF or upload one.", "warnText"); return; }
         if (file && !/\.pdf$/i.test(file.name || "")) { status("faxSendMsg", "Fax attachments must be PDF files.", "warnText"); return; }
         if (file && file.size > 10 * 1024 * 1024) { status("faxSendMsg", "Keep the PDF under 10 MB.", "warnText"); return; }
-        status("faxSendMsg", "Uploading and sending fax...");
-        var body = { to: to, leadId: state.faxSelectedLead ? state.faxSelectedLead.id : "", documentId: documentId };
-        if (!documentId && file) body.attachment = { filename: file.name, content: await fileAsBase64(file) };
-        var data = await json("/api/fax/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        status("faxSendMsg", "Fax queued. Delivery updates will appear on the right.", "okText");
-        if ($("faxAttachment")) $("faxAttachment").value = "";
-        if ($("faxDocument")) $("faxDocument").value = "";
-        await refreshFaxPage();
+        if (sendButton) { sendButton.disabled = true; sendButton.textContent = "Sending..."; }
+        try {
+          status("faxSendMsg", "Uploading and sending fax...");
+          var body = { to: to, leadId: state.faxSelectedLead ? state.faxSelectedLead.id : "", documentId: documentId };
+          if (!documentId && file) body.attachment = { filename: file.name, content: await fileAsBase64(file) };
+          await json("/api/fax/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          status("faxSendMsg", "Fax accepted by Telnyx. Delivery status will update automatically or on Refresh.", "okText");
+          if ($("faxAttachment")) $("faxAttachment").value = "";
+          if ($("faxDocument")) $("faxDocument").value = "";
+          await refreshFaxPage();
+        } finally {
+          if (sendButton && document.body.contains(sendButton)) { sendButton.disabled = false; sendButton.textContent = "Send fax"; }
+        }
       }
       async function openCurrentLeadFax() {
         if (!state.selectedLead) return;
