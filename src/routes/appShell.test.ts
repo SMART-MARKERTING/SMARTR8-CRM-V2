@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { request } from "node:http";
 import path from "node:path";
 import test from "node:test";
+import { Script } from "node:vm";
 import { runInNewContext } from "node:vm";
 import express from "express";
 import { appRouter } from "./app";
@@ -48,6 +49,23 @@ test("V2 Apps exposes the separated CRM product areas", async () => {
     assert.match(html, new RegExp(`label: "${label}"`));
   }
   assert.match(html, /groupOrder = \["Communication", "Sales & Operations", "Marketing & Growth", "Administration"\]/);
+});
+
+test("V2 inline application scripts remain syntactically valid", async () => {
+  const html = await v2Shell();
+  const scripts = Array.from(html.matchAll(/<script(?![^>]+\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi), (match) => match[1]);
+  assert.ok(scripts.length > 0);
+  for (const source of scripts) new Script(source);
+});
+
+test("dialers handle secure repair and terminal Telnyx states without exposing SDK internals", async () => {
+  const html = await v2Shell();
+  assert.match(html, /data-action="verify-repair-crm-line"/);
+  assert.match(html, /\/api\/auth\/portal-verify/);
+  assert.match(html, /Microphone access is blocked/);
+  assert.match(html, /CRM line ready\. Call ended\./);
+  assert.match(html, /preparePowerDialerCrmLine/);
+  assert.doesNotMatch(html, /setCrmLineStatus\("Call: " \+ st/);
 });
 
 test("V2 is an isolated installable PWA with explicit notification permission", async () => {
