@@ -14,6 +14,7 @@ import {
   setDisabled,
   setRole,
   setPermissions,
+  setIdentity,
   markSessionPortalVerified,
   seedAdminIfEmpty,
   primaryAdmin,
@@ -119,9 +120,12 @@ usersRouter.post("/api/users", adminUserLimiter, requireAdmin, (req, res) => {
   const username = (req.body?.username ?? "").toString();
   const password = (req.body?.password ?? "").toString();
   const name = (req.body?.name ?? "").toString();
+  const firstName = (req.body?.firstName ?? req.body?.first_name ?? "").toString();
+  const lastName = (req.body?.lastName ?? req.body?.last_name ?? "").toString();
+  const email = (req.body?.email ?? "").toString();
   const role: Role = req.body?.role === "admin" ? "admin" : "user";
   try {
-    const user = createUser({ username, password, name, role, permissions: req.body?.permissions });
+    const user = createUser({ username, password, name, firstName, lastName, email, role, permissions: req.body?.permissions });
     res.json({ ok: true, user });
   } catch (err) {
     res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
@@ -154,6 +158,23 @@ usersRouter.patch("/api/users/:id", adminUserLimiter, requireAdmin, (req, res) =
   if (target.id === me.id && (req.body?.disabled === true || req.body?.role === "user")) {
     res.status(400).json({ error: "you can't lock yourself out of admin" });
     return;
+  }
+  if (
+    req.body?.firstName !== undefined || req.body?.first_name !== undefined ||
+    req.body?.lastName !== undefined || req.body?.last_name !== undefined ||
+    req.body?.username !== undefined || req.body?.email !== undefined
+  ) {
+    try {
+      setIdentity(target.id, {
+        firstName: req.body?.firstName ?? req.body?.first_name,
+        lastName: req.body?.lastName ?? req.body?.last_name,
+        username: req.body?.username,
+        email: req.body?.email,
+      });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof UserError ? err.message : String(err) });
+      return;
+    }
   }
   if (typeof req.body?.disabled === "boolean") setDisabled(target.id, req.body.disabled);
   if (req.body?.role === "admin" || req.body?.role === "user") setRole(target.id, req.body.role);

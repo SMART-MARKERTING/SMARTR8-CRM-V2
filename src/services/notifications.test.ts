@@ -30,7 +30,8 @@ const previousTelnyxPublicKey = config.telnyx.publicKey;
 const previousBlueBubblesSecret = config.bluebubbles.webhookSecret;
 
 function user(name: string, role: "admin" | "user" = "user", permissions: string[] = ["dashboard", "messages", "email", "fax", "dialer", "settings"]) {
-  const created = createUser({ username: `${run}-${name}`, password: "notification-test-password", name, role, permissions });
+  const username = `${run}-${name}`.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  const created = createUser({ username, password: "notification-test-password", name, role, permissions });
   users.push(created.id);
   return created;
 }

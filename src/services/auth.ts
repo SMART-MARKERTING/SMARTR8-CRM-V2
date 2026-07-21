@@ -17,6 +17,9 @@ export interface User {
   id: string;
   username: string;
   name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
   role: Role;
   permissions: string[];
   disabled: boolean;
@@ -27,6 +30,9 @@ interface UserRow {
   id: string;
   username: string;
   name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
   role: string;
   password_hash: string;
   password_salt: string;
@@ -42,6 +48,9 @@ function toUser(r: UserRow): User {
     id: r.id,
     username: r.username,
     name: r.name,
+    first_name: r.first_name,
+    last_name: r.last_name,
+    email: r.email,
     role: r.role === "admin" ? "admin" : "user",
     permissions: parseStoredPermissions(r.permissions, r.role),
     disabled: !!r.disabled,
@@ -77,6 +86,13 @@ function getUserRowByUsername(username: string): UserRow | undefined {
   return db.prepare(`SELECT * FROM users WHERE username = ? COLLATE NOCASE`).get(username) as UserRow | undefined;
 }
 
+export function getUserByEmail(email: string): User | null {
+  const value = String(email || "").trim();
+  if (!value) return null;
+  const row = db.prepare(`SELECT * FROM users WHERE email = ? COLLATE NOCASE`).get(value) as UserRow | undefined;
+  return row ? toUser(row) : null;
+}
+
 /** First admin (oldest) — the owner of unassigned leads / legacy-passcode sessions. */
 export function primaryAdmin(): User | null {
   const r = db.prepare(`SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1`).get() as UserRow | undefined;
@@ -85,21 +101,84 @@ export function primaryAdmin(): User | null {
 
 export class UserError extends Error {}
 
-export function createUser(opts: { username: string; password: string; name?: string; role?: Role; permissions?: unknown }): User {
-  const username = opts.username.trim();
+function cleanPersonName(value: unknown): string {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function accountLocalPart(firstName: string, lastName: string): string {
+  const first = firstName.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]/g, "");
+  const last = lastName.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]/g, "");
+  if (!first || !last) return "";
+  return `${first[0]}${last}`.toLowerCase().slice(0, 64);
+}
+
+function validUsername(value: string): boolean {
+  return /^[A-Za-z0-9._-]{2,80}$/.test(value);
+}
+
+function validEmail(value: string): boolean {
+  const at = value.indexOf("@");
+  return at > 0 && at === value.lastIndexOf("@") && value.slice(at + 1).includes(".") && !/\s/.test(value);
+}
+
+function splitLegacyName(value: string): { firstName: string; lastName: string } {
+  const parts = cleanPersonName(value).split(" ").filter(Boolean);
+  return { firstName: parts.shift() || "", lastName: parts.join(" ") };
+}
+
+export function generatedUserIdentity(firstName: string, lastName: string): { username: string; email: string; name: string } {
+  const first = cleanPersonName(firstName);
+  const last = cleanPersonName(lastName);
+  const username = accountLocalPart(first, last);
+  if (!first || !last || !username) throw new UserError("first and last name are required");
+  return {
+    username,
+    email: `${username}@${config.email.userDomain || "smartr8.com"}`,
+    name: `${first} ${last}`,
+  };
+}
+
+function ensureIdentityAvailable(username: string, email: string, exceptUserId = ""): void {
+  const usernameRow = getUserRowByUsername(username);
+  if (usernameRow && usernameRow.id !== exceptUserId) throw new UserError("that username is taken");
+  const emailRow = db.prepare(`SELECT id FROM users WHERE email = ? COLLATE NOCASE`).get(email) as { id: string } | undefined;
+  if (emailRow && emailRow.id !== exceptUserId) throw new UserError("that email address is taken");
+}
+
+export function createUser(opts: {
+  username?: string;
+  password: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: Role;
+  permissions?: unknown;
+}): User {
+  const legacy = splitLegacyName(opts.name || "");
+  const firstName = cleanPersonName(opts.firstName || legacy.firstName);
+  const lastName = cleanPersonName(opts.lastName || legacy.lastName);
+  const generated = firstName && lastName ? generatedUserIdentity(firstName, lastName) : null;
+  const username = String(opts.username || generated?.username || "").trim().toLowerCase();
+  const email = String(opts.email || generated?.email || "").trim().toLowerCase();
   if (!username) throw new UserError("username is required");
+  if (!validUsername(username)) throw new UserError("username can use letters, numbers, dots, dashes, and underscores");
+  if (email && !validEmail(email)) throw new UserError("enter a valid email address");
   if (!opts.password || opts.password.length < 12) throw new UserError("password must be at least 12 characters");
-  if (getUserRowByUsername(username)) throw new UserError("that username is taken");
+  ensureIdentityAvailable(username, email);
   const id = crypto.randomUUID();
   const salt = crypto.randomBytes(16).toString("hex");
   const now = Date.now();
   db.prepare(
-    `INSERT INTO users (id, username, name, role, password_hash, password_salt, permissions, disabled, created_at)
-     VALUES (@id, @username, @name, @role, @hash, @salt, @permissions, 0, @now)`,
+    `INSERT INTO users (id, username, name, first_name, last_name, email, role, password_hash, password_salt, permissions, disabled, created_at)
+     VALUES (@id, @username, @name, @firstName, @lastName, @email, @role, @hash, @salt, @permissions, 0, @now)`,
   ).run({
     id,
     username,
-    name: opts.name?.trim() || null,
+    name: generated?.name || cleanPersonName(opts.name) || null,
+    firstName: firstName || null,
+    lastName: lastName || null,
+    email: email || null,
     role: opts.role === "admin" ? "admin" : "user",
     hash: hashPassword(opts.password, salt),
     salt,
@@ -108,6 +187,34 @@ export function createUser(opts: { username: string; password: string; name?: st
   });
   log.info("user created", { id, username, role: opts.role ?? "user" });
   return getUser(id)!;
+}
+
+export function setIdentity(userId: string, input: {
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  email?: string;
+}): User {
+  const current = getUser(userId);
+  if (!current) throw new UserError("user not found");
+  const firstName = cleanPersonName(input.firstName ?? current.first_name ?? "");
+  const lastName = cleanPersonName(input.lastName ?? current.last_name ?? "");
+  const generated = generatedUserIdentity(firstName, lastName);
+  const username = String(input.username || generated.username).trim().toLowerCase();
+  const email = String(input.email || generated.email).trim().toLowerCase();
+  if (!validUsername(username)) throw new UserError("username can use letters, numbers, dots, dashes, and underscores");
+  if (!validEmail(email)) throw new UserError("enter a valid email address");
+  ensureIdentityAvailable(username, email, userId);
+  db.prepare(`UPDATE users SET username = ?, name = ?, first_name = ?, last_name = ?, email = ? WHERE id = ?`).run(
+    username,
+    `${firstName} ${lastName}`,
+    firstName,
+    lastName,
+    email,
+    userId,
+  );
+  log.info("user identity updated", { id: userId, username, email });
+  return getUser(userId)!;
 }
 
 export function setPassword(userId: string, password: string): void {

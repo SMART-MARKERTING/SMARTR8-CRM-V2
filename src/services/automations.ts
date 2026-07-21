@@ -12,6 +12,7 @@ import { checkAutomatedSms, withinCallingHours } from "./compliance";
 import { smsWindowForTz } from "../util/areaCodeTz";
 import { signToken } from "../util/token";
 import { brand, emailSignatureText, emailFooterText, renderBrandedEmailHtml } from "../brand";
+import { personalizeSenderTemplate, senderIdentityForOwner, SenderIdentity } from "./senderIdentity";
 import { CAMPAIGNS, REMARKETING, campaignToSteps } from "./campaigns";
 import { logMessage } from "./ghl";
 
@@ -575,8 +576,9 @@ function renderTemplateValue(key: string, value: unknown): string {
   }).format(numeric);
 }
 
-function render(tpl: string | undefined, lead: Lead): string {
+function render(tpl: string | undefined, lead: Lead, sender: SenderIdentity): string {
   if (!tpl) return "";
+  const personalized = personalizeSenderTemplate(tpl, sender);
   const custom = (lead.custom ?? {}) as Record<string, unknown>;
   const vars: Record<string, string> = {
     first_name: lead.first_name ?? "",
@@ -585,7 +587,7 @@ function render(tpl: string | undefined, lead: Lead): string {
     email: lead.email ?? "",
     phone: lead.phone ?? "",
   };
-  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => {
+  return personalized.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => {
     if (Object.prototype.hasOwnProperty.call(vars, key)) return vars[key] ?? "";
     return renderTemplateValue(key, custom[key]);
   });
@@ -599,6 +601,7 @@ type StepOutcome =
   | { status: "reschedule"; runAt: number; detail: string };
 
 async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise<StepOutcome> {
+  const sender = senderIdentityForOwner(lead.owner_user_id);
   switch (step.type) {
     case "wait":
       return { status: "done" };
@@ -625,16 +628,16 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
       if (!lead.email) return { status: "skipped", detail: "lead has no email" };
       if (lead.email_unsubscribed) return { status: "skipped", detail: "email unsubscribed" };
       if (!emailConfigured()) return { status: "skipped", detail: "email not configured" };
-      const subject = render(step.subject, lead) || `A note from ${"Mykoal DeShazo"}`;
+      const subject = render(step.subject, lead, sender) || `A note from ${sender.name}`;
       const unsubUrl = `${PUBLIC_BASE}/unsubscribe?lead=${lead.id}&t=${signToken(lead.id)}`;
-      const bodyHtml = render(step.html, lead);
-      const bodyText = render(step.text, lead);
+      const bodyHtml = render(step.html, lead, sender);
+      const bodyText = render(step.text, lead, sender);
       const ctaHtml = step.ctaLabel
         ? `<p style="margin:18px 0"><a href="${step.ctaUrl || PUBLIC_BASE}" style="background:#1f9d55;color:#fff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600">${step.ctaLabel}</a></p>`
         : "";
       const ctaText = step.ctaLabel ? `\n\n${step.ctaLabel}${step.ctaUrl ? `: ${step.ctaUrl}` : ""}` : "";
       const preheader = step.preheader
-        ? `<span style="display:none;max-height:0;overflow:hidden;opacity:0">${render(step.preheader, lead)}</span>`
+        ? `<span style="display:none;max-height:0;overflow:hidden;opacity:0">${render(step.preheader, lead, sender)}</span>`
         : "";
       const paragraphsHtml = bodyHtml
         .split("\n\n")
@@ -643,9 +646,9 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
       // Branded shell (logo, contact box, signature, EHO + CAN-SPAM footer) wraps the
       // per-step copy, so every drip email — including the day-0 welcome — looks identical
       // to the smartr8.com transactional email instead of a plain text block.
-      const html = renderBrandedEmailHtml({ preheaderHtml: preheader, bodyHtml: paragraphsHtml, ctaHtml, unsubUrl });
-      const text = `${bodyText}${ctaText}\n\n${emailSignatureText()}${emailFooterText(unsubUrl)}`;
-      const r = await sendEmail({ to: lead.email, subject, html, text });
+      const html = renderBrandedEmailHtml({ preheaderHtml: preheader, bodyHtml: paragraphsHtml, ctaHtml, unsubUrl, sender });
+      const text = `${bodyText}${ctaText}\n\n${emailSignatureText(sender)}${emailFooterText(unsubUrl, sender)}`;
+      const r = await sendEmail({ to: lead.email, subject, from: sender.email, replyTo: sender.replyTo, html, text });
       logActivity(lead.id, {
         type: "email",
         direction: "outbound",
@@ -653,14 +656,14 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
         subject,
         body: text || html || "",
         status: r.ok ? "sent" : "failed",
-        meta: { id: r.id, detail: r.detail },
+        meta: { id: r.id, detail: r.detail, author: sender.username, sender_name: sender.name, from: sender.email },
       });
       return r.ok ? { status: "done", detail: r.id } : { status: "skipped", detail: r.detail ?? "send failed" };
     }
 
     case "send_text": {
       if (!lead.phone) return { status: "skipped", detail: "lead has no phone" };
-      const message = render(step.message, lead);
+      const message = render(step.message, lead, sender);
       if (!message) return { status: "skipped", detail: "empty message" };
       const smsGate = await checkAutomatedSms(lead);
       if (!smsGate.allowed) {
@@ -670,7 +673,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
           channel: "sms",
           body: message,
           status: `skipped:${smsGate.reason}`,
-          meta: { decision: smsGate, automation: true },
+          meta: { decision: smsGate, automation: true, author: sender.username, sender_name: sender.name },
         });
         return { status: "skipped", detail: smsGate.reason || "blocked by SMS eligibility" };
       }
@@ -695,7 +698,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
           channel,
           body: message,
           status: r.ok ? r.path : `failed:${r.path}`,
-          meta: { detail: r.detail },
+          meta: { detail: r.detail, automation: true, author: sender.username, sender_name: sender.name },
         });
       } catch (err) {
         log.warn("send_text: post-send logActivity failed (not retrying send)", { leadId: lead.id, err: String(err) });
@@ -713,7 +716,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
 
     case "voicemail_drop": {
       if (!lead.phone) return { status: "skipped", detail: "lead has no phone" };
-      const renderedScript = render(step.voicemailText, lead).trim();
+      const renderedScript = render(step.voicemailText, lead, sender).trim();
       let audioUrl = (step.voicemailAudioUrl || "").trim() || undefined;
       if (renderedScript) {
         try {
@@ -725,7 +728,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
             channel: "voice",
             body: "Voicemail drop not placed",
             status: "skipped:elevenlabs",
-            meta: { error: String(err) },
+            meta: { error: String(err), automation: true, author: sender.username, sender_name: sender.name },
           });
           return { status: "skipped", detail: `ElevenLabs audio failed: ${String(err)}` };
         }
@@ -749,9 +752,9 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
           channel: "voice",
           body: `Voicemail drop initiated to ${lead.phone}`,
           status: "initiated",
-          meta: { ccid: r.ccid, audioUrl: resolvedAudioUrl || undefined },
+          meta: { ccid: r.ccid, audioUrl: resolvedAudioUrl || undefined, automation: true, author: sender.username, sender_name: sender.name },
         });
-        const followup = render(step.followupText || step.message, lead).trim();
+        const followup = render(step.followupText || step.message, lead, sender).trim();
         if (followup) {
           const smsGate = await checkAutomatedSms(lead);
           if (!smsGate.allowed) {
@@ -762,7 +765,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
                 channel: "sms",
                 body: followup,
                 status: `skipped:${smsGate.reason}`,
-                meta: { decision: smsGate, voicemailFollowup: true },
+                meta: { decision: smsGate, voicemailFollowup: true, automation: true, author: sender.username, sender_name: sender.name },
               });
             } catch (err) {
               log.warn("voicemail_drop: follow-up skip logActivity failed", { leadId: lead.id, err: String(err) });
@@ -777,7 +780,7 @@ async function executeStep(lead: Lead, step: Step, bypassHours = false): Promise
                 channel,
                 body: followup,
                 status: sr.ok ? "voicemail-followup-sent" : `failed:${sr.path}`,
-                meta: { detail: sr.detail, voicemailFollowup: true, decision: smsGate },
+                meta: { detail: sr.detail, voicemailFollowup: true, decision: smsGate, automation: true, author: sender.username, sender_name: sender.name },
               });
             } catch (err) {
               log.warn("voicemail_drop: follow-up logActivity failed (not retrying voicemail)", { leadId: lead.id, err: String(err) });

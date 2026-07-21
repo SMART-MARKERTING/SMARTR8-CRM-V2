@@ -3,7 +3,8 @@ import type { Request, Response } from "express";
 import { config } from "../config";
 import { log } from "../logger";
 import { db } from "../store/db";
-import { createLead, findLead, logActivity } from "./leads";
+import { createLead, findLead, logActivity, updateLead } from "./leads";
+import { getUserByEmail } from "./auth";
 import { retrieveReceivedEmail, type ResendReceivedEmail } from "./email";
 import { createNotificationEvent } from "./notifications";
 
@@ -245,18 +246,25 @@ export async function storeReceivedEmail(
     return { ok: true, duplicate: true, emailId: emailId || null };
   }
 
-  const lead = findLead({ email: fromEmail }) || createLead({
-    name: displayName || fromEmail,
-    email: fromEmail,
-    source: "resend-inbound",
-    contact_only: true,
-    tags: ["email inbound"],
-  });
+  const receivedFor = addressList(data.received_for).length ? addressList(data.received_for) : addressList(data.to);
+  const mailboxOwner = receivedFor
+    .map((address) => getUserByEmail(emailFromAddress(address)))
+    .find((user) => Boolean(user)) || null;
+  let lead = findLead({ email: fromEmail });
+  if (!lead) {
+    lead = createLead({
+      name: displayName || fromEmail,
+      email: fromEmail,
+      source: "resend-inbound",
+      contact_only: true,
+      tags: ["email inbound"],
+    });
+  }
+  if (mailboxOwner && !lead.owner_user_id) lead = updateLead(lead.id, { owner_user_id: mailboxOwner.id }) || lead;
   const subject = asString(data.subject) || "(no subject)";
   const text = asString(data.text);
   const html = asString(data.html);
   const body = text || (html && !html.startsWith("data:") ? stripHtml(html) : "") || "Inbound email received via Resend.";
-  const receivedFor = addressList(data.received_for).length ? addressList(data.received_for) : addressList(data.to);
   const activity = logActivity(lead.id, {
     type: "email",
     direction: "inbound",
@@ -274,6 +282,8 @@ export async function storeReceivedEmail(
       cc: addressList(data.cc),
       bcc: addressList(data.bcc),
       received_for: receivedFor,
+      mailbox_owner_user_id: mailboxOwner?.id || null,
+      mailbox_owner_email: mailboxOwner?.email || null,
       attachments: Array.isArray(data.attachments) ? data.attachments : [],
       raw: data.raw || null,
       html: html || null,

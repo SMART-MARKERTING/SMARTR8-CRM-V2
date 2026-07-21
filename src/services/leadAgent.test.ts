@@ -63,8 +63,8 @@ test("routing selects the first matching active owner", () => {
   const previous = config.leadAgent.routingRulesJson;
   config.leadAgent.routingRulesJson = JSON.stringify([{ state: "AZ", category: "HELOC", owner: "az-owner" }]);
   const users: User[] = [
-    { id: "admin", username: "admin", name: "Admin", role: "admin", permissions: [], disabled: false, created_at: 1 },
-    { id: "owner-1", username: "az-owner", name: "Arizona Owner", role: "user", permissions: [], disabled: false, created_at: 2 },
+    { id: "admin", username: "admin", name: "Admin", first_name: "Admin", last_name: null, email: null, role: "admin", permissions: [], disabled: false, created_at: 1 },
+    { id: "owner-1", username: "az-owner", name: "Arizona Owner", first_name: "Arizona", last_name: "Owner", email: "aowner@smartr8.com", role: "user", permissions: [], disabled: false, created_at: 2 },
   ];
   try {
     assert.equal(recommendOwner(lead(), users)?.id, "owner-1");

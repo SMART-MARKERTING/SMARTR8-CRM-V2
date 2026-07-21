@@ -329,6 +329,9 @@ db.exec(`
     id            TEXT PRIMARY KEY,
     username      TEXT NOT NULL,
     name          TEXT,
+    first_name    TEXT,
+    last_name     TEXT,
+    email         TEXT,
     role          TEXT NOT NULL DEFAULT 'user',   -- 'admin' | 'user'
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
@@ -544,6 +547,10 @@ ensureColumn("leads", "whatsapp_last_inbound_at", "whatsapp_last_inbound_at INTE
 ensureColumn("leads", "whatsapp_last_outbound_at", "whatsapp_last_outbound_at INTEGER");
 ensureColumn("leads", "preferred_channel", "preferred_channel TEXT");
 ensureColumn("users", "permissions", "permissions TEXT");
+ensureColumn("users", "first_name", "first_name TEXT");
+ensureColumn("users", "last_name", "last_name TEXT");
+ensureColumn("users", "email", "email TEXT");
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL AND email <> ''`);
 // Timeline items are recoverable too. A non-null deleted_at hides them from the normal
 // activity feed but keeps them available in the Deleted workspace.
 ensureColumn("activities", "deleted_at", "deleted_at INTEGER");
