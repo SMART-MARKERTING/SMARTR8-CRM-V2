@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { config } from "../config";
 import { log } from "../logger";
 import { db } from "../store/db";
-import { createLead, findLead, logActivity, updateLead } from "./leads";
+import { createLead, findLead, logActivity } from "./leads";
 import { getUserByEmail } from "./auth";
 import { retrieveReceivedEmail, type ResendReceivedEmail } from "./email";
 import { createNotificationEvent } from "./notifications";
@@ -260,7 +260,6 @@ export async function storeReceivedEmail(
       tags: ["email inbound"],
     });
   }
-  if (mailboxOwner && !lead.owner_user_id) lead = updateLead(lead.id, { owner_user_id: mailboxOwner.id }) || lead;
   const subject = asString(data.subject) || "(no subject)";
   const text = asString(data.text);
   const html = asString(data.html);

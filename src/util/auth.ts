@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { getSessionUser, adminFromPasscode, isSessionPortalVerified, User } from "../services/auth";
+import { getSessionContext, getSessionUser, adminFromPasscode, isSessionPortalVerified, isSuperAdmin, User } from "../services/auth";
 import { featureForRequest, userHasFeature } from "../services/permissions";
 
 // Attach the authenticated user to the request for downstream handlers (lead scoping, etc.).
@@ -8,6 +8,7 @@ declare global {
   namespace Express {
     interface Request {
       authUser?: User;
+      impersonatorUser?: User;
     }
   }
 }
@@ -35,8 +36,8 @@ export function tokenFrom(req: Request): string | undefined {
 export function resolveUser(req: Request): User | null {
   const token = tokenFrom(req);
   if (token) {
-    const u = getSessionUser(token);
-    if (u) return u;
+    const context = getSessionContext(token);
+    if (context) return context.user;
   }
   const provided =
     req.get("x-app-passcode");
@@ -49,12 +50,15 @@ export function resolveUser(req: Request): User | null {
  * many existing call sites keep working — it now accepts session tokens too.)
  */
 export function checkPass(req: Request, res: Response): boolean {
-  const user = resolveUser(req);
+  const token = tokenFrom(req);
+  const context = token ? getSessionContext(token) : null;
+  const user = context?.user || resolveUser(req);
   if (!user) {
     res.status(401).json({ error: "sign in required" });
     return false;
   }
   req.authUser = user;
+  req.impersonatorUser = context?.impersonator || undefined;
   return true;
 }
 
@@ -78,6 +82,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   if (!checkPass(req, res)) return;
   if (req.authUser?.role !== "admin") {
     res.status(403).json({ error: "admin only" });
+    return;
+  }
+  next();
+}
+
+/** The single username `admin` account owns workspace-wide assignment and user-preview controls. */
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!checkPass(req, res)) return;
+  if (!isSuperAdmin(req.authUser) || req.impersonatorUser) {
+    res.status(403).json({ error: "super admin only" });
     return;
   }
   next();

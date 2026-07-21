@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { config } from "../config";
 import { db } from "../store/db";
-import { getUser, listUsers, type User } from "./auth";
+import { getUser, isSuperAdmin, listUsers, type User } from "./auth";
 import { userHasFeature } from "./permissions";
 
 export type NotificationKind =
@@ -217,7 +217,7 @@ function configuredDefaultUser(users: User[]): User | null {
 function userCanReceive(user: User | null | undefined, feature: string | null, leadOwnerId: string | null): user is User {
   if (!user || user.disabled) return false;
   if (feature && !userHasFeature(user, feature)) return false;
-  return user.role === "admin" || !leadOwnerId || user.id === leadOwnerId;
+  return isSuperAdmin(user) || Boolean(leadOwnerId && user.id === leadOwnerId);
 }
 
 export interface NotificationRecipient {
@@ -246,20 +246,16 @@ export function resolveNotificationRecipients(input: {
   const lead = input.leadId
     ? db.prepare(`SELECT id, owner_user_id FROM leads WHERE id = ? AND deleted_at IS NULL`).get(input.leadId) as { id: string; owner_user_id: string | null } | undefined
     : undefined;
-  let leadOwnerId = lead?.owner_user_id || null;
+  const leadOwnerId = lead?.owner_user_id || null;
   let selected = leadOwnerId ? users.find((user) => user.id === leadOwnerId) || null : null;
   if (!userCanReceive(selected, feature, leadOwnerId)) selected = null;
 
   const fallback = configuredDefaultUser(users);
   if (!selected && fallback && !fallback.disabled) {
-    if (lead && !leadOwnerId && fallback.role !== "admin") {
-      db.prepare(`UPDATE leads SET owner_user_id = ?, updated_at = ? WHERE id = ? AND owner_user_id IS NULL`).run(fallback.id, now, lead.id);
-      leadOwnerId = fallback.id;
-    }
     if (userCanReceive(fallback, feature, leadOwnerId)) selected = fallback;
   }
   if (!selected) {
-    selected = users.find((user) => user.role === "admin" && userCanReceive(user, feature, leadOwnerId)) || null;
+    selected = users.find((user) => isSuperAdmin(user) && userCanReceive(user, feature, leadOwnerId)) || null;
   }
   if (!selected) return [];
 

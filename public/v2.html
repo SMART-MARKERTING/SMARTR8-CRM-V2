@@ -969,6 +969,118 @@
       .cols3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .metric b { font-size: 30px; }
     }
+
+    /* The dark palette is intentionally declared after every responsive rule so
+       desktop and mobile surfaces use the same persisted appearance setting. */
+    body.theme-dark {
+      --bg: #0b1220;
+      --panel: #111a2b;
+      --line: #2a3850;
+      --text: #eef4ff;
+      --muted: #9aabc1;
+      --soft: #19253a;
+      --nav: #0b1323;
+      --navText: #bdc9db;
+      --field: #0e1829;
+      --fieldLine: #35455e;
+      --button: #172238;
+      --hover: #202e45;
+      --item: #111a2b;
+      --empty: #0e1829;
+      --tableLine: #26344a;
+      --blue: #62a0ff;
+      --blueStrong: #3d83f7;
+      --blueSoft: #172d50;
+      --teal: #2dd4bf;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #fb7185;
+      --purple: #c084fc;
+      --shadow: 0 12px 34px rgba(0, 0, 0, .34);
+      color-scheme: dark;
+    }
+    body.theme-dark,
+    body.theme-dark .app,
+    body.theme-dark .content { background: var(--bg); color: var(--text); }
+    body.theme-dark .side { background: var(--nav); border-right-color: var(--line); box-shadow: 8px 0 30px rgba(0,0,0,.12); }
+    body.theme-dark .side strong { color: var(--text); }
+    body.theme-dark .side .sub,
+    body.theme-dark .side small { color: var(--muted); }
+    body.theme-dark .navBtn { color: var(--navText); }
+    body.theme-dark .navBtn:hover { background: var(--hover); color: var(--text); }
+    body.theme-dark .navBtn.active { background: var(--blueSoft); color: #d9e8ff; }
+    body.theme-dark .navIco,
+    body.theme-dark .controlTile .navIco { background: var(--soft); color: var(--navText); border-color: var(--line); }
+    body.theme-dark .topbar,
+    body.theme-dark .card,
+    body.theme-dark .item,
+    body.theme-dark .modal,
+    body.theme-dark .desktopPhoneDrawer,
+    body.theme-dark .phoneDrawerTabs,
+    body.theme-dark .conversationThreadPane,
+    body.theme-dark .desktopConversationShell,
+    body.theme-dark .desktopConversationShell .conversationListPane,
+    body.theme-dark .conversationThreadHead,
+    body.theme-dark .conversationComposer,
+    body.theme-dark .conversationContactPane,
+    body.theme-dark .globalSearchResults,
+    body.theme-dark .toast { background: var(--panel); border-color: var(--line); color: var(--text); }
+    body.theme-dark .globalSearch,
+    body.theme-dark input,
+    body.theme-dark textarea,
+    body.theme-dark select { background: var(--field); border-color: var(--fieldLine); color: var(--text); }
+    body.theme-dark .btn { background: var(--button); border-color: var(--fieldLine); color: var(--text); }
+    body.theme-dark .btn:hover { background: var(--hover); }
+    body.theme-dark .btn.primary { background: var(--blueStrong); border-color: var(--blueStrong); color: #fff; }
+    body.theme-dark .btn.call { background: #16865b; border-color: #16865b; color: #fff; }
+    body.theme-dark .btn.teal { background: #0f766e; border-color: #0f766e; color: #fff; }
+    body.theme-dark .conversationRow { border-bottom-color: var(--tableLine); }
+    body.theme-dark .conversationRow:hover { background: var(--hover); }
+    body.theme-dark .conversationRow .avatar { background: var(--blueSoft); color: #9ec3ff; }
+    body.theme-dark .conversationTime { color: var(--muted); }
+    body.theme-dark .desktopConversationShell .conversationThreadPane,
+    body.theme-dark .desktopConversationShell .thread,
+    body.theme-dark .thread { background: #0d1728; }
+    body.theme-dark .bubble.in { background: #1b3159; color: #d8e7ff; }
+    body.theme-dark .bubble.out { background: #123d37; border-color: #1b5b50; color: #e6fff9; }
+    body.theme-dark .appSectionTitle { color: var(--text); }
+    body.theme-dark .mobileBottomNav { background: rgba(11,19,35,.96); border-top-color: var(--line); }
+    body.theme-dark .mobileNavBtn { color: var(--navText); }
+    body.theme-dark .contactDetailGroup,
+    body.theme-dark .controlTile,
+    body.theme-dark .scopeTile { border-color: var(--line); background: var(--panel); }
+    body.theme-dark .contactDetailRow { border-top-color: var(--tableLine); }
+    body.theme-dark .metric::after { background: var(--blueSoft); }
+    body.theme-dark .table th,
+    body.theme-dark .table td { border-color: var(--tableLine); }
+    body.theme-dark .table tbody tr:hover { background: var(--hover); }
+    body.theme-dark .empty { background: var(--empty); border-color: var(--line); }
+    body.theme-dark .modalShade { background: rgba(2, 6, 15, .74); }
+    @media (max-width: 820px) {
+      body.theme-dark { background: var(--bg); }
+      body.theme-dark .content { background: var(--bg); }
+    }
+
+    .impersonationBanner {
+      position: sticky;
+      top: 76px;
+      z-index: 46;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      min-height: 48px;
+      padding: 8px 18px;
+      background: #fff4cc;
+      border-bottom: 1px solid #e8c75e;
+      color: #5a4200;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    body.theme-dark .impersonationBanner { background: #3c310e; border-bottom-color: #7d6518; color: #ffeda6; }
+    @media (max-width: 820px) {
+      .impersonationBanner { top: 82px; justify-content: space-between; }
+    }
   </style>
 </head>
 <body>
@@ -1032,6 +1144,10 @@
           <span id="userName" class="userPill">Admin</span>
         </div>
       </header>
+      <div id="impersonationBanner" class="impersonationBanner hidden" role="status">
+        <span>Viewing SmartR8 as <strong id="impersonationUser">another user</strong>. Their permissions and assigned records are active.</span>
+        <button class="btn small" data-action="stop-impersonating">Return to admin</button>
+      </div>
       <aside id="desktopPhoneDrawer" class="desktopPhoneDrawer hidden" aria-label="Phone drawer">
         <div class="phoneDrawerHead"><div><b>Phone</b><div id="quickLineStatus" class="sub">CRM line is not connected.</div></div><button class="btn small" data-action="toggle-phone-drawer">Close</button></div>
         <div class="phoneDrawerBody">
@@ -1085,6 +1201,8 @@
       var state = {
         token: "",
         user: null,
+        impersonation: null,
+        leadOwners: [],
         page: "dashboard",
         leads: [],
         selectedLead: null,
@@ -1163,9 +1281,17 @@
       applyTheme(state.theme);
 
       function applyTheme(theme) {
-        state.theme = theme === "light" ? "light" : "dark";
+        state.theme = theme === "dark" ? "dark" : "light";
         document.body.classList.toggle("theme-light", state.theme === "light");
-        if ($("themeToggle")) $("themeToggle").textContent = state.theme === "light" ? "Light" : "Dark";
+        document.body.classList.toggle("theme-dark", state.theme === "dark");
+        document.documentElement.style.colorScheme = state.theme;
+        var themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.setAttribute("content", state.theme === "dark" ? "#0b1220" : "#ffffff");
+        if ($("themeToggle")) {
+          $("themeToggle").textContent = state.theme === "light" ? "Dark" : "Light";
+          $("themeToggle").title = "Switch to " + (state.theme === "light" ? "dark" : "light") + " mode";
+          $("themeToggle").setAttribute("aria-pressed", state.theme === "dark" ? "true" : "false");
+        }
         try { localStorage.setItem("sp_theme", state.theme); } catch (e) {}
       }
       function toggleTheme() {
@@ -1480,6 +1606,7 @@
       }
       function canPage(page) {
         if (page === "control") return true;
+        if (page === "admin") return isSuperAdminView();
         if (!itemByPage(page)) return true;
         return userPermissionList().indexOf(page) >= 0;
       }
@@ -1619,6 +1746,7 @@
           });
           state.token = ""; // V2 authenticates with the server's HttpOnly session cookie.
           state.user = data.user;
+          state.impersonation = data.impersonation || null;
           $("loginPass").value = "";
           enterApp();
         } catch (e) {
@@ -1629,6 +1757,7 @@
         try {
           var data = await json("/api/auth/me");
           state.user = data.user;
+          state.impersonation = data.impersonation || null;
           enterApp();
         } catch (e) {
           if (e.status === 401 || e.status === 403) {
@@ -1648,6 +1777,7 @@
         $("app").classList.remove("hidden");
         $("userName").textContent = (state.user && (state.user.name || state.user.username)) || "Admin";
         $("userInitials").textContent = initials($("userName").textContent);
+        renderImpersonationState();
         state.favoritePages = loadFavoritePages();
         renderSidebarFavorites();
         loadMessagingMode();
@@ -1663,6 +1793,45 @@
         } else {
           route(requestedPage(), { fromHistory: true }).then(applyDeepLink);
         }
+      }
+
+      function isSuperAdminView() {
+        return Boolean(state.user && state.user.role === "admin" && String(state.user.username || "").toLowerCase() === "admin" && !state.impersonation);
+      }
+
+      function renderImpersonationState() {
+        var banner = $("impersonationBanner");
+        if (!banner) return;
+        var active = Boolean(state.impersonation && state.impersonation.active);
+        banner.classList.toggle("hidden", !active);
+        if ($("impersonationUser")) $("impersonationUser").textContent = active ? ((state.user && (state.user.name || state.user.username)) || "user") : "another user";
+      }
+
+      async function impersonateUser(id) {
+        var data = await json("/api/users/" + encodeURIComponent(id) + "/impersonate", { method: "POST" });
+        state.user = data.user;
+        state.impersonation = data.impersonation;
+        state.selectedLead = null;
+        state.leads = [];
+        state.conversations = [];
+        state.notifications = [];
+        closeModal();
+        history.replaceState({ page: "dashboard" }, "", appBasePath() || "/v2");
+        enterApp();
+        showToast("User view is active.");
+      }
+
+      async function stopImpersonating() {
+        var data = await json("/api/auth/stop-impersonating", { method: "POST" });
+        state.user = data.user;
+        state.impersonation = null;
+        state.selectedLead = null;
+        state.leads = [];
+        state.conversations = [];
+        state.leadOwners = [];
+        history.replaceState({ page: "control" }, "", (appBasePath() || "/v2") + "?page=control");
+        enterApp();
+        showToast("Returned to the admin account.");
       }
 
       async function loadMessagingMode() {
@@ -1869,7 +2038,8 @@
       }
 
       async function loadDashboard() {
-        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your SmartR8 workspace.", '<a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Content Studio</a><button class="btn primary" data-action="new-lead">Add contact</button><button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
+        var dashboardCreate = isSuperAdminView() ? '<button class="btn primary" data-action="new-lead">Add contact</button>' : '';
+        pageShell(isDesktopLayout() ? "Dashboard" : "Home", "Today in your SmartR8 workspace.", '<a class="btn studioLaunch" href="https://studio.smartr8.com" target="_blank" rel="noopener noreferrer">Content Studio</a>' + dashboardCreate + '<button class="btn" data-action="refresh">Refresh</button>', '<div id="dashBody" class="grid"></div>');
         var loadErrors = [];
         var results = await Promise.all([
           json("/api/dashboard").catch(function () { loadErrors.push("dashboard"); return {}; }),
@@ -1931,7 +2101,7 @@
           '</div>' +
           '<section class="card pad"><div class="cardHead" style="padding:0 0 16px;border:0"><h2>Pinned apps</h2><button class="btn small" data-nav="control">Edit</button></div><div class="controlGrid">' + ["leads","pipeline","social","documents"].map(itemByPage).filter(Boolean).map(controlTile).join("") + '</div></section>' +
           '<section class="card pad"><h2 style="margin-top:0">Quick actions</h2><div class="controlGrid">' +
-            quickActionTile("Add contact", "new-lead", "+") + quickActionTile("Make a call", "quick-dial", "PH") + quickActionTile("New message", "quick-message", "MS") + quickActionTile("Book appointment", "cal-add-event", "CA") +
+            (isSuperAdminView() ? quickActionTile("Add contact", "new-lead", "+") : "") + quickActionTile("Make a call", "quick-dial", "PH") + quickActionTile("New message", "quick-message", "MS") + quickActionTile("Book appointment", "cal-add-event", "CA") +
           '</div></section>' +
           '<div class="grid cols2">' +
             '<section class="card"><div class="cardHead"><h2>Recent leads</h2><button class="btn small" data-nav="leads">Open Leads</button></div><div class="tableWrap">' + leadsTable(leads.slice(0, 8), false, null, true) + '</div></section>' +
@@ -1956,8 +2126,9 @@
 
       async function loadLeadsView() {
         state.leadStageFilter = state.leadStageFilter || "";
+        var adminLeadActions = isSuperAdminView() ? '<button class="btn" data-action="download-lead-sample">Sample CSV</button><button class="btn" data-action="open-lead-import">Import CSV</button><button class="btn primary" data-action="new-lead">New Lead</button>' : '';
         pageShell("Leads", "Manage borrowers, pipeline status, task follow-up, and loan workflow notes.",
-          '<button class="btn" data-action="download-lead-sample">Sample CSV</button><button class="btn" data-action="open-lead-import">Import CSV</button><button class="btn primary" data-action="bulk-campaigns">Campaigns</button><button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button><button class="btn primary" data-action="new-lead">New Lead</button>',
+          adminLeadActions + '<button class="btn primary" data-action="bulk-campaigns">Campaigns</button><button class="btn" data-action="bulk-text">Text blast</button><button class="btn" data-action="bulk-email">Email blast</button><button class="btn" data-action="bulk-vm">Voicemail blast</button><button class="btn danger" data-action="bulk-delete">Delete selected</button>',
           '<section class="card"><div class="cardHead"><h2>Lead database</h2><div class="toolbar"><input id="leadSearch" type="search" placeholder="Search by name, phone, email, address..." style="width:320px"><button class="btn small" data-action="refresh-leads">Search</button></div></div><div id="leadScopeSummary" class="leadScopeSummary"></div><div id="leadStatusTabs" class="statusTabs"></div><div id="leadListWrap" class="tableWrap"><div class="spinner"></div></div></section>');
         $("leadSearch").addEventListener("keydown", function (e) { if (e.key === "Enter") loadLeads(); });
         await loadLeads();
@@ -2181,7 +2352,7 @@
               '<td>' + esc(l.phone || "-") + '</td>' +
               '<td>' + esc(l.email || "-") + '</td>' +
               '<td>' + statusBadge(l.pipeline_stage || "Lead-In") + '</td>' +
-              (compact ? '' : '<td>' + esc(l.owner || l.owner_name || "Admin") + '</td><td>' + esc(l.source || "manual") + '</td><td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>') +
+              (compact ? '' : '<td>' + esc(l.owner || l.owner_name || "Unassigned") + '</td><td>' + esc(l.source || "manual") + '</td><td>' + esc(when(l.last_activity_at || l.updated_at || l.created_at)) + '</td>') +
               '<td><button class="btn small" data-action="open-lead" data-id="' + esc(l.id) + '">Open</button></td>' +
             '</tr>';
           }).join("") + '</tbody></table>';
@@ -2190,6 +2361,10 @@
       async function openLead(id) {
         openModal("Lead Profile", '<div class="empty"><div class="spinner"></div><div style="margin-top:10px">Opening lead...</div></div>', { fullscreen: true });
         try {
+          if (isSuperAdminView() && !state.leadOwners.length) {
+            var ownersData = await json("/api/lead-owners");
+            state.leadOwners = ownersData.users || [];
+          }
           var data = await json("/api/leads/" + encodeURIComponent(id) + "?activityLimit=20");
           state.selectedLead = data.lead;
           state.selectedLeadHistoryComplete = false;
@@ -2207,6 +2382,7 @@
         var activateButton = lead.past_client ? '<button class="btn primary" data-action="activate-lead">Move to active Leads</button>' : '';
         var poolButton = custom.lead_pool ? '<span class="badge amber">In Lead Pool</span>' : '<button class="btn" data-action="move-lead-to-pool">Move to Lead Pool</button>';
         var quickStage = '<select title="Change pipeline stage" data-action="lead-stage-quick" data-id="' + esc(lead.id) + '" style="width:auto;min-width:150px;font-weight:850">' + state.stages.map(function (stage) { return '<option value="' + esc(stage) + '"' + (stage === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(stage) + '</option>'; }).join("") + '</select>';
+        var assignedUserControl = isSuperAdminView() ? '<label>Assigned CRM user<select id="ldAssignedUser"><option value="">Unassigned</option>' + state.leadOwners.map(function (u) { return '<option value="' + esc(u.id) + '"' + (u.id === lead.owner_user_id ? ' selected' : '') + '>' + esc((u.name || u.username) + (u.role === "admin" ? " (admin)" : "")) + '</option>'; }).join("") + '</select></label><label style="align-self:end"><button class="btn primary" data-action="assign-lead-owner">Save assignment</button></label>' : '';
         var consentButton = '<button class="btn leadConsentButton' + (lead.sms_consent ? ' isOn' : '') + '" data-action="sms-consent">' + (lead.sms_consent ? '&#10003; SMS consent' : 'Mark SMS consent') + '</button>';
         openModal("Lead Profile",
           '<section class="leadProfileHero">' +
@@ -2225,6 +2401,7 @@
             '<label>Preferred channel<select id="ldPreferredChannel">' + ["","sms","imessage","whatsapp","email","call"].map(function (c) { return '<option value="' + esc(c) + '"' + (c === (lead.preferred_channel || "") ? " selected" : "") + '>' + esc(c || "No preference") + '</option>'; }).join("") + '</select></label>' +
             field("Source", "ldSource", lead.source || "") +
             field("Owner", "ldOwner", lead.owner || "") +
+            assignedUserControl +
             '<label>Pipeline Status<select id="ldStage">' + state.stages.map(function (s) { return '<option value="' + esc(s) + '"' + (s === (lead.pipeline_stage || "Lead-In") ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") + '</select></label>' +
             field("Property Address", "ldAddress", addr.street) +
             field("City", "ldCity", addr.city) +
@@ -2240,6 +2417,19 @@
           '<aside id="leadActionDrawer" class="leadActionDrawer hidden"><div class="leadActionDrawerHead"><div><b id="leadActionDrawerTitle">Lead action</b><div id="leadActionDrawerSub" class="sub"></div></div><button class="btn small" data-action="close-lead-panel">Close</button></div><div id="leadActionDrawerBody" class="leadActionDrawerBody"></div></aside>',
           { fullscreen: true });
         if ($("modalBody")) $("modalBody").dataset.leadId = lead.id;
+      }
+
+      async function assignCurrentLeadOwner() {
+        if (!isSuperAdminView() || !state.selectedLead) throw new Error("Only the super admin can assign CRM records.");
+        var select = $("ldAssignedUser");
+        var data = await json("/api/leads/" + encodeURIComponent(state.selectedLead.id) + "/assign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: select ? select.value : "" })
+        });
+        state.selectedLead = data.lead;
+        showToast(select && select.value ? "Lead assigned." : "Lead is now unassigned.");
+        await openLead(data.lead.id);
       }
 
       async function ensureLeadHistoryLoaded() {
@@ -3195,7 +3385,8 @@
       }
 
       async function loadPipeline() {
-        pageShell("Opportunities", "Move mortgage opportunities through the active pipeline.", '<button class="btn primary" data-action="new-lead">Create opportunity</button><button class="btn" data-action="refresh">Refresh</button>', '<section class="card pad" style="margin-bottom:14px"><div class="toolbar"><input id="pipelineSearch" type="search" placeholder="Search opportunities" style="min-width:240px;flex:1"><span class="badge blue">Active pipeline</span><span class="badge">Date added</span></div></section><div id="pipelineShell" class="pipelineShell"><div id="pipe" class="pipeline"></div></div><div class="pipelineScroller"><span class="sub">Slide board</span><input id="pipelineSlider" type="range" min="0" max="0" value="0"></div>');
+        var createOpportunity = isSuperAdminView() ? '<button class="btn primary" data-action="new-lead">Create opportunity</button>' : '';
+        pageShell("Opportunities", "Move mortgage opportunities through the active pipeline.", createOpportunity + '<button class="btn" data-action="refresh">Refresh</button>', '<section class="card pad" style="margin-bottom:14px"><div class="toolbar"><input id="pipelineSearch" type="search" placeholder="Search opportunities" style="min-width:240px;flex:1"><span class="badge blue">Active pipeline</span><span class="badge">Date added</span></div></section><div id="pipelineShell" class="pipelineShell"><div id="pipe" class="pipeline"></div></div><div class="pipelineScroller"><span class="sub">Slide board</span><input id="pipelineSlider" type="range" min="0" max="0" value="0"></div>');
         var data = await json("/api/pipeline");
         state.stages = (data.stages || []).map(function (s) { return s.name || s; });
         var leads = data.leads || [];
@@ -3538,7 +3729,7 @@
         var addr = leadAddressParts(contact);
         var tags = contact.tags || [];
         var details = [
-          ["Phone", contact.phone || "-"], ["Email", contact.email || "-"], ["Owner", contact.owner || contact.owner_name || "Admin"],
+          ["Phone", contact.phone || "-"], ["Email", contact.email || "-"], ["Owner", contact.owner || contact.owner_name || "Unassigned"],
           ["Source", contact.source || "-"], ["Stage", contact.pipeline_stage || contact.status || "Lead-In"], ["Address", leadAddressLine(contact) || "-"],
           ["Loan type", contact.loan_type || custom.loan_type || custom.loanType || "-"], ["Loan amount", custom.loan_amount || custom.loanAmount || "-"],
           ["Property value", custom.property_value || custom.home_value || custom.value || "-"], ["Purpose", custom.loan_purpose || custom.purpose || "-"]
@@ -6268,10 +6459,11 @@
         var data = await json("/api/users").catch(function (e) { return { users: [], error: e.message }; });
         if (!$("adminUsersWrap")) return;
         $("adminUsersWrap").innerHTML = data.error ? '<div class="empty badText">' + esc(data.error) + '</div>' : (data.users || []).length ? data.users.map(function (u) {
+          var viewAsButton = isSuperAdminView() && !u.disabled && u.role !== "admin" ? '<button class="btn small teal" data-action="admin-impersonate" data-id="' + esc(u.id) + '">View as user</button>' : '';
           return '<div class="item"><div class="toolbar" style="justify-content:space-between;align-items:flex-start"><div><b>' + esc(u.name || u.username) + '</b><div class="sub">' + esc(u.email || "No mailbox") + ' | ' + esc(permissionSummary(u)) + '</div></div><span class="badge ' + (u.disabled ? "red" : u.role === "admin" ? "purple" : "blue") + '">' + esc(u.disabled ? "Disabled" : u.role) + '</span></div>' +
             '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:900">Account identity</summary><div class="fieldGrid" style="margin-top:10px"><label>First name<input id="adminFirst-' + esc(u.id) + '" value="' + esc(u.first_name || "") + '"></label><label>Last name<input id="adminLast-' + esc(u.id) + '" value="' + esc(u.last_name || "") + '"></label><label>Username<input id="adminUsername-' + esc(u.id) + '" value="' + esc(u.username || "") + '"></label><label>Email<input id="adminEmail-' + esc(u.id) + '" type="email" value="' + esc(u.email || "") + '"></label></div><button class="btn small primary" data-action="admin-save-identity" data-id="' + esc(u.id) + '" style="margin-top:10px">Save identity</button></details>' +
             '<details style="margin-top:10px" ' + (u.role === "admin" ? "" : "open") + '><summary style="cursor:pointer;font-weight:900">Feature access</summary>' + permissionCheckboxes(u.id, u.permissions || [], u.role) + '<button class="btn small primary" data-action="admin-save-permissions" data-id="' + esc(u.id) + '" style="margin-top:10px"' + (u.role === "admin" ? " disabled" : "") + '>Save permissions</button></details>' +
-            '<div class="toolbar" style="margin-top:10px"><button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
+            '<div class="toolbar" style="margin-top:10px">' + viewAsButton + '<button class="btn small" data-action="admin-reset-pass" data-id="' + esc(u.id) + '">Reset password</button><button class="btn small" data-action="admin-toggle-role" data-id="' + esc(u.id) + '" data-role="' + esc(u.role) + '">' + (u.role === "admin" ? "Make user" : "Make admin") + '</button><button class="btn small danger" data-action="admin-toggle-user" data-id="' + esc(u.id) + '" data-disabled="' + (u.disabled ? "1" : "0") + '">' + (u.disabled ? "Enable" : "Disable") + '</button></div></div>';
         }).join("") : '<div class="empty">No users found.</div>';
       }
       async function refreshAdminSyncStatus() {
@@ -6737,6 +6929,7 @@
           else if (a === "close-lead-panel") closeLeadPanel();
           else if (a === "toggle-lead-chrome") toggleLeadChrome();
           else if (a === "toggle-favorite") toggleFavoritePage(btn.dataset.page);
+          else if (a === "stop-impersonating") await stopImpersonating();
           else if (a === "logout") { await api("/api/auth/logout", { method: "POST" }); location.reload(); }
           else if (a === "refresh") route(state.page);
           else if (a === "close-modal") closeModal();
@@ -6825,6 +7018,7 @@
           else if (a === "admin-toggle-role") await toggleAdminRole(btn.dataset.id, btn.dataset.role);
           else if (a === "admin-save-permissions") await saveAdminPermissions(btn.dataset.id);
           else if (a === "admin-save-identity") await saveAdminIdentity(btn.dataset.id);
+          else if (a === "admin-impersonate") await impersonateUser(btn.dataset.id);
           else if (a === "change-own-password") await changeOwnPassword();
           else if (a === "cal-prev") shiftCalendarMonth(-1);
           else if (a === "cal-next") shiftCalendarMonth(1);
@@ -6926,6 +7120,7 @@
           else if (a === "refresh-call-log") await loadCallLog();
           else if (a === "delete-call-log") await deleteCallLog(btn.dataset.id);
           else if (a === "save-lead") await saveCurrentLead();
+          else if (a === "assign-lead-owner") await assignCurrentLeadOwner();
           else if (a === "activate-lead") await activateCurrentLead();
           else if (a === "move-lead-to-pool") await moveCurrentLeadToPool();
           else if (a === "add-task") await addTaskToLead();

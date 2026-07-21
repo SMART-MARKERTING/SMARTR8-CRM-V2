@@ -7,12 +7,13 @@ import { log } from "../logger";
 import {
   requirePass,
   requireAdmin,
+  requireSuperAdmin,
   requireVerifiedAdmin,
   rejectClientSuppliedIdentity,
   requirePortalVerified,
   requireFeatureForCurrentPath,
 } from "../util/auth";
-import { getUser, listUsers } from "../services/auth";
+import { getUser, isSuperAdmin, listUsers } from "../services/auth";
 import { sendOutbound } from "../services/router";
 import { startClickToCall } from "../services/clickToCall";
 import {
@@ -1019,10 +1020,10 @@ crmRouter.post("/api/leads/:id/commission", requirePass, (req, res) => {
 });
 
 /** Lead list + status counts for the CRM tab. */
-/** Owner filter for the requester: admins see all leads (undefined); a non-admin user sees
- *  only the leads assigned to them. */
+/** Only the single `admin` super account sees the workspace pool. Every other account,
+ * including additional admins, is restricted to explicitly assigned records. */
 function ownerScope(req: Request): string | undefined {
-  return req.authUser && req.authUser.role !== "admin" ? req.authUser.id : undefined;
+  return isSuperAdmin(req.authUser) && !req.impersonatorUser ? undefined : req.authUser?.id;
 }
 
 function accessibleLead(req: Request, res: Response): Lead | null {
@@ -2088,7 +2089,7 @@ crmRouter.post("/api/sync/legacy-crm", (req, res) => {
 });
 
 /** Create a lead by hand. Lead-created automations run by default; set body.runAutomation=false to only save. */
-crmRouter.post("/api/leads", requirePass, (req, res) => {
+crmRouter.post("/api/leads", requireSuperAdmin, (req, res) => {
   const body = (req.body ?? {}) as LeadInput & { runAutomation?: boolean; loanType?: string };
   if (!body.phone && !body.email && !body.name && !body.first_name) {
     res.status(400).json({ error: "pass at least a name, phone, or email" });
@@ -2105,11 +2106,6 @@ crmRouter.post("/api/leads", requirePass, (req, res) => {
       category_reason: body.category_reason ?? tag?.reason,
       campaign: body.campaign ?? tag?.campaign,
     });
-    // A lead created from the console is owned by its creator (admins can reassign later).
-    if (req.authUser) {
-      updateLead(lead.id, { owner_user_id: req.authUser.id });
-      lead.owner_user_id = req.authUser.id;
-    }
     const shouldRunAutomation = body.runAutomation !== false;
     let started = 0;
     let note: string | undefined;
@@ -2374,7 +2370,7 @@ crmRouter.get("/api/leads/sample.csv", requirePass, (_req, res) => {
  *   - "leads" (default) → the active pipeline; `defaultStatus` (e.g. "nurturing") seeds rows
  *      that have no own `status` column.
  *  `markPastClients` is still accepted as the legacy alias for destination "past_clients". */
-crmRouter.post("/api/leads/import", requirePass, (req, res) => {
+crmRouter.post("/api/leads/import", requireSuperAdmin, (req, res) => {
   const body = (req.body ?? {}) as {
     csv?: string;
     markPastClients?: boolean;
@@ -2439,14 +2435,12 @@ crmRouter.post("/api/leads/import", requirePass, (req, res) => {
       if (pipelineStage) patch.pipeline_stage = pipelineStage;
       if (tags) patch.tags = Array.from(new Set([...existing.tags, ...tags]));
       if (Object.keys(custom).length) patch.custom = { ...existing.custom, ...custom };
-      if (req.authUser && !existing.owner_user_id) patch.owner_user_id = req.authUser.id;
       if (Object.keys(patch).length) updateLead(existing.id, patch);
       leadId = existing.id;
       updated++;
     } else {
       const lead = createLead({ first_name: first, last_name: last, name: fullName, email, phone, source: rowValue(r, ["source", "lead_source", "lead source"]) || "import", status, pipeline_stage: pipelineStage || DEFAULT_STAGE, tags, custom });
       leadId = lead.id;
-      if (req.authUser) updateLead(lead.id, { owner_user_id: req.authUser.id });
       // A `notes` column becomes a real timeline note (visible) — e.g. funded date / loan summary.
       const notes = rowValue(r, ["notes", "note", "last_note", "description"]);
       if (notes) addNote(leadId, notes, "import");
@@ -2489,7 +2483,7 @@ crmRouter.get("/api/lead-pool", requirePass, (req, res) => {
   res.json({ ok: true, leads, count: leads.length, total: filtered.length, allTotal: allPool.length, states, tags });
 });
 
-crmRouter.post("/api/lead-pool/import", requirePass, (req, res) => {
+crmRouter.post("/api/lead-pool/import", requireSuperAdmin, (req, res) => {
   const body = (req.body ?? {}) as { csv?: string };
   const csv = typeof body.csv === "string" ? body.csv : "";
   if (!csv.trim()) {
@@ -2557,7 +2551,6 @@ crmRouter.post("/api/lead-pool/import", requirePass, (req, res) => {
       contact_only: true,
       sms_consent: truthyCell(rowValue(r, ["sms_consent", "consent", "opt_in"])),
     });
-    if (req.authUser) updateLead(lead.id, { owner_user_id: req.authUser.id });
     if (notes) addNote(lead.id, notes, "lead-pool-import");
     logActivity(lead.id, {
       type: "lead_pool_import",
@@ -3112,7 +3105,7 @@ crmRouter.post("/api/leads/:id/agent/analyze", requirePass, async (req, res) => 
 });
 
 /** Assign / reassign a lead to a user (admin only). Body: { userId } ("" or null = unassign). */
-crmRouter.post("/api/leads/:id/assign", requireAdmin, (req, res) => {
+crmRouter.post("/api/leads/:id/assign", requireSuperAdmin, (req, res) => {
   const lead = getLead(req.params.id);
   if (!lead) {
     res.status(404).json({ error: "lead not found" });
@@ -3128,7 +3121,7 @@ crmRouter.post("/api/leads/:id/assign", requireAdmin, (req, res) => {
 });
 
 /** Owners the console can assign leads to (admin only) — drives the assignment dropdown. */
-crmRouter.get("/api/lead-owners", requireAdmin, (_req, res) => {
+crmRouter.get("/api/lead-owners", requireSuperAdmin, (_req, res) => {
   res.json({ users: listUsers().filter((u) => !u.disabled).map((u) => ({ id: u.id, username: u.username, name: u.name, role: u.role })) });
 });
 
