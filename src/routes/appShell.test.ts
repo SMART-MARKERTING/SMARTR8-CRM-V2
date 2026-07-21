@@ -262,3 +262,11 @@ test("mobile pipeline has a non-drag stage control and Telnyx cell fallback rema
   assert.match(inboundRouter, /falling back to cell/);
   assert.match(voiceRoute, /onInboundLegHangup\(ccid\)/);
 });
+
+test("Fax UI distinguishes sending readiness and prevents duplicate submissions", async () => {
+  const html = await v2Shell();
+  assert.match(html, /Sending is ready\. Add the webhook public key for instant updates; Refresh checks Telnyx directly\./);
+  assert.match(html, /if \(sendButton && sendButton\.disabled\) return/);
+  assert.match(html, /sendButton\.disabled = true; sendButton\.textContent = "Sending\.\.\."/);
+  assert.match(html, /Delivery status will update automatically or on Refresh/);
+});
